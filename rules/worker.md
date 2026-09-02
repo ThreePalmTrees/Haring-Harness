@@ -275,8 +275,8 @@ nothing survives it but the report, and losing the run costs only time.
 
 **When:** any comment, document, commit message or report you write.
 **Why:** a reader arriving fresh should not have to reconstruct a past they were not part
-of. A comment reading "this was a loop before" or a paragraph explaining that a field was
-renamed makes the next person work out a history to understand a present you could have
+of. A comment reading "this was a loop before", or a paragraph explaining that a field was
+renamed, makes the next person work out a history to understand a present you could have
 stated directly.
 
 Describe what the code does now. The change belongs in the commit message.
@@ -284,16 +284,16 @@ Describe what the code does now. The change belongs in the commit message.
 This does not forbid a correction that is still doing work. If a wrong claim is still
 sitting in a document, the note saying it is wrong belongs beside it.
 
----
+### Write plainly
 
-## Writing your report
+**When:** your report, and anything else you write for a person.
+**Why:** your reader is a program first and a person second, and both read plain text more
+reliably than clever text.
 
-Write plainly. Short sentences, common words, no idioms and no figures of speech. Your
-reader is a program first and a person second, and both read plain text more reliably.
+Short sentences. Common words. No idioms and no figures of speech. Number your claims so
+each one can be answered on its own.
 
 Do not use tables. A table costs many tokens to say what a list says in few.
 
-This applies to your report. It does not apply to commit messages, which follow the
-repository's own style, or to code, which follows the project's conventions.
-
-Number your claims so each one can be answered on its own.
+Commit messages follow the repository's own style, and code follows the project's
+conventions. Those win over this rule.
