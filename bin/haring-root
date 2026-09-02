@@ -1,0 +1,13 @@
+#!/bin/sh
+# haring-root — print the absolute path of the haring repository.
+# The manager skill uses this to find the rule files, because the skill itself is
+# reached through a symlink and cannot see where it really lives.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+CDPATH= cd -- "$(dirname -- "$self")/.." && pwd

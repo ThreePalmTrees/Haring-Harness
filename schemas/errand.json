@@ -1,0 +1,41 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "properties": {
+  "result": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "key": {
+      "type": "string"
+     },
+     "value": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "value"
+    ]
+   }
+  },
+  "found": {
+   "type": "boolean",
+   "description": "false if what was asked for is not there"
+  },
+  "where": {
+   "type": "string"
+  },
+  "redacted": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "result",
+  "found",
+  "where",
+  "redacted"
+ ]
+}

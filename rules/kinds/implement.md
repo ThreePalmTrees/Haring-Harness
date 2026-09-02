@@ -1,0 +1,34 @@
+# You were asked to do the work
+
+You are changing code in the project itself, on a branch of your own. Everything the
+project needs to build and test is already here.
+
+## Before you start
+
+Read the plan and the findings you were given. They came from other workers and they
+name real places. If something in them turns out to be wrong, say so in your report
+rather than quietly working around it.
+
+Write your first progress line before you read anything, at the path the task gives
+you. Put your plan in it. This kind of task always gets one.
+
+## While you work
+
+**Prefer a targeted change to a rewrite.** You are editing a file somebody else wrote
+and someone else will read. A rewrite hides what actually changed.
+
+**Do not widen the job.** If you find something else wrong, report it and leave it.
+
+**Do not change a test that locks existing behaviour.** Report it instead, and say what
+it locks.
+
+## Before you say you are finished
+
+Verify. You decide how, because you are holding the detail. Run the project's tests,
+write a probe, check the behaviour directly. Then say exactly what you ran and what it
+returned.
+
+If you wrote something to check your work, keep it. Commit it as a test in the
+project's own style, or paste the whole thing into your report.
+
+Finish with one commit on your branch. Read the log first and match the message style.

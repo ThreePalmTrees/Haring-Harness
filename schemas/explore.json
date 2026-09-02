@@ -1,0 +1,173 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "properties": {
+  "answers": {
+   "type": "array",
+   "description": "One entry for every numbered thing the task asked for. If you could not answer one, say why in detail. Never leave a number out.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "verdict": {
+      "type": "string",
+      "enum": [
+       "agree",
+       "disagree",
+       "partly",
+       "answered",
+       "could_not"
+      ]
+     },
+     "detail": {
+      "type": "string"
+     },
+     "where": {
+      "type": "string"
+     },
+     "evidence": {
+      "type": "string",
+      "enum": [
+       "ran_a_command",
+       "read_the_code",
+       "reasoning_only"
+      ]
+     }
+    },
+    "required": [
+     "n",
+     "verdict",
+     "detail",
+     "where",
+     "evidence"
+    ]
+   }
+  },
+  "claims": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "claim": {
+      "type": "string"
+     },
+     "where": {
+      "type": "string",
+      "description": "file:line for code, the command for behaviour, the search for absence, what was tried for the environment"
+     },
+     "evidence": {
+      "type": "string",
+      "enum": [
+       "ran_a_command",
+       "read_the_code",
+       "reasoning_only"
+      ]
+     },
+     "command": {
+      "type": "string",
+      "description": "exact command, only when evidence is ran_a_command"
+     },
+     "output": {
+      "type": "string",
+      "description": "the part of the output that is the evidence, trimmed and redacted"
+     }
+    },
+    "required": [
+     "n",
+     "claim",
+     "where",
+     "evidence"
+    ]
+   }
+  },
+  "line_numbers_at": {
+   "type": "string",
+   "description": "the commit or revision the line numbers were read at"
+  },
+  "one_true_thing": {
+   "type": "string",
+   "description": "one line: what would most change how the next task is planned. Say so if there is nothing."
+  },
+  "environment": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "what_failed": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "ok",
+    "what_failed"
+   ]
+  },
+  "blocked": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "hit": {
+     "type": "string"
+    },
+    "needed_to_continue": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "hit",
+    "needed_to_continue"
+   ]
+  },
+  "redacted": {
+   "type": "boolean",
+   "description": "true if anything was removed from this report for being a secret"
+  },
+  "doubts": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "needs_the_client": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "did_not_check": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "weak_evidence": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "needs_the_client",
+    "did_not_check",
+    "weak_evidence"
+   ]
+  }
+ },
+ "required": [
+  "answers",
+  "claims",
+  "line_numbers_at",
+  "one_true_thing",
+  "environment",
+  "redacted",
+  "doubts"
+ ]
+}

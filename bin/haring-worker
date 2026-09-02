@@ -1,0 +1,185 @@
+#!/bin/sh
+# haring-worker — start one worker, or continue one you already started.
+# Always in the background; prints the run folder.
+#
+#   haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]
+#   haring-worker continue <previous-run-folder> <prompt-file> [--turns N]
+#
+# kind is one of: explore plan implement check errand correct
+#
+# The model is glm-5.3-flash for every kind. The manager never chooses another one.
+# --model exists only for when the person who asked for the work asks for it.
+set -e
+
+# Resolve our own real location, following symlinks, so this keeps working when
+# it is linked onto PATH by install.sh.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+
+MODEL_DEFAULT=glm-5.3-flash
+
+usage() {
+  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]" >&2
+  echo "       haring-worker continue <previous-run-folder> <prompt-file> [--turns N]" >&2
+  exit 2
+}
+
+# ---------------------------------------------------------------- continue mode
+resume_id=""
+if [ "$1" = "continue" ]; then
+  prev=$2; promptfile=$3
+  [ -n "$prev" ] && [ -n "$promptfile" ] || usage
+  [ -f "$prev/meta" ] || { echo "no meta in $prev — not a haring run folder" >&2; exit 2; }
+  [ -s "$prev/report.json" ] || {
+    echo "$prev has no report. A worker that never reported cannot be continued." >&2
+    echo "Read its PROGRESS.md and its transcript, then start a fresh one." >&2; exit 2; }
+  resume_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("session_id") or "")' "$prev/report.json")
+  [ -n "$resume_id" ] || { echo "no session_id in $prev/report.json" >&2; exit 2; }
+  # shellcheck disable=SC1090
+  . "$prev/meta"          # sets kind, workdir, model
+  shift 3
+else
+  kind=$1; workdir=$2; promptfile=$3
+  [ -n "$kind" ] && [ -n "$workdir" ] && [ -n "$promptfile" ] || usage
+  shift 3
+  model=""
+fi
+
+[ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
+
+turns=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --turns) turns=$2; shift 2 ;;
+    --model) model=$2; shift 2
+             echo "haring-worker: WARNING — model overridden to '$model'." >&2
+             echo "  The manager must not do this on its own. Only do it when the person" >&2
+             echo "  who asked for the work asked for it." >&2 ;;
+    *) break ;;
+  esac
+done
+
+: "${model:=$MODEL_DEFAULT}"
+
+# Tools, extra flags, a soft turn budget the worker can see, and a hard ceiling
+# that only ever catches a runaway. The dollar figure is in the wrong units for a
+# third-party model, but it rises with use, so it works as a governor.
+# Turn budgets are what the work has actually been measured to take, not a wish.
+# The ceiling is a last resort: when it fires the run returns NO REPORT AT ALL, so it
+# is set far above normal work and only stops something that has genuinely run away.
+case "$kind" in
+  explore|plan)
+      tools='Read,Glob,Grep,Bash'; extra='--bare'; : "${turns:=15}"; cap=8.00 ;;
+  check)
+      tools='Read,Glob,Grep,Bash'; extra='--bare'; : "${turns:=12}"; cap=8.00 ;;
+  errand)
+      tools='Read,Glob,Grep';      extra='--bare'; : "${turns:=5}";  cap=2.00 ;;
+  implement|correct)
+      tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits'
+      : "${turns:=40}"; cap=20.00 ;;
+  *) echo "unknown kind: $kind" >&2; exit 2 ;;
+esac
+
+# The project is the git top level of the workdir when there is one, else the workdir.
+project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
+
+# Run records are haring's, not the project's, so keep them out of its history. Done once,
+# the first time haring writes into a repository, and said out loud.
+if [ ! -d "$project/.haring" ] && git -C "$project" rev-parse --git-dir >/dev/null 2>&1; then
+  if ! grep -qxF '.haring/' "$project/.gitignore" 2>/dev/null; then
+    printf '.haring/\n' >> "$project/.gitignore"
+    echo "haring: added '.haring/' to $project/.gitignore so run records stay out of your history." >&2
+  fi
+fi
+
+# A unique folder every time. Seconds are not enough: workers started in the same
+# second used to share a folder and overwrite each other.
+run="$project/.haring/runs/$(date +%Y-%m-%d-%H%M%S)-$kind-$$"
+mkdir -p "$run"
+
+{
+  echo "kind=$kind"
+  echo "workdir='$workdir'"
+  echo "model=$model"
+} > "$run/meta"
+[ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "session_id='$resume_id'" >> "$run/meta"; }
+
+# The prompt the worker actually receives: the task, a soft budget it can pace
+# itself against, and — only for kinds that change things — where to write progress.
+# A read-only worker has no tool that can write one. This is the only copy of the
+# question, so it is the one file in the run folder that cannot be regenerated.
+{
+  cat "$promptfile"
+  printf '\n\n---\nThis task should take about %s turns. If you pass %s, stop and report\n' "$turns" "$((turns * 3 / 2))"
+  printf 'what you have rather than running out part way through.\n'
+  case "$kind" in
+    implement|correct)
+      : > "$run/PROGRESS.md"
+      printf '\nWrite your progress to this exact path, one line at a time, starting\n'
+      printf 'before you read anything: %s\n' "$run/PROGRESS.md" ;;
+  esac
+} > "$run/prompt.md"
+
+ANTHROPIC_AUTH_TOKEN=$(security find-generic-password -a "$USER" -s haring-zai -w)
+ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+
+schema="$HARING/schemas/$kind.json"
+# Assembled in memory. It is the same text for every run of a kind, so writing a copy
+# into each run folder was 12KB of duplication; regenerate with `haring-prompt <kind>`.
+sysprompt=$("$HARING/bin/haring-prompt" "$kind")
+resume_flag=""
+[ -n "$resume_id" ] && resume_flag="--resume $resume_id"
+
+# The worker runs as its own session, not merely in the background. A background child
+# stays in its launcher's process group, so anything that kills that group — a tool
+# timeout, a cancelled command — kills the worker too, and it dies leaving an empty
+# report. Detaching properly is the only way a long run survives the thing that started it.
+cat > "$run/run.sh" <<RUNNER
+#!/bin/sh
+echo "pid=\$\$" >> "$run/meta"
+cd "$workdir" || exit 1
+claude -p "\$(cat "$run/prompt.md")" \
+  --model "$model" \
+  --append-system-prompt "\$(cat "$run/system.tmp")" \
+  --allowedTools "$tools" \
+  --output-format json \
+  --json-schema "\$(cat "$schema")" \
+  --max-budget-usd "$cap" \
+  $extra $resume_flag \
+  2>&1 1> "$run/report.json" \
+  | grep -v "unrecognized_model" \
+  | grep -v "claude.ai connectors are disabled" > "$run/stderr.txt"
+[ -s "$run/stderr.txt" ] || rm -f "$run/stderr.txt"
+"$HARING/bin/haring-stats" "$run" > "$run/stats.txt" 2>/dev/null || true
+rm -f "$run/system.tmp" "$run/run.sh"
+RUNNER
+chmod +x "$run/run.sh"
+printf '%s' "$sysprompt" > "$run/system.tmp"
+
+python3 -c '
+import os, sys, subprocess
+if os.fork() > 0: os._exit(0)      # leave the caller
+os.setsid()                        # become our own session, out of the group
+if os.fork() > 0: os._exit(0)      # never reacquire a terminal
+subprocess.run(["/bin/sh", sys.argv[1]],
+               stdin=subprocess.DEVNULL,
+               stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL)
+' "$run/run.sh" </dev/null >/dev/null 2>&1
+
+# The runner records its own pid, so give it a moment to appear.
+i=0
+while [ ! -s "$run/meta" ] || ! grep -q '^pid=' "$run/meta"; do
+  i=$((i + 1)); [ "$i" -gt 50 ] && break
+  sleep 0.1
+done
+
+echo "$run"

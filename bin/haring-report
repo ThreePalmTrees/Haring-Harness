@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""haring-report — a worker's report, with the empty parts removed.
+
+    haring-report <run-folder>
+
+Prints the structured output only, dropping nulls, empty lists and empty strings,
+and trimming long verbatim output. The whole report.json is roughly twice this size
+and most of the difference is fields the worker had nothing to put in.
+"""
+import sys, json, os
+
+def prune(x, depth=0):
+    if isinstance(x, dict):
+        out = {}
+        for k, v in x.items():
+            v = prune(v, depth + 1)
+            if v in (None, "", [], {}, False) and k not in ("found", "passed", "all_passed"):
+                continue
+            out[k] = v
+        return out
+    if isinstance(x, list):
+        return [prune(v, depth + 1) for v in x if prune(v, depth + 1) not in (None, "", [], {})]
+    if isinstance(x, str) and len(x) > 900:
+        return x[:900] + f"\n… [{len(x) - 900} more characters, see report.json]"
+    return x
+
+if len(sys.argv) < 2:
+    sys.exit("usage: haring-report <run-folder>")
+run = sys.argv[1].rstrip("/")
+path = run if run.endswith(".json") else os.path.join(run, "report.json")
+if not os.path.exists(path) or os.path.getsize(path) == 0:
+    sys.exit(f"no report yet at {path}")
+
+d = json.load(open(path))
+so = d.get("structured_output")
+if so is None:
+    print("NO STRUCTURED OUTPUT. Raw result:")
+    print((d.get("result") or "")[:4000])
+    sys.exit(0)
+print(json.dumps(prune(so), indent=1, ensure_ascii=False))
+if d.get("is_error"):
+    print(f"\n!! the run reported an error. stop_reason={d.get('stop_reason')}")

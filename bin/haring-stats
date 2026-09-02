@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""haring-stats — one line of numbers from a worker's result JSON.
+
+    haring-stats <run-folder>
+
+Never prints money. The figure the tool reports is computed with the wrong price
+table for these models and is wrong.
+"""
+import sys, json, os
+
+if len(sys.argv) < 2:
+    sys.exit("usage: haring-stats <run-folder>")
+
+# Every haring command that acts on a run takes the run folder. A path to the report
+# itself is accepted too, because that is what someone types the first time.
+arg = sys.argv[1].rstrip("/")
+path = arg if arg.endswith(".json") else os.path.join(arg, "report.json")
+if not os.path.exists(path):
+    sys.exit(f"no report at {path}")
+if os.path.getsize(path) == 0:
+    sys.exit(f"the report at {path} is empty: the worker returned nothing")
+try:
+    d = json.load(open(path))
+except Exception as e:
+    sys.exit(f"unreadable report: {e}")
+
+mu = d.get("modelUsage") or {}
+model = next(iter(mu), "?")
+m = mu.get(model, {})
+secs = round(d.get("duration_ms", 0) / 1000)
+print(
+    f"model={model} "
+    f"in={m.get('inputTokens', 0)} "
+    f"out={m.get('outputTokens', 0)} "
+    f"cache_read={m.get('cacheReadInputTokens', 0)} "
+    f"turns={d.get('num_turns', 0)} "
+    f"secs={secs} "
+    f"error={d.get('is_error')} "
+    f"stop={d.get('stop_reason')}"
+)
+den = d.get("permission_denials") or []
+if den:
+    print(f"denials={len(den)}")

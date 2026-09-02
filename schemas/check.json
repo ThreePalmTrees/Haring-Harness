@@ -1,0 +1,100 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "properties": {
+  "claim_checked": {
+   "type": "string"
+  },
+  "verdict": {
+   "type": "string",
+   "enum": [
+    "true",
+    "false",
+    "partly",
+    "could_not_check"
+   ]
+  },
+  "what_is_actually_the_case": {
+   "type": "string"
+  },
+  "where": {
+   "type": "string"
+  },
+  "evidence": {
+   "type": "string",
+   "enum": [
+    "ran_a_command",
+    "read_the_code",
+    "reasoning_only"
+   ]
+  },
+  "command": {
+   "type": "string"
+  },
+  "output": {
+   "type": "string"
+  },
+  "line_numbers_at": {
+   "type": "string"
+  },
+  "environment": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "what_failed": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "ok",
+    "what_failed"
+   ]
+  },
+  "redacted": {
+   "type": "boolean"
+  },
+  "doubts": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "needs_the_client": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "did_not_check": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "weak_evidence": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "needs_the_client",
+    "did_not_check",
+    "weak_evidence"
+   ]
+  }
+ },
+ "required": [
+  "claim_checked",
+  "verdict",
+  "what_is_actually_the_case",
+  "where",
+  "evidence",
+  "line_numbers_at",
+  "environment",
+  "redacted",
+  "doubts"
+ ]
+}

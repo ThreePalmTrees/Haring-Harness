@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""haring-session — what this manager session has cost so far.
+
+    haring-session [project-dir]
+
+Reads the manager's own Claude Code transcript and reports API calls, tokens and
+where they went. Use it to tell whether a change to haring actually helped.
+
+Workers write their transcripts into the same folder, so this skips any session that
+returned a structured report: that is a worker, not you.
+"""
+import sys, json, os, glob
+
+proj = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+d = os.path.expanduser("~/.claude/projects/" + proj.replace("/", "-"))
+files = sorted(glob.glob(os.path.join(d, "*.jsonl")), key=os.path.getmtime, reverse=True)
+if not files:
+    sys.exit(f"no transcripts under {d}")
+
+
+def read(f):
+    n = dict(calls=0, tin=0, tout=0, cr=0, cw=0, launches=0, worker=False,
+             first_launch=None, ctx=[])
+    for ln in open(f):
+        try:
+            e = json.loads(ln)
+        except Exception:
+            continue
+        m = e.get("message") or {}
+        c = m.get("content")
+        if isinstance(c, list):
+            for b in c:
+                if not isinstance(b, dict) or b.get("type") != "tool_use":
+                    continue
+                if b.get("name") == "StructuredOutput":
+                    n["worker"] = True
+                if "haring-worker" in str((b.get("input") or {}).get("command", "")):
+                    n["launches"] += 1
+                    if n["first_launch"] is None:
+                        n["first_launch"] = n["calls"]
+        u = m.get("usage")
+        if not u:
+            continue
+        n["calls"] += 1
+        n["tin"] += u.get("input_tokens", 0)
+        n["tout"] += u.get("output_tokens", 0)
+        n["cr"] += u.get("cache_read_input_tokens", 0)
+        n["cw"] += u.get("cache_creation_input_tokens", 0)
+        n["ctx"].append(u.get("cache_read_input_tokens", 0))
+    return n
+
+
+chosen = None
+for f in files:
+    n = read(f)
+    if not n["worker"]:
+        chosen = (f, n)
+        break
+if chosen is None:
+    sys.exit("every transcript here looks like a worker. No manager session found.")
+
+f, n = chosen
+print(f"session      {os.path.basename(f)[:8]}   ({len(files)} transcripts here, "
+      f"{len(files) - 1} of them workers or older)")
+print(f"api calls    {n['calls']}")
+print(f"fresh input  {n['tin']:,}")
+print(f"output       {n['tout']:,}")
+print(f"cache read   {n['cr']:,}")
+print(f"cache write  {n['cw']:,}")
+live = [x for x in n["ctx"] if x]
+if live:
+    print(f"context      {min(live):,} at the start  ->  {max(live):,} at the widest")
+print(f"workers      {n['launches']} launched")
+if n["first_launch"]:
+    boot = sum(n["ctx"][:n["first_launch"]])
+    print(f"bootstrap    {n['first_launch']} calls and {boot:,} cache reads before the "
+          f"first worker ({100 * boot / max(1, n['cr']):.0f}% of the session)")

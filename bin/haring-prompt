@@ -1,0 +1,24 @@
+#!/bin/sh
+# haring-prompt — build a worker's system prompt.
+#
+#   haring-prompt <kind>
+#
+# The rules for every worker, then the rules for this kind of task.
+set -e
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+
+kind=$1
+[ -n "$kind" ] || { echo "usage: haring-prompt <kind>" >&2; exit 2; }
+[ -f "$HARING/rules/kinds/$kind.md" ] || { echo "unknown kind: $kind" >&2; exit 2; }
+
+cat "$HARING/rules/worker.md"
+printf '\n\n---\n\n'
+cat "$HARING/rules/kinds/$kind.md"

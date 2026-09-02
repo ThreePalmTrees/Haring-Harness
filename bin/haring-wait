@@ -1,0 +1,63 @@
+#!/bin/sh
+# haring-wait — wait for a worker, then print what it returned.
+#
+#   haring-wait <run-folder> [max-seconds]
+#
+# Waits while the worker process is alive. A clock alone is the wrong test: real work
+# has run for twenty-seven minutes, and a fixed ceiling only makes the manager restart
+# the wait, which costs a round trip and tells it nothing.
+set -e
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+
+run=${1%/}
+limit=${2:-7200}
+[ -n "$run" ] || { echo "usage: haring-wait <run-folder> [max-seconds]" >&2; exit 2; }
+[ -d "$run" ] || { echo "no such run folder: $run" >&2; exit 2; }
+
+pid=$(sed -n 's/^pid=//p' "$run/meta" 2>/dev/null)
+waited=0
+while [ ! -s "$run/report.json" ]; do
+  if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+    sleep 3   # it may still be writing
+    break
+  fi
+  [ "$waited" -ge "$limit" ] && break
+  sleep 5
+  waited=$((waited + 5))
+done
+
+if [ ! -s "$run/report.json" ]; then
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    echo "still running after ${waited}s. The process is alive."
+  else
+    echo "the worker has gone and left no report. Read the progress and the tree before"
+    echo "you believe anything about this run."
+  fi
+  [ -s "$run/PROGRESS.md" ] && { echo "--- progress ---"; cat "$run/PROGRESS.md"; }
+  exit 3
+fi
+
+cat "$run/stats.txt" 2>/dev/null || "$HARING/bin/haring-stats" "$run/report.json"
+
+# A run stopped by the spending ceiling returns nothing at all. Say so plainly, because
+# the work may be on disk and unverified.
+if grep -q 'error_max_budget_usd' "$run/report.json" 2>/dev/null; then
+  echo
+  echo "STOPPED BY THE SPENDING CEILING. There is no report."
+  echo "Whatever it did is on disk, unverified and uncommitted. Read the progress file"
+  echo "and the tree. The task was almost certainly too big."
+  [ -s "$run/PROGRESS.md" ] && { echo "--- progress ---"; cat "$run/PROGRESS.md"; }
+  exit 4
+fi
+
+echo
+"$HARING/bin/haring-report" "$run"
+if [ -s "$run/stderr.txt" ]; then echo; echo "--- stderr ---"; cat "$run/stderr.txt"; fi
