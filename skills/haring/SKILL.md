@@ -125,6 +125,9 @@ all of it, and died before it could report. The work was good. The unit was wron
 One file created, or one behaviour changed, or one question answered. If the sentence
 needs an "and", it is two tasks.
 
+Before you send it, name the files you expect it to change. More than two means you wrote
+a task that is really several, whatever the sentence sounded like.
+
 ### Number what you ask for
 
 **When:** every delegation.
@@ -331,8 +334,10 @@ Use after you have reviewed. Quote the worker's own words back.
     haring-worker <kind> <workdir> <prompt-file> [--turns N]
     haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]
 
-It prints a run folder and returns at once. The worker runs in the background. Never wait
-on one in the foreground: a task can pass ten minutes.
+It prints a run folder and returns at once. A worker runs in its own session, so it
+outlives whatever started it: if your wait is cut short, or you stop it, or you go and do
+something else, the worker keeps working and its report still lands. Come back with
+`haring-wait` or `haring-stats` and nothing is lost.
 
     haring-wait <run-folder>        block until the report lands, then print it
     haring-report <run-folder>      print the report, compacted
@@ -354,9 +359,8 @@ anything. `implement` and `correct` work on a branch, which you create first:
     git -C <project> checkout -b haring/<name>
 
 A branch is the isolation that matters, because it is what lets the work be thrown away in
-one command. A separate checkout was tried and removed: a fresh one has no installed
-dependencies, no configuration and no running services, so the worker could not build or
-test what it had written.
+one command. The worker needs the project as it stands — its installed dependencies, its
+configuration, its running services — or it cannot build or test what it writes.
 
 The first time haring writes a run into a repository it adds `.haring/` to that project's
 `.gitignore` and says so. Run records are haring's, not the project's.
@@ -456,14 +460,6 @@ It is the one state that reads as success while telling you nothing.
 
 Read the transcript and the progress file before you decide anything about it. Then treat
 the task size as the cause.
-
-### Changed files with no report is a failure, not a success
-
-**When:** a run ends without returning a report.
-**Why:** the work survives on disk and the account of it does not, so it looks finished.
-It is the one state that reads as success while telling you nothing.
-
-Read the transcript and the progress file before you decide anything about it.
 
 ### Send it back once
 
