@@ -52,6 +52,11 @@ path that is not a haring run folder — and 1 when they were called rightly but
 not do the job. `haring-wait` has two exits beyond those: 3 when the worker has gone
 and left no report, 4 when the spending ceiling stopped it.
 
+`haring-worker` names each worker's session itself and writes the id in the run's meta,
+so `haring-session` can tell a worker's transcript from the manager's before the worker
+has done anything. It reads the manager's numbers, `-n N` asks for an older session,
+and `-l` lists them.
+
 ## What haring writes into your project
 
     .haring/runs/<stamp>-<kind>-<pid>/

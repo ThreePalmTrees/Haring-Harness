@@ -124,12 +124,18 @@ fi
 run="$project/.haring/runs/$(date +%Y-%m-%d-%H%M%S)-$kind-$$"
 mkdir -p "$run"
 
+# Name the session ourselves. Claude writes each transcript under the session id, so
+# naming it here puts the run's transcript in the run's meta, and haring-session can
+# tell a worker from the manager without guessing from what the worker did last.
+session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+
 {
   echo "kind=$kind"
   echo "workdir='$workdir'"
   echo "model=$model"
+  echo "session_id=$session"
 } > "$run/meta"
-[ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "session_id='$resume_id'" >> "$run/meta"; }
+[ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "resumed_session='$resume_id'" >> "$run/meta"; }
 
 # The prompt the worker actually receives: the task, a soft budget it can pace
 # itself against, and — only for kinds that change things — where to write progress.
@@ -157,6 +163,10 @@ schema="$HARING/schemas/$kind.json"
 sysprompt=$("$HARING/bin/haring-prompt" "$kind")
 resume_flag=""
 [ -n "$resume_id" ] && resume_flag="--resume $resume_id"
+# A continued run keeps the session it is resuming, which that run's meta already
+# names, so it is not given a second id to argue over.
+session_flag=""
+if [ -z "$resume_id" ]; then session_flag="--session-id $session"; fi
 
 # The worker runs as its own session, not merely in the background. A background child
 # stays in its launcher's process group, so anything that kills that group — a tool
@@ -168,6 +178,7 @@ echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 claude -p "\$(cat "$run/prompt.md")" \
   --model "$model" \
+  $session_flag \
   --append-system-prompt "\$(cat "$run/system.tmp")" \
   --allowedTools "$tools" \
   --output-format json \

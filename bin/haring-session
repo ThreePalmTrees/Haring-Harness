@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""haring-session — what this manager session has cost so far.
+"""haring-session — what a manager session in this project has cost so far.
 
-    haring-session [project-dir]
+    haring-session [-n N] [project-dir]     the Nth newest manager session, 1 by default
+    haring-session -l [project-dir]         list the manager sessions, newest first
 
-Reads the manager's own Claude Code transcript and reports API calls, tokens and
-where they went. Use it to tell whether a change to haring actually helped.
+Reads Claude Code transcripts and reports API calls, tokens and where they went.
+Use it to tell whether a change to haring actually helped.
 
-Workers write their transcripts into the same folder, so this skips any session that
-returned a structured report: that is a worker, not you.
+Worker transcripts are skipped by name: haring-worker mints each worker a session id,
+writes it in the run's meta and hands it to claude, so a worker is known as a worker
+before it has done anything. Transcripts that carry a StructuredOutput tool call are
+skipped as well, which catches workers started before that was so.
 """
-import sys, json, os, glob
+import sys, json, os, glob, time, subprocess
 
-USAGE = "usage: haring-session [project-dir]"
+USAGE = "usage: haring-session [-n N | -l] [project-dir]"
 
 
 def die(message, code):
@@ -23,21 +26,57 @@ def die(message, code):
     sys.exit(code)
 
 
-if len(sys.argv) > 2:
-    die("haring-session takes at most one project directory", 2)
-proj = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+back, listing, proj = 1, False, None
+argv = sys.argv[1:]
+i = 0
+while i < len(argv):
+    a = argv[i]
+    if a in ("-l", "--list"):
+        listing = True
+    elif a == "-n":
+        i += 1
+        if i >= len(argv):
+            die("-n needs a number", 2)
+        try:
+            back = int(argv[i])
+        except ValueError:
+            die(f"-n needs a number, got: {argv[i]}", 2)
+        if back < 1:
+            die(f"-n needs 1 or more, got: {back}", 2)
+    elif a.startswith("-") and a != "-":
+        die(f"unknown option: {a}", 2)
+    elif proj is None:
+        proj = a
+    else:
+        die("haring-session takes at most one project directory", 2)
+    i += 1
+
+proj = os.path.abspath(proj or os.getcwd())
 if not os.path.isdir(proj):
     die(f"not a directory: {proj}", 2)
 d = os.path.expanduser("~/.claude/projects/" + proj.replace("/", "-"))
 files = sorted(glob.glob(os.path.join(d, "*.jsonl")), key=os.path.getmtime, reverse=True)
 if not files:
     die(f"no transcripts under {d}", 1)
+if listing:
+    back = len(files)
+
+# Run records live at the top of the project, not in whichever directory the manager
+# happened to be in, so ask git where that is when git can say.
+top = subprocess.run(["git", "-C", proj, "rev-parse", "--show-toplevel"],
+                     capture_output=True, text=True).stdout.strip() or proj
+workers = set()
+for meta in glob.glob(os.path.join(top, ".haring", "runs", "*", "meta")):
+    for ln in open(meta, errors="replace"):
+        for key in ("session_id", "resumed_session"):
+            if ln.startswith(key + "="):
+                workers.add(ln[len(key) + 1:].strip().strip("'\""))
 
 
 def read(f):
     n = dict(calls=0, tin=0, tout=0, cr=0, cw=0, launches=0, worker=False,
              first_launch=None, ctx=[])
-    for ln in open(f):
+    for ln in open(f, errors="replace"):
         try:
             e = json.loads(ln)
         except Exception:
@@ -66,18 +105,46 @@ def read(f):
     return n
 
 
-chosen = None
+# Newest first. A transcript named in a run's meta is a worker's whether it has
+# finished, is still running, or died without reporting; the rest are read until
+# enough manager sessions have been found, and whatever is left is not read at all.
+managers, skipped, older = [], 0, 0
 for f in files:
+    if os.path.basename(f)[:-6] in workers:
+        skipped += 1
+        continue
+    if len(managers) >= back:
+        older += 1
+        continue
     n = read(f)
-    if not n["worker"]:
-        chosen = (f, n)
-        break
-if chosen is None:
-    die("every transcript here looks like a worker. No manager session found.", 1)
+    if n["worker"]:
+        skipped += 1
+    else:
+        managers.append((f, n))
 
-f, n = chosen
-print(f"session      {os.path.basename(f)[:8]}   ({len(files)} transcripts here, "
-      f"{len(files) - 1} of them workers or older)")
+if listing:
+    if not managers:
+        die(f"no manager session found. {skipped} transcripts are workers'.", 1)
+    print(f"manager sessions under {top}, newest first:")
+    for i, (f, n) in enumerate(managers, 1):
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(f)))
+        print(f"  {i:>2}  {os.path.basename(f)[:8]}  {when}  {n['calls']:>5} api calls "
+              f"  {n['launches']} workers launched")
+    if skipped:
+        print(f"  ({skipped} worker transcripts skipped by name or by what they did)")
+    sys.exit(0)
+
+if len(managers) < back:
+    die(f"no manager session found: {skipped} transcripts are workers'"
+        + (f" and {older} older ones were not read" if older else "") + ".", 1)
+
+f, n = managers[back - 1]
+which = "the newest manager session" if back == 1 else f"manager session {back} of {len(managers)}"
+when = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(f)))
+print(f"session      {os.path.basename(f)[:8]}  {when}  {which}")
+print(f"             {skipped} worker transcripts skipped"
+      + (f", {older} older not read" if older else "")
+      + f", {len(files)} in the project")
 print(f"api calls    {n['calls']}")
 print(f"fresh input  {n['tin']:,}")
 print(f"output       {n['tout']:,}")
