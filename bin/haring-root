@@ -2,6 +2,7 @@
 # haring-root — print the absolute path of the haring repository.
 # The manager skill uses this to find the rule files, because the skill itself is
 # reached through a symlink and cannot see where it really lives.
+[ $# -eq 0 ] || { echo "usage: haring-root" >&2; exit 2; }
 self=$0
 while [ -L "$self" ]; do
   link=$(readlink "$self")

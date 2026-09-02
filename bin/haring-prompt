@@ -15,9 +15,15 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
+usage() {
+  echo "usage: haring-prompt <kind>" >&2
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
 kind=$1
-[ -n "$kind" ] || { echo "usage: haring-prompt <kind>" >&2; exit 2; }
-[ -f "$HARING/rules/kinds/$kind.md" ] || { echo "unknown kind: $kind" >&2; exit 2; }
+[ -n "$kind" ] || usage
+[ -f "$HARING/rules/kinds/$kind.md" ] || { echo "unknown kind: $kind" >&2; usage; }
 
 cat "$HARING/rules/worker.md"
 printf '\n\n---\n\n'

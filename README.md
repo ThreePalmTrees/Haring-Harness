@@ -46,6 +46,12 @@ Inside any project:
     rules/          worker.md, and one file per kind of task
     schemas/        one report schema per kind
 
+Every command that acts on a run takes the run folder, and only the run folder. All
+of them exit 2 when they were called wrongly — a missing argument, an unknown kind, a
+path that is not a haring run folder — and 1 when they were called rightly but could
+not do the job. `haring-wait` has two exits beyond those: 3 when the worker has gone
+and left no report, 4 when the spending ceiling stopped it.
+
 ## What haring writes into your project
 
     .haring/runs/<stamp>-<kind>-<pid>/

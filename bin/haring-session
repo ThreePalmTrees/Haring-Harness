@@ -11,11 +11,27 @@ returned a structured report: that is a worker, not you.
 """
 import sys, json, os, glob
 
+USAGE = "usage: haring-session [project-dir]"
+
+
+def die(message, code):
+    # A wrongly-called command gets the reason and the usage line; a session that
+    # could not be read gets the reason alone.
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+if len(sys.argv) > 2:
+    die("haring-session takes at most one project directory", 2)
 proj = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+if not os.path.isdir(proj):
+    die(f"not a directory: {proj}", 2)
 d = os.path.expanduser("~/.claude/projects/" + proj.replace("/", "-"))
 files = sorted(glob.glob(os.path.join(d, "*.jsonl")), key=os.path.getmtime, reverse=True)
 if not files:
-    sys.exit(f"no transcripts under {d}")
+    die(f"no transcripts under {d}", 1)
 
 
 def read(f):
@@ -57,7 +73,7 @@ for f in files:
         chosen = (f, n)
         break
 if chosen is None:
-    sys.exit("every transcript here looks like a worker. No manager session found.")
+    die("every transcript here looks like a worker. No manager session found.", 1)
 
 f, n = chosen
 print(f"session      {os.path.basename(f)[:8]}   ({len(files)} transcripts here, "
