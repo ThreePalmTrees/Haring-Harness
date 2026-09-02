@@ -193,7 +193,8 @@ genuinely unrelated does parallel make sense, and then space the launches by a s
 
 ### Continue a worker rather than starting a new one
 
-**When:** the next small task is in the same area as the one just finished.
+**When:** the next small task is in the same area, and of the same kind, as the one just
+finished.
 **Why:** a fresh worker must be told everything again, which costs you output tokens and
 costs it a whole context load. Measured: a continued worker read 180 fresh input tokens
 where a new one read 12,527.
@@ -328,7 +329,7 @@ Use after you have reviewed. Quote the worker's own words back.
 ## Starting and watching a worker
 
     haring-worker <kind> <workdir> <prompt-file> [--turns N]
-    haring-worker continue <previous-run-folder> <prompt-file> [--turns N]
+    haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]
 
 It prints a run folder and returns at once. The worker runs in the background. Never wait
 on one in the foreground: a task can pass ten minutes.
@@ -336,6 +337,16 @@ on one in the foreground: a task can pass ten minutes.
     haring-wait <run-folder>        block until the report lands, then print it
     haring-report <run-folder>      print the report, compacted
     haring-stats <run-folder>       one line of numbers
+    haring-session [dir] [-l|-n N]  what this manager session has cost so far
+
+Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
+with a usage line on standard error; called correctly but unable to finish, exit 1.
+`haring-wait` adds two of its own: 3 when the worker vanished without a report, 4 when the
+spending ceiling stopped it. Standard output carries only what a caller reads, so
+`haring-worker` prints the run folder and nothing else.
+
+When you continue a run you must name its kind, and it must be the kind that run started as.
+A read-only worker has no tools to write with, so a conversation cannot be promoted.
 
 Every kind runs in the project itself. Read-only kinds have no tool that can change
 anything. `implement` and `correct` work on a branch, which you create first:
