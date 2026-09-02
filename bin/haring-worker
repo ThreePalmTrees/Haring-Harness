@@ -3,7 +3,7 @@
 # Always in the background; prints the run folder.
 #
 #   haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]
-#   haring-worker continue <previous-run-folder> <prompt-file> [--turns N]
+#   haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]
 #
 # kind is one of: explore plan implement check errand correct
 #
@@ -27,16 +27,29 @@ MODEL_DEFAULT=glm-5.3-flash
 
 usage() {
   echo "usage: haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]" >&2
-  echo "       haring-worker continue <previous-run-folder> <prompt-file> [--turns N]" >&2
+  echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]" >&2
   exit 2
 }
 
 # ---------------------------------------------------------------- continue mode
 resume_id=""
 if [ "$1" = "continue" ]; then
-  prev=$2; promptfile=$3
-  [ -n "$prev" ] && [ -n "$promptfile" ] || usage
+  want_kind=$2; prev=$3; promptfile=$4
+  [ -n "$want_kind" ] && [ -n "$prev" ] && [ -n "$promptfile" ] || {
+    # The old shape named no kind; say so plainly if that is what came in.
+    if [ -f "$2/meta" ]; then
+      echo "continue now names the kind first:" >&2
+    fi
+    usage; }
   [ -f "$prev/meta" ] || { echo "no meta in $prev — not a haring run folder" >&2; usage; }
+  # The kind is the caller's to name, and it must be the kind the run started as.
+  # A conversation begun as a read-only worker has no tools to write with, so
+  # promoting it is not something a flag can fix.
+  prev_kind=$(sed -n 's/^kind=//p' "$prev/meta")
+  [ "$prev_kind" = "$want_kind" ] || {
+    echo "$prev was started as kind '$prev_kind'; continuing needs the same kind, not '$want_kind'." >&2
+    echo "Start a fresh worker of the kind the task needs." >&2
+    usage; }
   # These two are real failures of the previous run, not a mistyped command: the
   # folder named is a haring run and there is nothing in it to continue from.
   [ -s "$prev/report.json" ] || {
@@ -45,8 +58,9 @@ if [ "$1" = "continue" ]; then
   resume_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("session_id") or "")' "$prev/report.json")
   [ -n "$resume_id" ] || { echo "no session_id in $prev/report.json" >&2; exit 1; }
   # shellcheck disable=SC1090
-  . "$prev/meta"          # sets kind, workdir, model
-  shift 3
+  . "$prev/meta"          # workdir and model come from the run
+  kind=$want_kind         # so tools, turns and ceiling follow the named kind, never the file
+  shift 4
 else
   kind=$1; workdir=$2; promptfile=$3
   [ -n "$kind" ] && [ -n "$workdir" ] && [ -n "$promptfile" ] || usage
