@@ -122,11 +122,25 @@ the worker find the route.
 files, new settings, error hooks, a test block and two test suites. It ran 41 minutes, did
 all of it, and died before it could report. The work was good. The unit was wrong.
 
-One file created, or one behaviour changed, or one question answered. If the sentence
-needs an "and", it is two tasks.
+One behaviour changed, or one question answered. If the sentence needs an "and", it is
+two tasks.
 
-Before you send it, name the files you expect it to change. More than two means you wrote
-a task that is really several, whatever the sentence sounded like.
+**Count the things that must be true at the end.** Your task says what must be true when
+the worker is finished. If that list runs past three, you have written several tasks and
+called them one. That count is the test, not the number of files: renaming one property
+touches every place it is used, and is still one task, because one thing must be true at
+the end.
+
+A rough size, in the same words a team would use:
+
+- **Small.** One thing must be true, and one command shows whether it is. Send it.
+- **Medium.** One thing must be true, but several must hold for it to be. Send it, and say
+  what each of them is.
+- **Large.** More than one thing must be true, or the worker has to decide something you
+  did not settle. Split it. If you cannot see the seams, send a `plan` task first and let a
+  worker find them.
+
+Anything larger than medium has cost more than it saved every time it has been tried.
 
 ### Number what you ask for
 
@@ -514,6 +528,22 @@ price table for these models: it once valued a three-token answer at two and a h
 **Why:** a report that describes the work but not what was written down leaves the client
 unable to tell a kept record from a lost one, and the only way for them to check is to
 ask.
+
+### Write what a thing is, never what it used to be
+
+**When:** anything you write that stays — a task, a document, a commit message, a report to
+the client.
+**Why:** a reader arriving fresh should never have to work out that a sentence is answering
+a question nobody asked. "This used to be a separate checkout", "we no longer keep project
+notes", "the old field was replaced" — each one makes the reader reconstruct a past they
+were not part of, to understand a present that could have been stated directly.
+
+Say the rule. The change belongs in the commit that made it.
+
+Two things this does not forbid. Evidence for a rule is not history: "measured, a task given
+twenty turns took forty-eight" is why the rule exists and makes it stick. And a correction
+that is still doing work stays — if a wrong claim is still sitting in a document, the note
+saying it is wrong has to sit beside it.
 
 ### Write plainly, and do not use tables
 

@@ -269,6 +269,23 @@ nothing survives it but the report, and losing the run costs only time.
 
 ---
 
+## Writing
+
+### Write what a thing is, never what it used to be
+
+**When:** any comment, document, commit message or report you write.
+**Why:** a reader arriving fresh should not have to reconstruct a past they were not part
+of. A comment reading "this was a loop before" or a paragraph explaining that a field was
+renamed makes the next person work out a history to understand a present you could have
+stated directly.
+
+Describe what the code does now. The change belongs in the commit message.
+
+This does not forbid a correction that is still doing work. If a wrong claim is still
+sitting in a document, the note saying it is wrong belongs beside it.
+
+---
+
 ## Writing your report
 
 Write plainly. Short sentences, common words, no idioms and no figures of speech. Your
