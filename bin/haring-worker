@@ -59,7 +59,7 @@ if [ "$1" = "continue" ]; then
   [ -n "$resume_id" ] || { echo "no session_id in $prev/report.json" >&2; exit 1; }
   # shellcheck disable=SC1090
   . "$prev/meta"          # workdir and model come from the run
-  kind=$want_kind         # so tools, turns and ceiling follow the named kind, never the file
+  kind=$want_kind         # so the tools follow the named kind, never the file
   shift 4
 else
   kind=$1; workdir=$2; promptfile=$3
@@ -83,21 +83,21 @@ done
 
 : "${model:=$MODEL_DEFAULT}"
 
-# Tools, extra flags, a soft turn budget the worker can see, and a hard ceiling
-# that only ever catches a runaway. The dollar figure is in the wrong units for a
-# third-party model, but it rises with use, so it works as a governor.
-# The ceiling is a last resort: when it fires the run returns NO REPORT AT ALL, so it
-# is set far above normal work and only stops something that has genuinely run away.
+# The tools each kind may use, and the flags that go with them. A read-only kind gets a
+# shell because reading needs one, and its rules forbid using it to change anything.
+#
+# There is no spending limit. A limit that fires returns NO REPORT AT ALL: the work is on
+# disk, unverified, with no account of itself, which is worse than any run it would have
+# stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
   explore|plan)
-      tools='Read,Glob,Grep,Bash'; extra='--bare'; cap=8.00 ;;
+      tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   check)
-      tools='Read,Glob,Grep,Bash'; extra='--bare'; cap=8.00 ;;
+      tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   errand)
-      tools='Read,Glob,Grep';      extra='--bare';  cap=2.00 ;;
+      tools='Read,Glob,Grep';      extra='--bare' ;;
   implement|correct)
-      tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits'
-      cap=20.00 ;;
+      tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 
@@ -135,8 +135,8 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 } > "$run/meta"
 [ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "resumed_session='$resume_id'" >> "$run/meta"; }
 
-# The prompt the worker actually receives: the task, a soft budget it can pace
-# itself against, and — only for kinds that change things — where to write progress.
+# The prompt the worker actually receives: the task, and — only for kinds that change
+# things — where to write progress.
 # A read-only worker has no tool that can write one. This is the only copy of the
 # question, so it is the one file in the run folder that cannot be regenerated.
 {
@@ -179,7 +179,6 @@ claude -p "\$(cat "$run/prompt.md")" \
   --allowedTools "$tools" \
   --output-format json \
   --json-schema "\$(cat "$schema")" \
-  --max-budget-usd "$cap" \
   $extra $resume_flag \
   2>&1 1> "$run/report.json" \
   | grep -v "unrecognized_model" \

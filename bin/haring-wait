@@ -5,16 +5,15 @@
 #
 # Exits 0 when the worker reported, and 1 when it left a report that cannot be read.
 # Exits 2 when it was called wrongly: no arguments, or a path that is not a haring
-# run folder. Two exits are neither of those, and they are the interesting ones:
+# run folder. One exit is neither of those, and it is the interesting one:
 #
 #   3   the worker has gone and left no report at all
-#   4   the spending ceiling stopped the worker, so there is no report either
 #
-# Both mean "no report, but there may be work on disk", and both print the progress
-# file so the next reader starts from something real.
+# It means "no report, but there may be work on disk", and it prints the progress file
+# so the next reader starts from something real.
 #
 # Waits while the worker process is alive. A clock alone is the wrong test: real work
-# has run for twenty-seven minutes, and a fixed ceiling only makes the manager restart
+# has run for twenty-seven minutes, and a fixed time limit only makes the manager restart
 # the wait, which costs a round trip and tells it nothing.
 set -e
 self=$0
@@ -61,16 +60,6 @@ if [ ! -s "$run/report.json" ]; then
 fi
 
 cat "$run/stats.txt" 2>/dev/null || "$HARING/bin/haring-stats" "$run"
-
-# A run stopped by the spending ceiling returns nothing at all. Say so plainly, because
-# the work may be on disk and unverified.
-if grep -q 'error_max_budget_usd' "$run/report.json" 2>/dev/null; then
-  echo "STOPPED BY THE SPENDING CEILING. There is no report." >&2
-  echo "Whatever it did is on disk, unverified and uncommitted. Read the progress file" >&2
-  echo "and the tree. The task was almost certainly too big." >&2
-  [ -s "$run/PROGRESS.md" ] && { echo "--- progress ---" >&2; cat "$run/PROGRESS.md" >&2; }
-  exit 4
-fi
 
 echo
 "$HARING/bin/haring-report" "$run"

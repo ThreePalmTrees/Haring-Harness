@@ -25,6 +25,16 @@ in the blocked fields, do what does not depend on it, and let the manager decide
 **Do not change a test that locks existing behaviour.** Report it instead, and say what
 it locks.
 
+**Write it so it looks like the code around it.** Same naming, same file layout, same way
+of handling errors, same way of testing. Read a neighbouring file before you write a new
+one. Code that reads as foreign is code somebody has to decode later, and being different
+is only worth it when you can say why in one sentence.
+
+**Leave nothing behind.** No commented-out code, no unused import, no dead branch, no
+scratch file, no debug print. Delete it. A thing kept "in case" is a thing the next reader
+has to work out the status of.
+
+
 ## Before you say you are finished
 
 Verify. You decide how, because you are holding the detail. Run the project's tests,
