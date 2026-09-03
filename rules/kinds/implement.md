@@ -31,4 +31,6 @@ returned.
 If you wrote something to check your work, keep it. Commit it as a test in the
 project's own style, or paste the whole thing into your report.
 
-Finish with one commit on your branch. Read the log first and match the message style.
+Commit each step as you go, so a run stopped from outside leaves work on the branch
+rather than a half-changed tree. When it is finished and verified, squash them into one
+commit. Read the log first and match the message style.

@@ -193,19 +193,15 @@ matters, it knows because you wrote it down.
 check the work is the worker's business, because it is the one holding the low-level
 detail.
 
-### Say how long it should take
+### Never tell a worker how long the task should take
 
 **When:** every delegation.
-**Why:** a worker cannot see how much room it has left, so it finds the end by hitting it,
-part way through a change, with nothing reported.
+**Why:** nothing stops a worker after a set number of turns, so a number cannot protect
+anything. What it does instead is set a size: told a task should take fifteen turns, a
+worker that could answer in two has been given permission to spend fifteen.
 
-`haring-worker` fills in a default and takes `--turns N` when you know better. The
-defaults are what the work has been measured to take, not a wish.
-
-**A worker that runs well past its budget is telling you the task was too big.** Measured:
-tasks given 20 and 30 turns took 48, 55, 60, 72 and 78. Every one of those was a task
-that should have been two or three. Do not raise the number and hand out the same task
-again — cut the task instead, and write down that you did.
+Judge the size from the work, using the count above. A worker that took far longer than the
+work deserved is a signal you wrote a task that was really several.
 
 ### Know what the spending ceiling does
 
@@ -248,12 +244,12 @@ forget, or when its context has grown so large that it is losing detail.
 Pick the kind first. It sets the tools, the report shape, the turn budget and a spending
 ceiling.
 
-- **explore** — find something out so you can plan. Read-only. About 15 turns.
-- **plan** — draft a plan for you to approve. Read-only. About 15 turns.
-- **implement** — do the work, on a branch. About 40 turns.
-- **check** — verify one claim, with no memory of having made it. About 12 turns.
-- **errand** — a trivial mechanical job. About 5 turns.
-- **correct** — apply what your review asked for. About 40 turns.
+- **explore** — find something out so you can plan. Read-only.
+- **plan** — draft a plan for you to approve. Read-only.
+- **implement** — do the work, on a branch.
+- **check** — verify one claim, with no memory of having made it.
+- **errand** — a trivial mechanical job.
+- **correct** — apply what your review asked for.
 
 ### Find something out
 
@@ -367,8 +363,8 @@ Use after you have reviewed. Quote the worker's own words back.
 
 ## Starting and watching a worker
 
-    haring-worker <kind> <workdir> <prompt-file> [--turns N]
-    haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]
+    haring-worker <kind> <workdir> <prompt-file>
+    haring-worker continue <kind> <previous-run-folder> <prompt-file>
 
 It prints a run folder and returns at once. A worker runs in its own session, so it
 outlives whatever started it: if your wait is cut short, or you stop it, or you go and do

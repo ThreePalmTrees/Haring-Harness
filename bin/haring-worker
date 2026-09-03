@@ -2,8 +2,8 @@
 # haring-worker — start one worker, or continue one you already started.
 # Always in the background; prints the run folder.
 #
-#   haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]
-#   haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]
+#   haring-worker <kind> <workdir> <prompt-file> [--model M] [flags...]
+#   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
 # kind is one of: explore plan implement check errand correct
 #
@@ -26,8 +26,8 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 MODEL_DEFAULT=glm-5.3-flash
 
 usage() {
-  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--turns N] [--model M] [flags...]" >&2
-  echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file> [--turns N]" >&2
+  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M] [flags...]" >&2
+  echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file>" >&2
   exit 2
 }
 
@@ -70,7 +70,6 @@ fi
 
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
-turns=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --turns) [ $# -ge 2 ] && [ -n "$2" ] || usage; turns=$2; shift 2 ;;
@@ -87,19 +86,18 @@ done
 # Tools, extra flags, a soft turn budget the worker can see, and a hard ceiling
 # that only ever catches a runaway. The dollar figure is in the wrong units for a
 # third-party model, but it rises with use, so it works as a governor.
-# Turn budgets are what the work has actually been measured to take, not a wish.
 # The ceiling is a last resort: when it fires the run returns NO REPORT AT ALL, so it
 # is set far above normal work and only stops something that has genuinely run away.
 case "$kind" in
   explore|plan)
-      tools='Read,Glob,Grep,Bash'; extra='--bare'; : "${turns:=15}"; cap=8.00 ;;
+      tools='Read,Glob,Grep,Bash'; extra='--bare'; cap=8.00 ;;
   check)
-      tools='Read,Glob,Grep,Bash'; extra='--bare'; : "${turns:=12}"; cap=8.00 ;;
+      tools='Read,Glob,Grep,Bash'; extra='--bare'; cap=8.00 ;;
   errand)
-      tools='Read,Glob,Grep';      extra='--bare'; : "${turns:=5}";  cap=2.00 ;;
+      tools='Read,Glob,Grep';      extra='--bare';  cap=2.00 ;;
   implement|correct)
       tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits'
-      : "${turns:=40}"; cap=20.00 ;;
+      cap=20.00 ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 
@@ -143,8 +141,7 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 # question, so it is the one file in the run folder that cannot be regenerated.
 {
   cat "$promptfile"
-  printf '\n\n---\nThis task should take about %s turns. If you pass %s, stop and report\n' "$turns" "$((turns * 3 / 2))"
-  printf 'what you have rather than running out part way through.\n'
+  printf '\n\n---\n'
   case "$kind" in
     implement|correct)
       : > "$run/PROGRESS.md"

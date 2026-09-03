@@ -263,15 +263,17 @@ around it. Use the report fields for being blocked.
 
 List it. Every one.
 
-### Finish rather than die
+### Commit each step, then squash at the end
 
-**When:** you pass the number of turns the task gave you, or you are running low on room
-and the work is not done.
-**Why:** a run that stops at its limit leaves the project half-changed and the manager
-holding a corpse. Partial work you named is recoverable; partial work discovered is not.
+**When:** any task that changes files.
+**Why:** a run can be stopped from outside at any moment, and you get no warning. If your
+work is uncommitted when that happens, someone finds a half-changed tree with no way to tell
+what was deliberate. If it is committed, the branch holds it and the tree is clean.
 
-Stop while you can still write. Report what is done, what is not, what state the tree is
-in, and what you would do next.
+Commit after each step that changes something, with a plain message saying what that step
+did. When the work is finished and verified, squash them into the one commit the task asked
+for. A run that ends early then leaves a branch someone can read, not a mess someone has to
+untangle.
 
 ### Write your progress as you go, when you are changing things
 
