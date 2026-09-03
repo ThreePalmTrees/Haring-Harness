@@ -142,6 +142,28 @@ A rough size, in the same words a team would use:
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
+### Name the decision an expectation changes, or cut it
+
+**When:** every expectation you write.
+**Why:** an expectation is not free. It is a claim the worker must spend turns testing, and
+it aims the worker's attention. One that decides nothing costs real work and points it at
+the wrong thing.
+
+A task once carried the expectation "and it is the largest thing in there", about files that
+were going to be deleted whether they were large or not. The worker measured every file in
+the folder to correct it, and the correction changed nothing.
+
+For each one, say which decision it changes. If you cannot, delete it.
+
+### Answer several questions with one script, not one command each
+
+**When:** you need more than two or three lookups, whether you are doing it or a worker is.
+**Why:** every command is a turn, and every turn re-sends the whole conversation. Measured:
+23 commands over 343 seconds for what one script did in one command.
+
+When you write a task that needs several facts gathered, say so, and let the worker gather
+them in one pass rather than one command per fact.
+
 ### Number what you ask for
 
 **When:** every delegation.

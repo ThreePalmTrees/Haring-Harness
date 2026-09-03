@@ -177,6 +177,23 @@ as found, not treated as blockers**, and your change never touches them.
 A test that your change broke is a blocker: fix it, or stop and say you could not. A
 test that was already failing is a note in your report.
 
+### Answer several questions with one script, not one command each
+
+**When:** a task needs more than two or three separate lookups — sizes, counts, which files
+mention a name, what a set of files contains.
+**Why:** every command you run is a turn, and every turn re-sends the whole conversation.
+Measured: a worker answered a filing question in 23 commands over 343 seconds. One script
+answered the same thing in one command in a twentieth of a second.
+
+Write one script that gathers everything and prints it. Python is usually the shortest way,
+because it can walk directories, sum sizes, run a grep and read files in one pass.
+
+Print the intermediate values, not only the conclusion. A script that does everything at
+once can be wrong in a way a sequence of small commands would have shown, and the numbers
+on the way through are what let the manager check you.
+
+The command and its output go in your report, as with any other evidence.
+
 ### Verify your own work before you report finished
 
 **When:** always.
