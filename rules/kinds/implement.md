@@ -19,6 +19,9 @@ and someone else will read. A rewrite hides what actually changed.
 
 **Do not widen the job.** If you find something else wrong, report it and leave it.
 
+**Do not install anything.** If the work needs a package or a tool that is not here, say so
+in the blocked fields, do what does not depend on it, and let the manager decide.
+
 **Do not change a test that locks existing behaviour.** Report it instead, and say what
 it locks.
 

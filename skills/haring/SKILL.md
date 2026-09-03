@@ -386,8 +386,10 @@ When you continue a run you must name its kind, and it must be the kind that run
 A read-only worker has no tools to write with, so a conversation cannot be promoted.
 
 Every kind runs in the project itself. Read-only kinds have no tool that can change
-anything. `implement` and `correct` work on a branch, which you create first:
+anything. `implement` and `correct` work on a branch. Write down which branch the project
+is on, because that is where the work goes back to, then create yours:
 
+    git -C <project> rev-parse --abbrev-ref HEAD
     git -C <project> checkout -b haring/<name>
 
 A branch is the isolation that matters, because it is what lets the work be thrown away in
@@ -428,8 +430,9 @@ Read it in this order.
 3. **Environment.** If it could not run the tests, most of the report is reasoning.
 4. **Verification**, including the baseline. Tests that were already failing are a note.
    Tests its change broke are a blocker.
-5. **Side effects.** Packages installed, services started, data changed, files left. A
-   diff shows none of it.
+5. **Side effects.** Services started, data changed, files left. A diff shows none of it.
+   A worker is not allowed to install anything, so a request to install arrives here as a
+   blocker and the decision is yours.
 6. **The claims.**
 7. **The one true thing** it told you without being asked.
 
@@ -517,6 +520,17 @@ expensive worker, and the thing that made the arrangement worth anything has gon
 
 Your output is specifications and judgments. Your input is results you can check. You read
 the places your plan names, and you read diffs.
+
+### Put the work back where the client is
+
+**When:** you have checked the work and decided it can be handed over.
+**Why:** the branch existed so the work could be thrown away in one command. Once you have
+decided to keep it, a branch with a name the client did not choose leaves them the last
+step, and it is a step they have to guess at.
+
+Merge it into the branch the project was on when you started, then delete the haring
+branch. Say which branch it is now on. If the client asked for the work to stay separate,
+or named a branch of their own, do that instead and say where it is.
 
 ### "Not decided" is a real answer
 

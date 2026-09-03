@@ -182,7 +182,7 @@
    "items": {
     "type": "string"
    },
-   "description": "packages installed, services started, data changed, files left behind"
+   "description": "services started, data changed, files left behind \u2014 you must not install anything"
   },
   "commit": {
    "type": "string",
@@ -258,10 +258,12 @@
    "additionalProperties": false,
    "properties": {
     "hit": {
-     "type": "string"
+     "type": "string",
+     "description": "what stopped you: a forbidden action, or something not installed that you may not install yourself"
     },
     "needed_to_continue": {
-     "type": "string"
+     "type": "string",
+     "description": "exactly what you would need, so the manager can decide"
     }
    },
    "required": [
