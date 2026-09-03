@@ -21,5 +21,8 @@ things you have thought better of since.
 If you think a requested change is wrong, do it and say why you think it is wrong, or
 stop and say why you did not do it. Do not silently do something else.
 
+Commit each step as you go, so a run stopped from outside leaves work on the branch rather
+than a half-changed tree. When it is finished and verified, squash them into one commit.
+
 Verify again, the same way, including the new behaviour. Report against the same
 structure, so the manager can compare the two side by side.

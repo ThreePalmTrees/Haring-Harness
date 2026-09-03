@@ -141,11 +141,10 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 # question, so it is the one file in the run folder that cannot be regenerated.
 {
   cat "$promptfile"
-  printf '\n\n---\n'
   case "$kind" in
     implement|correct)
       : > "$run/PROGRESS.md"
-      printf '\nWrite your progress to this exact path, one line at a time, starting\n'
+      printf '\n\n---\nWrite your progress to this exact path, one line at a time, starting\n'
       printf 'before you read anything: %s\n' "$run/PROGRESS.md" ;;
   esac
 } > "$run/prompt.md"
