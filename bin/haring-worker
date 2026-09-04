@@ -2,7 +2,7 @@
 # haring-worker — start one worker, or continue one you already started.
 # Always in the background; prints the run folder.
 #
-#   haring-worker <kind> <workdir> <prompt-file> [--model M] [flags...]
+#   haring-worker <kind> <workdir> <prompt-file> [--model M]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
 # kind is one of: explore implement check errand correct
@@ -26,7 +26,7 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 MODEL_DEFAULT=glm-5.3-flash
 
 usage() {
-  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M] [flags...]" >&2
+  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M]" >&2
   echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file>" >&2
   exit 2
 }
@@ -71,12 +71,11 @@ fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --turns) [ $# -ge 2 ] && [ -n "$2" ] || usage; turns=$2; shift 2 ;;
     --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2
              echo "haring-worker: WARNING — model overridden to '$model'." >&2
              echo "  The manager must not do this on its own. Only do it when the person" >&2
              echo "  who asked for the work asked for it." >&2 ;;
-    *) break ;;
+    *) echo "haring-worker: unknown argument: $1" >&2; usage ;;
   esac
 done
 
@@ -116,8 +115,8 @@ if [ ! -d "$project/.haring" ] && git -C "$project" rev-parse --git-dir >/dev/nu
   fi
 fi
 
-# A unique folder every time. Seconds are not enough: workers started in the same
-# second used to share a folder and overwrite each other.
+# A unique folder every time. The pid is there because seconds are not enough on their own:
+# two workers started in the same second would otherwise share a folder.
 run="$project/.haring/runs/$(date +%Y-%m-%d-%H%M%S)-$kind-$$"
 mkdir -p "$run"
 

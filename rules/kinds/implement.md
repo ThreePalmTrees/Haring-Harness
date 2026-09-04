@@ -59,4 +59,6 @@ project's own style, or paste the whole thing into your report.
 
 Commit each step as you go, so a run stopped from outside leaves work on the branch
 rather than a half-changed tree. When it is finished and verified, squash them into one
-commit. Read the log first and match the message style.
+commit. Read the log first and match the message style. You do not need to ask
+whether to commit: being sent this task is the asking, and the branch exists to be thrown
+away if the work is not kept.

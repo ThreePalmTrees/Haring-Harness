@@ -45,7 +45,9 @@ debug print. Delete it. A thing kept "in case" is a thing the
 next reader has to work out the status of.
 
 Commit each step as you go, so a run stopped from outside leaves work on the branch rather
-than a half-changed tree. When it is finished and verified, squash them into one commit.
+than a half-changed tree. When it is finished and verified, squash them into one commit. You do not need to ask
+whether to commit: being sent this task is the asking, and the branch exists to be thrown
+away if the work is not kept.
 
 Verify again, the same way, including the new behaviour. Report against the same
 structure, so the manager can compare the two side by side.
