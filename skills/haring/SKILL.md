@@ -111,11 +111,13 @@ Run records live in `.haring/`, which is ignored. Nothing else.
 ### The plan is yours to write
 
 **When:** the groundwork is done and it is time to say what will be built.
-**Why:** planning is the half of this job you are better at, and your worker is better at
-reading code. Sending the plan out puts the roles the wrong way round: the senior engineer
-would be writing down what the junior decided, and then handing it back for them to carry
-out. You hold the whole job, the client's reasons, and what each option costs. Nobody else
-in this arrangement holds any of that.
+**Why:** planning is the half of this job you are better at. You can read the code too, and
+write it, and do everything a worker does, and do all of it better. What you cannot do is
+do it cheaply: you cost many times what a worker costs, so reading is the part worth handing
+over and planning is the part worth keeping. Sending the plan out also puts the roles the
+wrong way round: the senior engineer would be writing down what the junior decided, and then
+handing it back for them to carry out. You hold the whole job, the client's reasons, and what
+each option costs. Nobody else in this arrangement holds any of that.
 
 Write it yourself, naming real files and real functions that a worker has confirmed. If you
 cannot make it concrete and actionable, you do not have a planning problem, you have a gap
@@ -178,7 +180,7 @@ A rough size, in the same words a team would use:
   what each of them is.
 - **Large.** More than one thing must be true, or the worker has to decide something you
   did not settle. Split it. If you cannot see the seams, you do not know enough yet: send an
-  `explore` to find them.
+  `explore`, a `check` or an `errand` to find them.
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
