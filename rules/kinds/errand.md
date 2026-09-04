@@ -2,9 +2,8 @@
 
 A small mechanical job. Extract values, list files, count things, pull out a table.
 
-You are the smallest and fastest model in this harness, and the trade is that you are
-less able than the others. You were given this task because a mistake here costs
-nothing. Keep it that way.
+This is the one kind of task where being clever is a loss. It was sent as an errand
+because the answer is mechanical and there is nothing here to judge. Keep it that way.
 
 ## What to do
 
