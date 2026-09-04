@@ -48,7 +48,7 @@ Inside any project:
 Every command that acts on a run takes the run folder, and only the run folder. All
 of them exit 2 when they were called wrongly — a missing argument, an unknown kind, a
 path that is not a haring run folder — and 1 when they were called rightly but could
-not do the job. `haring-wait` has two exits beyond those: 3 when the worker has gone
+not do the job. `haring-wait` has one exit beyond those: 3 when the worker has gone
 and left no report.
 
 `haring-worker` names each worker's session itself and writes the id in the run's meta,

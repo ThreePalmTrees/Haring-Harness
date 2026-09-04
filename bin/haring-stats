@@ -55,7 +55,7 @@ print(
     f"turns={d.get('num_turns', 0)} "
     f"secs={secs} "
     f"error={d.get('is_error')} "
-    f"stop={d.get('stop_reason')}"
+    f"ended={d.get('terminal_reason') or d.get('stop_reason')}"
 )
 den = d.get("permission_denials") or []
 if den:

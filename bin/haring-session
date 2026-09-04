@@ -10,7 +10,7 @@ Use it to tell whether a change to haring actually helped.
 Worker transcripts are skipped by name: haring-worker mints each worker a session id,
 writes it in the run's meta and hands it to claude, so a worker is known as a worker
 before it has done anything. Transcripts that carry a StructuredOutput tool call are
-skipped as well, which catches workers started before that was so.
+skipped as well, which catches any worker whose id is not in a run's meta.
 """
 import sys, json, os, glob, time, subprocess
 

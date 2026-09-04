@@ -67,5 +67,5 @@ if so is None:
     sys.exit(0)
 print(json.dumps(prune(so), indent=1, ensure_ascii=False))
 if d.get("is_error"):
-    print(f"!! the run reported an error. stop_reason={d.get('stop_reason')}",
+    print(f"!! the run reported an error. ended={d.get('terminal_reason') or d.get('stop_reason')}",
           file=sys.stderr)

@@ -35,7 +35,7 @@ for f in "$HARING"/bin/*; do
   link "$f" "$HOME/.local/bin/$(basename "$f")"
 done
 
-# Anything left in ~/.local/bin from an older layout, now gone from bin/
+# Links in ~/.local/bin that no longer point at a file in this repository's bin/
 for f in "$HOME"/.local/bin/haring-*; do
   [ -L "$f" ] || continue
   [ -e "$f" ] || { rm -f "$f"; printf '  removed %s (dangling)\n' "$f"; continue; }

@@ -32,8 +32,8 @@ limit=${2:-7200}
 case "$limit" in ''|*[!0-9]*)
   echo "max-seconds must be a number, got: $limit" >&2; exit 2 ;; esac
 # A run folder is known by its meta file, the same marker `haring-worker continue`
-# uses. Without this, an ordinary directory reached the sed below, which failed on the
-# missing meta and killed the script under set -e with no word of why.
+# uses. Without this check an ordinary directory reaches the sed below, which fails on
+# the missing meta and kills the script under set -e with no word of why.
 [ -f "$run/meta" ] || { echo "not a haring run folder: $run" >&2; exit 2; }
 
 pid=$(sed -n 's/^pid=//p' "$run/meta" 2>/dev/null)
