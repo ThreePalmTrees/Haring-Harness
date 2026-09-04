@@ -46,7 +46,12 @@ limit = int(limit)
 # A run folder is known by its meta file, the same marker `haring-worker continue` uses.
 if not os.path.isfile(os.path.join(run, "meta")):
     die(f"not a haring run folder: {run}", 2)
-meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
+meta_path = os.path.join(run, "meta")
+meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
+# Time is measured from the worker, not from this wait, because the two can start minutes
+# apart. The meta file is last written when the worker's runner records its own pid, so its
+# modification time is the moment the worker began.
+started = os.path.getmtime(meta_path)
 pid = int(meta["pid"]) if meta.get("pid", "").isdigit() else None
 report = os.path.join(run, "report.json")
 progress = os.path.join(run, "PROGRESS.md")
@@ -77,8 +82,18 @@ def transcript():
     return hits[0] if hits else None
 
 
+def elapsed():
+    s = int(time.time() - started)
+    return f"{s // 60}m{s % 60:02d}s"
+
+
 def steps(path, pos, seen):
-    """Print every tool call added since the last read. Returns the new position."""
+    """Print every tool call added since the last read. Returns the new position.
+
+    Each line carries how long the worker had been running when it made that call. The
+    gap between two lines is the number worth reading: a step that sits for minutes is
+    how a stuck worker shows itself.
+    """
     with open(path) as f:
         f.seek(pos)
         for line in f:
@@ -95,8 +110,9 @@ def steps(path, pos, seen):
                 seen.add(b.get("id"))
                 i = b.get("input") or {}
                 arg = i.get("command") or i.get("file_path") or i.get("pattern") or ""
-                arg = " ".join(str(arg).split())[:100]
-                print(f"  {b.get('name', '?'):12s} {arg}", file=sys.stderr, flush=True)
+                arg = " ".join(str(arg).split())[:92]
+                print(f"  {elapsed():>7s}  {b.get('name', '?'):12s} {arg}",
+                      file=sys.stderr, flush=True)
         return f.tell()
 
 

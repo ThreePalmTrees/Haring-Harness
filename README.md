@@ -1,7 +1,7 @@
 # Haring
 
 <br/>
-<img src="Haring.jpg" width="200" style="border-radius:50%; border:1px solid #fff; display:flex;justify-self:center;"/>
+<img src="Haring.png" width="200"/>
 <br/>
 <br/>
 
