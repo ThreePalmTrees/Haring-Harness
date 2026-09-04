@@ -161,8 +161,10 @@ the worker find the route.
 
 **When:** before every delegation.
 **Why:** one task was handed a 9,468-byte brief asking for a new module, wiring into three
-files, new settings, error hooks, a test block and two test suites. It ran 41 minutes, did
-all of it, and died before it could report. The work was good. The unit was wrong.
+files, new settings, error hooks, a test block and two test suites. It ran 41 minutes and did
+all of it, and the work was good. None of it could be reviewed on its own. One report
+covering six changes gives you nothing you can accept or reject separately, and one
+correction round then reopens all six.
 
 One behaviour changed, or one question answered. If the sentence needs an "and", it is
 two tasks.
@@ -247,8 +249,8 @@ work deserved is a signal you wrote a task that was really several.
 **When:** always, unless you can say out loud why not.
 **Why:** you cannot yet know which questions are independent, because you have not read
 the code. A small answer teaches you more than you expect, and the next question is better
-for having had it. Several at once spends more to learn less, and three started together
-once collided on one run folder.
+for having had it. Several at once spends more to learn less, and you cannot read three
+reports as carefully as you read one.
 
 Sequential is right about ninety-five times in a hundred. Start with one small request,
 let the answer change what you ask next, and keep going. Only when the remaining work is
@@ -410,9 +412,9 @@ haring-session [dir] [-l|-n N]  what this manager session has cost so far
 
 Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
 with a usage line on standard error; called correctly but unable to finish, exit 1.
-`haring-wait` adds one of its own: 3 when the worker vanished without a report.
-Standard output carries only what a caller reads, so
-`haring-worker` prints the run folder and nothing else.
+`haring-wait` adds one of its own: 3 when the worker vanished without a report. Standard
+output carries only what a caller reads, so `haring-worker` prints the run folder and
+nothing else.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that explored can be continued as one that
@@ -540,8 +542,9 @@ The four answers:
 **Why:** the work survives on disk and the account of it does not, so it looks finished.
 It is the one state that reads as success while telling you nothing.
 
-Read the transcript and the progress file before you decide anything about it. Then treat
-the task size as the cause.
+Read the transcript and the progress file before you decide anything about it. A worker
+that finishes on its own writes a report, so a missing one means something stopped it from
+outside. Find out what, and say so, rather than assuming the work was wrong.
 
 ### Say what good looks like, and check it in the diff
 
@@ -556,8 +559,8 @@ Three things belong in the task, and you check them in the diff:
   errors. A change that reads as foreign is a change somebody has to decode later.
 - **It is the smallest change that does the job.** No new abstraction for one caller, no
   rewrite of a file that only needed a line, no option nobody asked for.
-- **Nothing is left behind.** No commented-out code, no unused import, no dead branch, no
-  scratch file. Deleted, not disabled.
+- **Nothing is left behind.** No commented-out code, no dead code branch, no scratch file,
+  no debug print. Deleted, not disabled.
 
 If you cannot tell from the diff, that is itself the finding. Send a `check` worker.
 
@@ -674,8 +677,9 @@ were not part of, to understand a present that could have been stated directly.
 
 Say the rule. The change belongs in the commit that made it.
 
-Two things this does not forbid. Evidence for a rule is not history: "measured, a task given
-twenty turns took forty-eight" is why the rule exists and makes it stick. And a correction
+Two things this does not forbid. Evidence for a rule is not history: "measured, a continued
+worker read 180 fresh input tokens where a new one read 12,527" is why the rule exists and
+is what makes it stick. And a correction
 that is still doing work stays — if a wrong claim is still sitting in a document, the note
 saying it is wrong has to sit beside it.
 
