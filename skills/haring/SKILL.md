@@ -256,11 +256,19 @@ genuinely unrelated does parallel make sense, and then space the launches by a s
 
 ### Continue a worker rather than starting a new one
 
-**When:** the next small task is in the same area, and of the same kind, as the one just
-finished.
+**When:** the next small task is in the same area as the one just finished.
 **Why:** a fresh worker must be told everything again, which costs you output tokens and
 costs it a whole context load. Measured: a continued worker read 180 fresh input tokens
 where a new one read 12,527.
+
+The kind can change. A worker that explored can be continued as one that implements, and it
+keeps what it found, including the parts it did not think to report. Do that when the work
+follows directly from what it just looked at.
+
+The risk in promoting one is not context size, it is the theory it already holds. It formed
+one while exploring and it wrote that down itself. If you corrected it, your correction is
+competing with its own reasoning. So after a promoted implement, send a `check` worker at
+the claim you most depend on. That is exactly what `check` is for.
 
 Start fresh when the subject changes, when the worker has gone wrong and you want it to
 forget, or when its context has grown so large that it is losing detail.
@@ -406,8 +414,11 @@ with a usage line on standard error; called correctly but unable to finish, exit
 Standard output carries only what a caller reads, so
 `haring-worker` prints the run folder and nothing else.
 
-When you continue a run you must name its kind, and it must be the kind that run started as.
-A read-only worker has no tools to write with, so a conversation cannot be promoted.
+Naming the kind on a continue is how you set the tools for that continuation. It does not
+have to be the kind the run started as. A worker that explored can be continued as one that
+implements, and it keeps everything it learned while looking. A continued run forks: it gets
+its own run folder and its own session, so the run it came from stays whole and can be
+continued again.
 
 Every kind runs in the project itself. Read-only kinds have no tool that can change
 anything. `implement` and `correct` work on a branch. Write down which branch the project

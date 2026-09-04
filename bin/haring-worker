@@ -32,24 +32,21 @@ usage() {
 }
 
 # ---------------------------------------------------------------- continue mode
+# Continuing keeps the worker's context, which is worth real money: a continued worker read
+# 180 fresh input tokens where a new one read 12,527.
+#
+# The kind is named again on every continue because the kind is what sets the tools, and
+# tools are chosen at each launch rather than fixed when a session begins. So the kind may
+# differ from the one the run started as: a worker that explored can be continued as one
+# that implements, and it keeps everything it learned while exploring.
+#
+# A continued run forks. It resumes the previous conversation under a session id of its own,
+# so the run it came from keeps its transcript whole and can be continued again.
 resume_id=""
 if [ "$1" = "continue" ]; then
-  want_kind=$2; prev=$3; promptfile=$4
-  [ -n "$want_kind" ] && [ -n "$prev" ] && [ -n "$promptfile" ] || {
-    # The old shape named no kind; say so plainly if that is what came in.
-    if [ -f "$2/meta" ]; then
-      echo "continue now names the kind first:" >&2
-    fi
-    usage; }
+  kind=$2; prev=$3; promptfile=$4
+  [ -n "$kind" ] && [ -n "$prev" ] && [ -n "$promptfile" ] || usage
   [ -f "$prev/meta" ] || { echo "no meta in $prev — not a haring run folder" >&2; usage; }
-  # The kind is the caller's to name, and it must be the kind the run started as.
-  # A conversation begun as a read-only worker has no tools to write with, so
-  # promoting it is not something a flag can fix.
-  prev_kind=$(sed -n 's/^kind=//p' "$prev/meta")
-  [ "$prev_kind" = "$want_kind" ] || {
-    echo "$prev was started as kind '$prev_kind'; continuing needs the same kind, not '$want_kind'." >&2
-    echo "Start a fresh worker of the kind the task needs." >&2
-    usage; }
   # These two are real failures of the previous run, not a mistyped command: the
   # folder named is a haring run and there is nothing in it to continue from.
   [ -s "$prev/report.json" ] || {
@@ -57,9 +54,11 @@ if [ "$1" = "continue" ]; then
     echo "Read its PROGRESS.md and its transcript, then start a fresh one." >&2; exit 1; }
   resume_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("session_id") or "")' "$prev/report.json")
   [ -n "$resume_id" ] || { echo "no session_id in $prev/report.json" >&2; exit 1; }
+  # workdir and model come from the run being continued; the kind comes from the caller.
+  want_kind=$kind
   # shellcheck disable=SC1090
-  . "$prev/meta"          # workdir and model come from the run
-  kind=$want_kind         # so the tools follow the named kind, never the file
+  . "$prev/meta"
+  kind=$want_kind
   shift 4
 else
   kind=$1; workdir=$2; promptfile=$3
@@ -154,27 +153,33 @@ ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
 
 schema="$HARING/schemas/$kind.json"
-# Assembled in memory. It is the same text for every run of a kind, so writing a copy
-# into each run folder was 12KB of duplication; regenerate with `haring-prompt <kind>`.
+# Assembled in memory. It is the same 15KB for every run of a kind, so it is not copied into
+# the run folder; regenerate any run's rules with `haring-prompt <kind>`.
 sysprompt=$("$HARING/bin/haring-prompt" "$kind")
+# Every run gets its own session id, minted above and recorded in its meta, so every run has
+# a transcript of its own that haring-session can tell apart from the manager's. A continued
+# run adds --fork-session, which is what makes the resumed conversation land under this run's
+# id instead of writing back into the one it came from.
 resume_flag=""
-[ -n "$resume_id" ] && resume_flag="--resume $resume_id"
-# A continued run keeps the session it is resuming, which that run's meta already
-# names, so it is not given a second id to argue over.
-session_flag=""
-if [ -z "$resume_id" ]; then session_flag="--session-id $session"; fi
+[ -n "$resume_id" ] && resume_flag="--resume $resume_id --fork-session"
 
 # The worker runs as its own session, not merely in the background. A background child
 # stays in its launcher's process group, so anything that kills that group — a tool
 # timeout, a cancelled command — kills the worker too, and it dies leaving an empty
 # report. Detaching properly is the only way a long run survives the thing that started it.
+#
+# The three redirections on the python call are load-bearing. A detached grandchild inherits
+# whatever descriptors it is handed, and if it keeps the caller's stdout then
+# `run=$(haring-worker ...)` never returns: command substitution waits for that pipe to close
+# and the pipe stays open until the worker finishes. Every launch would block for the whole
+# run.
 cat > "$run/run.sh" <<RUNNER
 #!/bin/sh
 echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 claude -p "\$(cat "$run/prompt.md")" \
   --model "$model" \
-  $session_flag \
+  --session-id "$session" \
   --append-system-prompt "\$(cat "$run/system.tmp")" \
   --allowedTools "$tools" \
   --output-format json \
