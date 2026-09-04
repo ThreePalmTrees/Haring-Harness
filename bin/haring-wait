@@ -1,66 +1,149 @@
-#!/bin/sh
-# haring-wait — wait for a worker, then print what it returned.
-#
-#   haring-wait <run-folder> [max-seconds]
-#
-# Exits 0 when the worker reported, and 1 when it left a report that cannot be read.
-# Exits 2 when it was called wrongly: no arguments, or a path that is not a haring
-# run folder. One exit is neither of those, and it is the interesting one:
-#
-#   3   the worker has gone and left no report at all
-#
-# It means "no report, but there may be work on disk", and it prints the progress file
-# so the next reader starts from something real.
-#
-# Waits while the worker process is alive. A clock alone is the wrong test: real work
-# has run for twenty-seven minutes, and a fixed time limit only makes the manager restart
-# the wait, which costs a round trip and tells it nothing.
-set -e
-self=$0
-while [ -L "$self" ]; do
-  link=$(readlink "$self")
-  case "$link" in
-    /*) self=$link ;;
-    *)  self=$(dirname -- "$self")/$link ;;
-  esac
-done
-HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+#!/usr/bin/env python3
+"""haring-wait — follow a worker, then print what it returned.
 
-[ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: haring-wait <run-folder> [max-seconds]" >&2; exit 2; }
-run=${1%/}
-limit=${2:-7200}
-case "$limit" in ''|*[!0-9]*)
-  echo "max-seconds must be a number, got: $limit" >&2; exit 2 ;; esac
-# A run folder is known by its meta file, the same marker `haring-worker continue`
-# uses. Without this check an ordinary directory reaches the sed below, which fails on
-# the missing meta and kills the script under set -e with no word of why.
-[ -f "$run/meta" ] || { echo "not a haring run folder: $run" >&2; exit 2; }
+    haring-wait <run-folder> [max-seconds]
 
-pid=$(sed -n 's/^pid=//p' "$run/meta" 2>/dev/null)
-waited=0
-while [ ! -s "$run/report.json" ]; do
-  if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-    sleep 3   # it may still be writing
-    break
-  fi
-  [ "$waited" -ge "$limit" ] && break
-  sleep 5
-  waited=$((waited + 5))
-done
+While the worker is running, each step it takes is printed to standard error as it
+happens, one line per tool call. The report goes to standard output when it lands, so a
+caller redirecting stdout gets the report and nothing else.
 
-if [ ! -s "$run/report.json" ]; then
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    echo "still running after ${waited}s. The process is alive." >&2
-  else
-    echo "the worker has gone and left no report. Read the progress and the tree before" >&2
-    echo "you believe anything about this run." >&2
-  fi
-  [ -s "$run/PROGRESS.md" ] && { echo "--- progress ---" >&2; cat "$run/PROGRESS.md" >&2; }
-  exit 3
-fi
+Exits 0 when the worker reported, and 1 when it left a report that cannot be read.
+Exits 2 when it was called wrongly: no arguments, or a path that is not a haring run
+folder. One exit is neither of those, and it is the interesting one:
 
-cat "$run/stats.txt" 2>/dev/null || "$HARING/bin/haring-stats" "$run"
+    3   the worker has gone and left no report at all
 
-echo
-"$HARING/bin/haring-report" "$run"
-if [ -s "$run/stderr.txt" ]; then echo; echo "--- stderr ---"; cat "$run/stderr.txt"; fi
+It means "no report, but there may be work on disk", and it prints the progress file so
+the next reader starts from something real.
+
+Waits while the worker process is alive. A clock alone is the wrong test: real work has
+run for twenty-seven minutes, and a fixed time limit only makes the manager restart the
+wait, which costs a round trip and tells it nothing.
+"""
+import sys, os, json, time, glob, subprocess
+
+USAGE = "usage: haring-wait <run-folder> [max-seconds]"
+HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+argv = sys.argv[1:]
+if not 1 <= len(argv) <= 2:
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
+run = argv[0].rstrip("/")
+limit = argv[1] if len(argv) == 2 else "7200"
+if not limit.isdigit():
+    die(f"max-seconds must be a number, got: {limit}", 2)
+limit = int(limit)
+
+# A run folder is known by its meta file, the same marker `haring-worker continue` uses.
+if not os.path.isfile(os.path.join(run, "meta")):
+    die(f"not a haring run folder: {run}", 2)
+meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
+pid = int(meta["pid"]) if meta.get("pid", "").isdigit() else None
+report = os.path.join(run, "report.json")
+progress = os.path.join(run, "PROGRESS.md")
+
+
+def alive():
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def landed():
+    return os.path.exists(report) and os.path.getsize(report) > 0
+
+
+# Claude writes the transcript under the session id, which the run's meta already names, so
+# the file is found by searching for that one name rather than by guessing how the working
+# directory was encoded into a folder name.
+def transcript():
+    sid = meta.get("session_id", "")
+    if not sid:
+        return None
+    hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+    return hits[0] if hits else None
+
+
+def steps(path, pos, seen):
+    """Print every tool call added since the last read. Returns the new position."""
+    with open(path) as f:
+        f.seek(pos)
+        for line in f:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            content = (d.get("message") or {}).get("content")
+            if not isinstance(content, list):
+                continue
+            for b in content:
+                if b.get("type") != "tool_use" or b.get("id") in seen:
+                    continue
+                seen.add(b.get("id"))
+                i = b.get("input") or {}
+                arg = i.get("command") or i.get("file_path") or i.get("pattern") or ""
+                arg = " ".join(str(arg).split())[:100]
+                print(f"  {b.get('name', '?'):12s} {arg}", file=sys.stderr, flush=True)
+        return f.tell()
+
+
+waited, pos, seen, path = 0, 0, set(), None
+while not landed():
+    if path is None:
+        path = transcript()
+        if path:
+            print(f"--- {os.path.basename(run)} ---", file=sys.stderr, flush=True)
+    if path:
+        pos = steps(path, pos, seen)
+    if not alive():
+        time.sleep(3)   # it may still be writing
+        break
+    if waited >= limit:
+        break
+    time.sleep(1)
+    waited += 1
+
+if not landed():
+    if alive():
+        print(f"still running after {waited}s. The process is alive.", file=sys.stderr)
+    else:
+        print("the worker has gone and left no report. Read the progress and the tree before",
+              file=sys.stderr)
+        print("you believe anything about this run.", file=sys.stderr)
+    if os.path.exists(progress) and os.path.getsize(progress):
+        print("--- progress ---", file=sys.stderr)
+        print(open(progress).read(), file=sys.stderr)
+    sys.exit(3)
+
+if path:
+    steps(path, pos, seen)
+
+stats = os.path.join(run, "stats.txt")
+if os.path.exists(stats) and os.path.getsize(stats):
+    sys.stdout.write(open(stats).read())
+else:
+    subprocess.run([os.path.join(HARING, "bin", "haring-stats"), run])
+print()
+# Flush before handing the terminal to another program: what this script has written is
+# still in Python's buffer when stdout is a pipe, and the child writes to the file
+# descriptor directly, so without this the report prints above the numbers.
+sys.stdout.flush()
+rc = subprocess.run([os.path.join(HARING, "bin", "haring-report"), run]).returncode
+err = os.path.join(run, "stderr.txt")
+if os.path.exists(err) and os.path.getsize(err):
+    print("\n--- stderr ---")
+    sys.stdout.write(open(err).read())
+sys.exit(rc)

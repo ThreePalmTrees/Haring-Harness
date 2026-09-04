@@ -39,7 +39,7 @@ Example:
 
 ## What haring writes into your project
 
-    .haring/runs/<stamp>-<kind>-<pid>/
+    .haring/runs/{stamp}-{kind}-{pid}/
       prompt.md      what the worker was asked, the only copy of the question
       report.json    what it returned
       stats.txt      model, tokens, cache reads, turns, seconds
@@ -56,7 +56,7 @@ document.
 ### Structure
 
     bin/            haring-worker    start a worker, or continue one
-                    haring-wait      wait for a run, then print its report
+                    haring-wait      follow a run, then print its report
                     haring-report    print a report, with the empty parts removed
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost

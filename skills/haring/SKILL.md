@@ -404,11 +404,26 @@ something else, the worker keeps working and its report still lands. Come back w
 `haring-wait` or `haring-stats` and nothing is lost.
 
 ```
-haring-wait <run-folder>        block until the report lands, then print it
+haring-wait <run-folder>        follow the run, then print its report
 haring-report <run-folder>      print the report, compacted
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 ```
+
+**Wait in the background, never in the foreground.** The Bash tool takes
+`run_in_background: true`. Use it for every `haring-wait`. Three things follow from it.
+Your turn does not stay open, so you are free while the worker works. The client can open
+the task and watch the worker's steps as they happen, because `haring-wait` prints every
+tool call the worker makes while it is waiting. And Claude Code brings you back on its own
+when the run ends, so the conversation moves the moment the work is done.
+
+A foreground wait gives none of that. It holds your turn open, and the client sees a
+message that reads as finished with a hidden shell behind it. For the same reason, do not
+write "I will come back when this finishes" — you will be brought back automatically, and
+saying it makes a running job look like a finished one.
+
+The steps go to standard error and the report goes to standard output, so redirecting
+stdout gives you the report alone.
 
 Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
 with a usage line on standard error; called correctly but unable to finish, exit 1.
@@ -679,9 +694,8 @@ Say the rule. The change belongs in the commit that made it.
 
 Two things this does not forbid. Evidence for a rule is not history: "measured, a continued
 worker read 180 fresh input tokens where a new one read 12,527" is why the rule exists and
-is what makes it stick. And a correction
-that is still doing work stays — if a wrong claim is still sitting in a document, the note
-saying it is wrong has to sit beside it.
+is what makes it stick. And a correction that is still doing work stays — if a wrong claim
+is still sitting in a document, the note saying it is wrong has to sit beside it.
 
 ### Write plainly, and do not use tables
 
