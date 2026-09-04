@@ -5,7 +5,7 @@
 #   haring-worker <kind> <workdir> <prompt-file> [--model M] [flags...]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
-# kind is one of: explore plan implement check errand correct
+# kind is one of: explore implement check errand correct
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
@@ -90,7 +90,7 @@ done
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
-  explore|plan)
+  explore)
       tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   check)
       tools='Read,Glob,Grep,Bash'; extra='--bare' ;;

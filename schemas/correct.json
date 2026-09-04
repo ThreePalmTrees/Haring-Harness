@@ -259,11 +259,11 @@
    "properties": {
     "hit": {
      "type": "string",
-     "description": "what stopped you: a forbidden action, or something not installed that you may not install yourself"
+     "description": "what stopped you: a forbidden action, something not installed that you may not install yourself, or a part of the task that contradicts what the code actually does"
     },
     "needed_to_continue": {
      "type": "string",
-     "description": "exactly what you would need, so the manager can decide"
+     "description": "exactly what you would need, or what the manager has to decide"
     }
    },
    "required": [

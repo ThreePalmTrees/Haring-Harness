@@ -29,10 +29,9 @@ Inside any project:
 
     /haring <what you want done>
 
-## The six kinds of task
+## The five kinds of task
 
     explore    find something out so the manager can plan
-    plan       draft a plan for the manager to approve
     implement  do the work, on a branch
     check      verify one claim, with no memory of having made it
     errand     a trivial mechanical job

@@ -12,6 +12,20 @@ rather than quietly working around it.
 Write your first progress line before you read anything, at the path the task gives
 you. Put your plan in it. This kind of task always gets one.
 
+## Flag a contradiction before you start
+
+You are reading the code and the manager is not. If something in the task contradicts what
+the code actually does, and building it as written would produce the wrong thing, say so
+before you change anything. Say what the code shows and where, put it in the blocked fields,
+and stop. The manager can send someone to look further, change the task, or tell you to go
+ahead anyway.
+
+Do it at the start, not at the end. The same problem found at the end is work thrown away.
+
+This is for a real contradiction, not for everything you would have done differently. If the
+task is workable as written and you simply see a better route, take the better route and say
+why in your report.
+
 ## While you work
 
 **Prefer a targeted change to a rewrite.** You are editing a file somebody else wrote
@@ -30,10 +44,9 @@ of handling errors, same way of testing. Read a neighbouring file before you wri
 one. Code that reads as foreign is code somebody has to decode later, and being different
 is only worth it when you can say why in one sentence.
 
-**Leave nothing behind.** No commented-out code, no unused import, no dead branch, no
-scratch file, no debug print. Delete it. A thing kept "in case" is a thing the next reader
-has to work out the status of.
-
+**Leave nothing behind.** No commented-out code, no dead code branch, no scratch file, no
+debug print. Delete it. A thing kept "in case" is a thing the
+next reader has to work out the status of.
 
 ## Before you say you are finished
 

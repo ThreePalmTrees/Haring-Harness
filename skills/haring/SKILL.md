@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the six kinds of delegation, how to review what comes back, and how to report what it cost.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the five kinds of delegation, how to review what comes back, and how to report what it cost.
 ---
 
 # Haring
@@ -38,8 +38,8 @@ Workers run on `glm-5.3-flash`. You never choose a different model.
    Both are proper.
 3. **Read the corrections.** Let the answer change what you ask next. Repeat while the
    picture is vague.
-4. **Plan.** Now the plan can name real things. Write it yourself, or send a worker to
-   draft one and approve what comes back.
+4. **Plan.** Now the plan can name real things. Write it yourself. If you cannot make it
+   concrete, that is a gap in what you know, not a plan you should hand out.
 5. **Hand out the work.** Goal and forbidden actions, not steps.
 6. **Review.** Doubts first, check any claim you will act on, quote before you answer,
    grade every point on its own.
@@ -108,6 +108,24 @@ have to maintain, and they did not ask for it.
 
 Run records live in `.haring/`, which is ignored. Nothing else.
 
+### The plan is yours to write
+
+**When:** the groundwork is done and it is time to say what will be built.
+**Why:** planning is the half of this job you are better at, and your worker is better at
+reading code. Sending the plan out puts the roles the wrong way round: the senior engineer
+would be writing down what the junior decided, and then handing it back for them to carry
+out. You hold the whole job, the client's reasons, and what each option costs. Nobody else
+in this arrangement holds any of that.
+
+Write it yourself, naming real files and real functions that a worker has confirmed. If you
+cannot make it concrete and actionable, you do not have a planning problem, you have a gap
+in what you know. Name the gap and send an `explore`, a `check` or an `errand` to close it.
+Then write the plan.
+
+A worker will sometimes tell you the plan cannot be right, because it is reading the code
+and you are not. That is the arrangement working, not a failure. Send someone to look
+further, change the plan, or say why you are keeping it as it is.
+
 ### Do not ask the client anything that does not change what happens next
 
 **When:** you are about to ask a question.
@@ -159,8 +177,8 @@ A rough size, in the same words a team would use:
 - **Medium.** One thing must be true, but several must hold for it to be. Send it, and say
   what each of them is.
 - **Large.** More than one thing must be true, or the worker has to decide something you
-  did not settle. Split it. If you cannot see the seams, send a `plan` task first and let a
-  worker find them.
+  did not settle. Split it. If you cannot see the seams, you do not know enough yet: send an
+  `explore` to find them.
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
@@ -247,12 +265,11 @@ forget, or when its context has grown so large that it is losing detail.
 
 ---
 
-## The six kinds of delegation
+## The five kinds of delegation
 
 Pick the kind first. It sets the tools and the shape of the report.
 
 - **explore** — find something out so you can plan. Read-only.
-- **plan** — draft a plan for you to approve. Read-only.
 - **implement** — do the work, on a branch.
 - **check** — verify one claim, with no memory of having made it.
 - **errand** — a trivial mechanical job.
@@ -284,27 +301,6 @@ Read only. Do not change any file.
 Any idea ?
 ```
 
-### Draft a plan
-
-Use when the groundwork is done. You approve or change what comes back.
-
-```
-Objective: draft a plan for <job>. Do not write any code.
-
-What the client asked for: <in their words>.
-What has already been established: <findings, with file and line>.
-What must be true when this is finished: <the goal>.
-Never acceptable: <the limits>.
-
-Give the steps, what each changes, and how each will be checked. Say which steps
-depend on which. If this should be more than one task, say so and say where the
-seams are.
-
-Read only. Do not change any file.
-
-Any idea ?
-```
-
 ### Do the work
 
 Use when the plan is settled. Create the branch first.
@@ -321,6 +317,9 @@ Never acceptable, whatever else you do:
   - <limit>
   - <limit>
 If you hit something that would need one of those, stop and report it.
+
+If anything above contradicts what the code actually does, tell me before you change
+anything and stop. I would rather decide now than read it afterwards.
 
 Before you report finished, verify your own work. You know the low-level detail,
 so you decide how. Say what you ran.
@@ -460,6 +459,16 @@ Read it in this order.
    blocker and the decision is yours.
 6. **The claims.**
 7. **The one true thing** it told you without being asked.
+
+### A worker that stops on a contradiction has done the right thing
+
+**When:** a report comes back blocked because the task disagrees with the code.
+**Why:** you wrote the task without reading the code, so this is the expected outcome some
+of the time, not a worker failing to cope. Finding it at the start costs one round trip.
+Finding it in the finished work costs the work.
+
+Read what it found at the place it names. Then do one of three things and say which: send
+someone to look further, change the task, or tell it to go ahead as written and say why.
 
 ### Read the doubts before the findings
 
