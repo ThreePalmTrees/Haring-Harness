@@ -14,7 +14,9 @@ folder. One exit is neither of those, and it is the interesting one:
     3   the worker has gone and left no report at all
 
 It means "no report, but there may be work on disk", and it prints the progress file so
-the next reader starts from something real.
+the next reader starts from something real. A run stopped with `haring-kill` arrives here
+too, and says so: both leave an empty report, but a stop on purpose and a crash are
+different things, and the `stopped` file haring-kill writes is what tells them apart.
 
 Waits while the worker process is alive. A clock alone is the wrong test: real work has
 run for twenty-seven minutes, and a fixed time limit only makes the manager restart the
@@ -55,6 +57,10 @@ started = os.path.getmtime(meta_path)
 pid = int(meta["pid"]) if meta.get("pid", "").isdigit() else None
 report = os.path.join(run, "report.json")
 progress = os.path.join(run, "PROGRESS.md")
+# Written by haring-kill when a person stopped this run on purpose. It is the only thing
+# that separates a deliberate stop from a worker that died on its own, since both leave
+# the same empty report.
+stopped = os.path.join(run, "stopped")
 
 
 def alive():
@@ -141,7 +147,14 @@ while not landed():
     waited += 1
 
 if not landed():
-    if alive():
+    if os.path.exists(stopped):
+        rec = dict(l.strip().split("=", 1) for l in open(stopped) if "=" in l)
+        print(f"this run was stopped on purpose with haring-kill at {rec.get('at', '?')} "
+              f"by {rec.get('user', '?')}.", file=sys.stderr)
+        print("Its work ends where it had got to. Read the progress and the transcript",
+              file=sys.stderr)
+        print("before you build on any of it.", file=sys.stderr)
+    elif alive():
         print(f"still running after {waited}s. The process is alive.", file=sys.stderr)
     else:
         print("the worker has gone and left no report. Read the progress and the tree before",

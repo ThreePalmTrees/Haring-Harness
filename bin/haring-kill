@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""haring-kill — stop a running worker on purpose.
+
+    haring-kill <run-folder>
+
+Signals the worker's whole process group: the runner python, the shell running the
+run's run.sh, and the claude process inside it. The chip's "x" on a background task does
+none of this — it kills the haring-wait watching the run, and the worker survives it,
+because haring-worker deliberately detached the worker into its own session so that it
+outlives whatever started it. That same detachment is why an ordinary kill cannot reach
+the worker, and why this command signals the group rather than a single pid.
+
+It writes a `stopped` file into the run folder, so a deliberate stop reads as one:
+haring-wait sees it and reports a stop on purpose instead of a worker that vanished,
+which is otherwise indistinguishable from a crash.
+
+What it stopped is said on standard error. Standard output carries nothing, like every
+other haring command.
+
+Exits 2 when called wrongly: no argument, or a path that is not a haring run folder.
+Exits 1 when called rightly but unable to finish — no worker is running for that run,
+the run has already finished and reported, or the worker would not die. Exits 0 when the
+worker is dead, including when a previous haring-kill had already stopped it.
+"""
+import sys, os, time, signal, subprocess
+
+USAGE = "usage: haring-kill <run-folder>"
+GRACE = 5   # seconds a group is given to die of SIGTERM before it is SIGKILLed
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+if len(sys.argv) != 2:
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
+
+# A run folder is known by its meta file, the same marker `haring-worker continue` uses.
+run = sys.argv[1].rstrip("/")
+if not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "meta")):
+    die(f"not a haring run folder: {run}", 2)
+meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
+marker = os.path.join(run, "stopped")
+
+if os.path.exists(marker):
+    rec = dict(l.strip().split("=", 1) for l in open(marker) if "=" in l)
+    print(f"already stopped on purpose at {rec.get('at', '?')} by {rec.get('user', '?')}.",
+          file=sys.stderr)
+    sys.exit(0)
+
+# The pid in meta belongs to the shell, and is not trusted on its own: pids are reused,
+# and a stale one can name a process with nothing to do with this run, whose process
+# group is not ours to signal. Both spellings of the folder are matched, because a
+# process carries the path the worker was handed and realpath resolves symlinks — on
+# macOS /tmp is a link to /private/tmp, so the realpath of a run started under /tmp
+# matches nothing on any command line.
+here = os.path.realpath(run)
+named = os.path.abspath(run)
+tail = os.path.basename(run)
+session = meta.get("session_id", "")
+
+
+def names_run(command):
+    return here in command or named in command or tail in command or (
+        bool(session) and session in command)
+
+
+def is_claude(command):
+    return bool(command.split()) and os.path.basename(command.split()[0]) == "claude"
+
+
+def rows():
+    """Every live process as (pid, pgid, command).
+
+    Zombies are left out: a dead process still answers a signal for as long as it is
+    unreaped, and counting one would make a finished stop look unfinished.
+    """
+    out = subprocess.run(["ps", "-axo", "pid=,pgid=,stat=,command="],
+                         capture_output=True, text=True).stdout
+    found = []
+    for line in out.splitlines():
+        parts = line.strip().split(None, 3)
+        if len(parts) < 4 or "Z" in parts[2]:
+            continue
+        found.append((int(parts[0]), int(parts[1]), parts[3]))
+    return found
+
+
+def worker_group():
+    """The process group the worker itself runs in, or None when it is not running.
+
+    The anchor is the shell meta names, then the claude process. A haring-wait watching
+    this run names the run folder on its own command line, and so does any command the
+    manager runs that mentions the folder; taking one of those for the worker would
+    signal its group instead and leave the worker alive.
+    """
+    live = rows()
+    by_pid = {p: (p, g, c) for p, g, c in live}
+    pid = meta.get("pid", "")
+    if pid.isdigit() and int(pid) in by_pid:
+        _, pgid, command = by_pid[int(pid)]
+        if names_run(command):
+            return pgid
+    for _, pgid, command in live:
+        if is_claude(command) and session and session in command:
+            return pgid
+    return None
+
+
+# One group holds the whole run: haring-worker's setsid made it, and nothing the run
+# starts afterwards leaves it. Signalling the group is what reaches claude — the pid in
+# meta is its shell, and killing that alone would orphan claude mid-run.
+group = worker_group()
+if group is None:
+    report = os.path.join(run, "report.json")
+    if os.path.exists(report) and os.path.getsize(report):
+        die("this run already finished and reported. There is no worker to stop.", 1)
+    die(f"no worker is running for {run}", 1)
+
+
+def still_there():
+    return sorted(pid for pid, pgid, _ in rows() if pgid == group)
+
+
+live = rows()
+members = sorted(p for p, g, _ in live if g == group)
+claude = sorted(p for p, g, c in live if g == group and is_claude(c))
+
+for sig in (signal.SIGTERM, signal.SIGKILL):
+    try:
+        os.killpg(group, sig)
+    except ProcessLookupError:
+        break
+    end = time.time() + GRACE
+    while time.time() < end and still_there():
+        time.sleep(0.2)
+    if not still_there():
+        break
+
+left = still_there()
+if left:
+    die(f"the worker in process group {group} is still alive after SIGKILL: {left}", 1)
+
+now = time.strftime("%Y-%m-%dT%H:%M:%S")
+with open(marker, "w") as f:
+    f.write(f"at={now}\n")
+    f.write(f"user={os.environ.get('USER') or '?'}\n")
+    f.write(f"pgid={group}\n")
+    f.write(f"pids={' '.join(str(p) for p in members)}\n")
+
+kind = meta.get("kind", "?")
+inside = f", claude was pid {', '.join(str(p) for p in claude)}" if claude else ""
+print(f"stopped {kind} run {os.path.basename(run)}", file=sys.stderr)
+print(f"  process group {group}: pids {' '.join(str(p) for p in members)}{inside}",
+      file=sys.stderr)
+print(f"  recorded in {marker}", file=sys.stderr)

@@ -409,6 +409,7 @@ haring-pulse [dir] [--every S]  one line per live worker, at a fixed interval
 haring-report <run-folder>      print the report, compacted
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
+haring-kill <run-folder>        stop a running worker on purpose
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
@@ -440,6 +441,16 @@ with a usage line on standard error; called correctly but unable to finish, exit
 output carries only what a caller reads, so `haring-worker` prints the run folder and
 nothing else.
 
+**Stopping a worker is `haring-kill <run-folder>`.** The "x" on a background task is not
+it: that kills the `haring-wait` process and nothing else, and the worker keeps working —
+and keeps spending — with nothing on screen to say so. The worker runs in its own session
+so that it survives the death of whatever started it, which is also why a signal aimed at
+one process cannot reach it. `haring-kill` signals the worker's whole process group, says
+what it stopped, and writes a `stopped` file into the run folder. A stopped run and a
+crashed one leave the same empty report, so that file is the only thing that says the stop
+was yours: `haring-wait` reads it and reports a stop on purpose instead of a worker that
+vanished.
+
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that explored can be continued as one that
 implements, and it keeps everything it learned while looking. A continued run forks: it gets
@@ -464,15 +475,16 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 
 A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`, and for the
 kinds that change things a `PROGRESS.md` the worker appends to as it goes. A killed worker
-still leaves the question, the progress, and a transcript you can read.
+still leaves the question, the progress, and a transcript you can read. One stopped with
+`haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
 
 ### When one is taking too long
 
 Read `PROGRESS.md` first, then the session transcript under
 `~/.claude/projects/<encoded-path>/`, which is written entry by entry as it happens.
 
-- The same tool call again and again — stuck in a loop. Kill it, restate the task in a
-  fresh run, and say what it looped on.
+- The same tool call again and again — stuck in a loop. Stop it with `haring-kill`,
+  restate the task in a fresh run, and say what it looped on.
 - Reads of files unrelated to the task — lost. The task was under-specified or too wide.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it
   next time.
