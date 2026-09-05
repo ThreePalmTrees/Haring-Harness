@@ -87,12 +87,17 @@ def elapsed():
     return f"{s // 60}m{s % 60:02d}s"
 
 
-def steps(path, pos, seen):
+def steps(path, pos, seen, count):
     """Print every tool call added since the last read. Returns the new position.
 
     Each line carries how long the worker had been running when it made that call. The
     gap between two lines is the number worth reading: a step that sits for minutes is
     how a stuck worker shows itself.
+
+    The panel a caller watches this in keeps only the last ten or so lines, so the header
+    printed once at the start scrolls out of view on any run longer than a few steps and
+    the reader loses track of which run they are looking at. Reprinting it before every
+    8th step line keeps one within that window for the rest of the run.
     """
     with open(path) as f:
         f.seek(pos)
@@ -111,19 +116,22 @@ def steps(path, pos, seen):
                 i = b.get("input") or {}
                 arg = i.get("command") or i.get("file_path") or i.get("pattern") or ""
                 arg = " ".join(str(arg).split())[:92]
+                count[0] += 1
+                if count[0] % 8 == 0:
+                    print(f"--- {os.path.basename(run)} ---", file=sys.stderr, flush=True)
                 print(f"  {elapsed():>7s}  {b.get('name', '?'):12s} {arg}",
                       file=sys.stderr, flush=True)
         return f.tell()
 
 
-waited, pos, seen, path = 0, 0, set(), None
+waited, pos, seen, count, path = 0, 0, set(), [0], None
 while not landed():
     if path is None:
         path = transcript()
         if path:
             print(f"--- {os.path.basename(run)} ---", file=sys.stderr, flush=True)
     if path:
-        pos = steps(path, pos, seen)
+        pos = steps(path, pos, seen, count)
     if not alive():
         time.sleep(3)   # it may still be writing
         break
@@ -145,7 +153,7 @@ if not landed():
     sys.exit(3)
 
 if path:
-    steps(path, pos, seen)
+    steps(path, pos, seen, count)
 
 stats = os.path.join(run, "stats.txt")
 if os.path.exists(stats) and os.path.getsize(stats):
