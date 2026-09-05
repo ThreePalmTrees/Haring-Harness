@@ -180,12 +180,8 @@ while True:
     if ever_live:
         time.sleep(every)
     else:
-        # Checked in small steps rather than sleeping the full interval in one go, so
-        # a caller using the default five-minute interval still gets the 60-second
-        # deadline above instead of being held for the whole interval first.
-        slept = 0
-        while slept < every:
-            time.sleep(min(1, every - slept))
-            slept += 1
-            if time.time() - start >= FIRST_LIVE_DEADLINE:
-                sys.exit(0)
+        # Look again every second until the first worker appears, rather than sleeping a
+        # whole interval. A caller may start this a moment before it starts a worker, and
+        # on the default five-minute interval that worker would otherwise never be seen:
+        # the deadline above would end the run first.
+        time.sleep(1)
