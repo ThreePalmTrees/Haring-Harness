@@ -39,6 +39,32 @@ on the way through are what let the manager check you.
 
 The command and its output go in your report, as with any other evidence.
 
+### Compress your own thinking while you work
+
+**When:** the reasoning you write between tool calls as you work.
+**Why:** nobody reads that thinking, so full sentences in it spend output tokens on words
+nobody reads. Everything that leaves the run is read by the manager or the client, and
+stays plain under "Write plainly" in "## Writing".
+
+Drop articles, filler words such as "just", "really", "basically", "simply" and
+"actually", pleasantries, hedging, and narration of what you are about to do.
+
+Never drop the words **not**, **never**, **no**, **only** and **except**: dropping one
+reverses the meaning of the sentence, which costs more than any number of wasted words.
+
+Keep numbers, units, technical terms, file and function names, commands and error strings
+exactly as they are, and never compress code.
+
+If the compressed phrasing is not actually shorter than the plain one, use the plain one.
+Do not invent abbreviations such as "cfg" or "impl": they are not fewer tokens, and they
+cost the reader.
+
+Clarity beats compression. Write out plainly any sequence whose steps depend on each
+other, and anything about to be deleted or overwritten.
+
+The line is the conversation. What you write inside it as you work is compressed. What
+leaves it — the report, PROGRESS.md, code comments, commit messages, any file — is plain.
+
 ---
 
 ## Telling the truth about how you know things
