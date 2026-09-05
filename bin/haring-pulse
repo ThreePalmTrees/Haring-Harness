@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""haring-pulse — one line per live worker, at a fixed interval.
+
+    haring-pulse [project-dir] [--every SECONDS]
+
+project-dir defaults to the current directory, resolved to its git top level the same
+way haring-worker resolves a workdir. --every is the number of seconds between passes
+and defaults to 300; it must be a positive integer.
+
+Meant to run under a tool that turns each stdout line into an event, so a caller gets
+progress without opening a transcript. Each pass prints one line per live worker:
+
+    <kind> <run-basename> <elapsed> <detail>
+
+detail is the worker's own last line of PROGRESS.md when there is one, else its most
+recent tool call, else the word "starting". Prints nothing when there is nothing to
+say — silence is correct output here, not a fault.
+
+Exits 0 once every live worker it found has finished, or after about 60 seconds if it
+never saw one to begin with, so a caller that starts it before anything is running does
+not wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
+that does not exist, or --every given something other than a positive integer. There is
+no way to be called rightly and still fail, so exit 1 is not used.
+"""
+import sys, os, json, time, glob, subprocess
+
+USAGE = "usage: haring-pulse [project-dir] [--every SECONDS]"
+LINE_LIMIT = 160
+FIRST_LIVE_DEADLINE = 60
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+argv = sys.argv[1:]
+project_arg, every = None, 300
+i = 0
+while i < len(argv):
+    a = argv[i]
+    if a == "--every":
+        i += 1
+        if i >= len(argv):
+            die("--every needs a number of seconds", 2)
+        val = argv[i]
+        if not val.isdigit() or int(val) < 1:
+            die(f"--every must be a positive integer, got: {val}", 2)
+        every = int(val)
+    elif a.startswith("-") and a != "-":
+        die(f"unknown option: {a}", 2)
+    elif project_arg is None:
+        project_arg = a
+    else:
+        die("haring-pulse takes at most one project directory", 2)
+    i += 1
+
+project_arg = project_arg or os.getcwd()
+if not os.path.isdir(project_arg):
+    die(f"not a directory: {project_arg}", 2)
+
+# The project is the git top level of the given directory when there is one, else the
+# directory itself — the same resolution haring-worker uses, so a pulse pointed at any
+# subdirectory of a project finds the same .haring/runs/ a worker started there wrote to.
+top = subprocess.run(["git", "-C", os.path.abspath(project_arg), "rev-parse", "--show-toplevel"],
+                     capture_output=True, text=True).stdout.strip()
+project = top or os.path.abspath(project_arg)
+
+
+def elapsed(since):
+    s = int(time.time() - since)
+    return f"{s // 60}m{s % 60:02d}s"
+
+
+# Claude writes each transcript under the session id, which the run's meta already
+# names, so the file is found by searching for that one name rather than by guessing
+# how the working directory was encoded into a folder name.
+def transcript(sid):
+    if not sid:
+        return None
+    hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+    return hits[0] if hits else None
+
+
+def last_progress_line(run):
+    path = os.path.join(run, "PROGRESS.md")
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return None
+    try:
+        lines = [l.strip() for l in open(path, errors="replace") if l.strip()]
+    except OSError:
+        return None
+    return lines[-1] if lines else None
+
+
+# The worker's own last word on what it is doing beats a guess made from its tool
+# calls, so this is only reached when PROGRESS.md has nothing yet. Scans the whole
+# transcript because what is wanted is the most recent call, not what changed since
+# some earlier position — there is no earlier position, each pass stands alone.
+def last_step(sid):
+    path = transcript(sid)
+    if not path:
+        return None
+    name, arg = None, ""
+    try:
+        with open(path, errors="replace") as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                content = (d.get("message") or {}).get("content")
+                if not isinstance(content, list):
+                    continue
+                for b in content:
+                    if not isinstance(b, dict) or b.get("type") != "tool_use":
+                        continue
+                    i = b.get("input") or {}
+                    a = i.get("command") or i.get("file_path") or i.get("pattern") or ""
+                    name = b.get("name", "?")
+                    arg = " ".join(str(a).split())[:92]
+    except OSError:
+        return None
+    return f"{name} {arg}".strip() if name else None
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def landed(run):
+    report = os.path.join(run, "report.json")
+    return os.path.exists(report) and os.path.getsize(report) > 0
+
+
+def live_runs():
+    found = []
+    for meta_path in sorted(glob.glob(os.path.join(project, ".haring", "runs", "*", "meta"))):
+        run = os.path.dirname(meta_path)
+        try:
+            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
+        except OSError:
+            continue
+        pid = meta.get("pid", "")
+        if not pid.isdigit() or not alive(int(pid)) or landed(run):
+            continue
+        found.append((run, meta, meta_path))
+    return found
+
+
+def report_line(run, meta, meta_path):
+    kind = meta.get("kind", "?")
+    detail = last_progress_line(run) or last_step(meta.get("session_id", "")) or "starting"
+    prefix = f"{kind} {os.path.basename(run)} {elapsed(os.path.getmtime(meta_path))} "
+    # The fields before the detail say which run this is and are not negotiable; the
+    # detail is the part that can run long, so it is the part that gives way.
+    room = max(0, LINE_LIMIT - len(prefix))
+    return prefix + detail[:room]
+
+
+start = time.time()
+ever_live = False
+while True:
+    runs = live_runs()
+    if runs:
+        ever_live = True
+        for run, meta, meta_path in runs:
+            print(report_line(run, meta, meta_path), flush=True)
+    elif ever_live:
+        sys.exit(0)
+    elif time.time() - start >= FIRST_LIVE_DEADLINE:
+        sys.exit(0)
+
+    if ever_live:
+        time.sleep(every)
+    else:
+        # Checked in small steps rather than sleeping the full interval in one go, so
+        # a caller using the default five-minute interval still gets the 60-second
+        # deadline above instead of being held for the whole interval first.
+        slept = 0
+        while slept < every:
+            time.sleep(min(1, every - slept))
+            slept += 1
+            if time.time() - start >= FIRST_LIVE_DEADLINE:
+                sys.exit(0)

@@ -405,6 +405,7 @@ something else, the worker keeps working and its report still lands. Come back w
 
 ```
 haring-wait <run-folder>        follow the run, then print its report
+haring-pulse [dir] [--every S]  one line per live worker, at a fixed interval
 haring-report <run-folder>      print the report, compacted
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
@@ -421,6 +422,14 @@ A foreground wait gives none of that. It holds your turn open, and the client se
 message that reads as finished with a hidden shell behind it. For the same reason, do not
 write "I will come back when this finishes" — you will be brought back automatically, and
 saying it makes a running job look like a finished one.
+
+**Start `haring-pulse` under the Monitor tool right after you launch the first worker.**
+That way the client sees progress without opening anything. Each line it emits wakes you.
+Turn it into one short sentence for the client that names what the worker is doing. Do
+not paste the raw line. Every wake-up costs you a turn, which is why the interval is five
+minutes and not thirty seconds. It reports every live worker in the project, so one pulse
+covers however many workers are running. A shell command you are running yourself is not
+a worker and never appears. It stops on its own when the last worker finishes.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
