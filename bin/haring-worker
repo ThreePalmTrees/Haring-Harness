@@ -147,8 +147,10 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
   esac
 } > "$run/prompt.md"
 
-ANTHROPIC_AUTH_TOKEN=$(security find-generic-password -a "$USER" -s haring-zai -w)
-ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+# The endpoint and token, unless the caller has already chosen them. An override
+# is what lets workers run through a local gateway when the plan quota is spent.
+ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
+ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
 export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
 
 schema="$HARING/schemas/$kind.json"

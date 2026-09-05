@@ -1,16 +1,28 @@
 # Haring
 
 <br/>
-<img src="Haring.png" width="200"/>
+<p align="center">
+    <img src="Haring.png" width="200" style="display:flex;justify-self:center;"/>
+</p>
 <br/>
 <br/>
 
 A wrapper for using sub-agents, so you do not repeat the same setup every time.
 
-**Manager model:** any Anthropic model. Opus is recommended.
-**Worker model:** GLM-5.3-Flash by default. You can ask the manager to use a different one.
+**Manager:** any Anthropic model. `Opus` is recommended.<br/>
+**Worker:** `GLM-5.3-Flash` by default. You can ask the manager to use a different one.
 
-## Install
+## Why Haring
+
+Why note ?
+
+But seriously, using Opus for everything consumes your subscription quickly.<br/>
+Haring gives you more miles per gas.
+
+Manager: Plans, architects, orchestrates, and reviews<br/>
+Worker: Collects details, does the coding
+
+## Install Haring
 
 **1. Add your Z.ai API key.** On macOS it goes in the Keychain:
 
@@ -25,7 +37,7 @@ shell history.
 
     cd haring-harness && ./install.sh
 
-## Use
+## Use Haring
 
 **1. Launch Claude the way you normally do.**
 
@@ -37,7 +49,7 @@ Example:
 
     /haring The app is crashing, find the reason and fix it.
 
-## What haring writes into your project
+## What Haring writes into your project
 
     .haring/runs/{stamp}-{kind}-{pid}/
       prompt.md      what the worker was asked, the only copy of the question
@@ -50,6 +62,12 @@ Example:
 The first time haring writes a run into a repository it adds `.haring/` to that
 repository's `.gitignore`. Nothing in there needs maintaining. It is a record, not a
 document.
+
+<br/>
+<p align="center">
+    <img src="Haring_d.png" width="200" style="display:flex;justify-self:center;"/>
+</p>
+<br/>
 
 ## Development and contributing
 
@@ -75,3 +93,7 @@ Everything is linked, not copied, so editing a file here takes effect at once. E
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh
 Claude Code session. Run `./install.sh` again only when you add a script to `bin/` or move
 this directory.
+
+<p align="center">
+    <img src="Haring_fish.png" width="200" style="display:flex;justify-self:center;"/>
+</p>
