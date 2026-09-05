@@ -457,9 +457,17 @@ implements, and it keeps everything it learned while looking. A continued run fo
 its own run folder and its own session, so the run it came from stays whole and can be
 continued again.
 
-Every kind runs in the project itself. Read-only kinds have no tool that can change
-anything. `implement` and `correct` work on a branch. Write down which branch the project
-is on, because that is where the work goes back to, then create yours:
+Every kind runs in the project itself. `explore`, `check` and `errand` get `Read`,
+`Glob`, `Grep`, and a shell as well — reading a codebase needs one — so a read-only kind
+can change a file if it ignores its rules, and only `errand` is kept to reading by its
+tool list alone. What the harness holds every kind to, including the shell, is the deny
+list `haring-worker` writes into each run folder as `settings.json` and passes with
+`--settings`: the client's private paths outside the project — `~/.claude/**`,
+`~/.ssh/**`, `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`.
+A read of any of them is refused, by the Read tool and by a shell command alike, and the
+run's own work is untouched by it. `implement` and `correct` work on a branch. Write down
+which branch the project is on, because that is where the work goes back to, then create
+yours:
 
 ```
 git -C <project> rev-parse --abbrev-ref HEAD
@@ -473,7 +481,8 @@ configuration, its running services — or it cannot build or test what it write
 The first time haring writes a run into a repository it adds `.haring/` to that project's
 `.gitignore` and says so. Run records are haring's, not the project's.
 
-A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`, and for the
+A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
+`settings.json` with the denied paths that run was held to, and for the
 kinds that change things a `PROGRESS.md` the worker appends to as it goes. A killed worker
 still leaves the question, the progress, and a transcript you can read. One stopped with
 `haring-kill` also leaves `stopped`, which is what tells it apart from a crash.

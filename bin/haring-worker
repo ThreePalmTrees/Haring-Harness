@@ -135,8 +135,8 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
 # The prompt the worker actually receives: the task, and — only for kinds that change
 # things — where to write progress.
-# A read-only worker has no tool that can write one. This is the only copy of the
-# question, so it is the one file in the run folder that cannot be regenerated.
+# A read-only worker is not asked for one. This is the only copy of the question, so it
+# is the one file in the run folder that cannot be regenerated.
 {
   cat "$promptfile"
   case "$kind" in
@@ -146,6 +146,27 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
       printf 'before you read anything: %s\n' "$run/PROGRESS.md" ;;
   esac
 } > "$run/prompt.md"
+
+# The private paths every worker is refused, of every kind, whatever it was asked: Claude
+# Code's own transcripts and memory, private keys, cloud credentials, shell history.
+# Written into the run folder and handed to Claude Code with --settings, so the refusal
+# comes from the harness and not from the worker's own good behaviour. A deny rule names a
+# path, and Claude Code checks that path against shell commands as well as against the Read
+# tool — which is why a worker holding a shell is held by this list too.
+cat > "$run/settings.json" <<'DENIED'
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.claude/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/.zsh_history)",
+      "Read(~/.bash_history)"
+    ]
+  }
+}
+DENIED
 
 # The endpoint and token, unless the caller has already chosen them. An override
 # is what lets workers run through a local gateway when the plan quota is spent.
@@ -185,6 +206,7 @@ claude -p "\$(cat "$run/prompt.md")" \
   --allowedTools "$tools" \
   --output-format json \
   --json-schema "\$(cat "$schema")" \
+  --settings "$run/settings.json" \
   $extra $resume_flag \
   2>&1 1> "$run/report.json" \
   | grep -v "unrecognized_model" \
