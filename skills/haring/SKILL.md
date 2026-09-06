@@ -437,7 +437,9 @@ stdout gives you the report alone.
 
 Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
 with a usage line on standard error; called correctly but unable to finish, exit 1.
-`haring-wait` adds one of its own: 3 when the worker vanished without a report. Standard
+Two add a 3 of their own: `haring-wait` when the worker vanished without a report, and
+`haring-stats` when the worker is still alive and has not reported yet, which is an answer
+rather than a failure. Standard
 output carries only what a caller reads, so `haring-worker` prints the run folder and
 nothing else.
 
