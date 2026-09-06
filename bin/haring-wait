@@ -152,7 +152,11 @@ def steps(path, pos, seen, state):
                         d.get("timestamp"))
                     state["retry_next"] = state["retries"] * 2
                 continue
-            content = (d.get("message") or {}).get("content")
+            # A system event of subtype permission_denied carries a plain string here,
+            # not an object, so every run where the deny list fires reaches this line with
+            # a str. Anything without a content list has no tool call in it either way.
+            message = d.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
             if not isinstance(content, list):
                 continue
             for b in content:

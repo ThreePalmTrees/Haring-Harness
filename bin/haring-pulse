@@ -111,7 +111,8 @@ def last_step(run):
                 if d.get("type") == "system" and d.get("subtype") == "api_retry":
                     retries += 1
                     continue
-                content = (d.get("message") or {}).get("content")
+                message = d.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
                 if not isinstance(content, list):
                     continue
                 for b in content:
