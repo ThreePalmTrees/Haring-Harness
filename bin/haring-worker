@@ -126,6 +126,40 @@ esac
 # The project is the git top level of the workdir when there is one, else the workdir.
 project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
 
+# One worker at a time in a project. The manager's own rules say this and broke it anyway,
+# so the limit lives here, next to the nesting guard above, where a rule becomes something
+# that answers back. Live is decided exactly as haring-pulse decides it: a run whose meta
+# names a pid that is still alive and whose report.json is still empty. Sitting here the
+# test reads only runs already on disk, and refuses before the .gitignore below or the run
+# folder below that is written, so a refused start leaves nothing behind.
+#
+# HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, for the rare
+# case where two workers in one project is genuinely right. It is unset rather than passed
+# on, so a worker started under it carries no lift of its own.
+live=""
+for meta in "$project"/.haring/runs/*/meta; do
+  [ -f "$meta" ] || continue
+  run_dir=${meta%/meta}
+  pid=$(sed -n 's/^pid=//p' "$meta")
+  case "$pid" in ''|*[!0-9]*) continue ;; esac
+  kill -0 "$pid" 2>/dev/null || continue
+  [ -s "$run_dir/report.json" ] && continue
+  live="$live
+$run_dir"
+done
+if [ -n "$live" ] && [ -z "$HARING_ALLOW_PARALLEL" ]; then
+  echo "haring-worker: refused — another worker is already going in this project, and" >&2
+  echo "  only one runs at a time." >&2
+  printf '%s\n' "$live" | sed '/^$/d' | while IFS= read -r other; do
+    echo "  $other" >&2
+    echo "    stop it with: haring-kill $other" >&2
+  done
+  echo "  When two at once is genuinely right, start this one with" >&2
+  echo "  HARING_ALLOW_PARALLEL set, as the nesting lift is set." >&2
+  exit 2
+fi
+unset HARING_ALLOW_PARALLEL
+
 # Run records are haring's, not the project's, so keep them out of its history. Done once,
 # the first time haring writes into a repository, and said out loud.
 if [ ! -d "$project/.haring" ] && git -C "$project" rev-parse --git-dir >/dev/null 2>&1; then
@@ -153,17 +187,22 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 } > "$run/meta"
 [ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "resumed_session='$resume_id'" >> "$run/meta"; }
 
-# The prompt the worker actually receives: the task, and — only for kinds that change
-# things — where to write progress.
-# A read-only worker is not asked for one. This is the only copy of the question, so it
-# is the one file in the run folder that cannot be regenerated.
+# The prompt the worker actually receives: the task, and — for every kind but errand —
+# where to write progress and what the first line of it must be. The method line is what
+# the manager reads inside the first minute, so an explore that means to spend eleven
+# minutes driving a browser over a two-file question is visible while stopping is cheap.
+# An errand is asked for none of it because it holds neither Write nor a shell, and so
+# could not keep the file at all. This is the only copy of the question, so it is the one
+# file in the run folder that cannot be regenerated.
 {
   cat "$promptfile"
   case "$kind" in
-    implement|correct)
+    implement|correct|explore|check)
       : > "$run/PROGRESS.md"
-      printf '\n\n---\nWrite your progress to this exact path, one line at a time, starting\n'
-      printf 'before you read anything: %s\n' "$run/PROGRESS.md" ;;
+      printf '\n\n---\nWrite your progress to this exact path, one line at a time: %s\n' "$run/PROGRESS.md"
+      printf 'Your first line is the method — how you intend to answer this, in one\n'
+      printf 'sentence — written before you do anything else, so the manager can stop\n'
+      printf 'you while stopping is still cheap.\n' ;;
   esac
 } > "$run/prompt.md"
 
