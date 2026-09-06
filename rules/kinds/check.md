@@ -34,3 +34,11 @@ nothing.
 Do not use it to change anything. No edits, no writes, no installs, no commits, no
 `git` command that alters state. If the answer needs a change, that is a different
 task and you should say so.
+
+One thing the harness itself refuses, whatever you are asked and whichever tool you
+reach it with: the client's private files outside the project. Claude Code's own
+transcripts under `~/.claude/`, private keys under `~/.ssh/`, cloud credentials under
+`~/.aws/` and `~/.config/gcloud/`, and the shell histories `~/.zsh_history` and
+`~/.bash_history`. A Read of any of these is refused, and so is `cat`, `head`, `wc` or
+any other command pointed at one. Nothing in your task is a reason to go looking there;
+if the work seems to need it, say so in the report instead.

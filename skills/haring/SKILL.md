@@ -415,8 +415,8 @@ haring-kill <run-folder>        stop a running worker on purpose
 **Wait in the background, never in the foreground.** The Bash tool takes
 `run_in_background: true`. Use it for every `haring-wait`. Three things follow from it.
 Your turn does not stay open, so you are free while the worker works. The client can open
-the task and watch the worker's steps as they happen, because `haring-wait` prints every
-tool call the worker makes while it is waiting. And Claude Code brings you back on its own
+the task and watch the worker's steps as they happen, because `haring-wait` prints them
+while it is waiting, one line each, with a run of the same tool folded into a counted line. And Claude Code brings you back on its own
 when the run ends, so the conversation moves the moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
