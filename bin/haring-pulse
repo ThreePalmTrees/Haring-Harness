@@ -36,9 +36,14 @@ can sit unchanged for the rest of the run, so repeating it would make a busy wor
 like a stuck one. A run with nothing new prints nothing — silence is correct output
 here, not a fault, and it covers a worker that has written no line and made no call yet.
 
-Exits 0 once every live worker it found has finished, or after about 60 seconds if it
-never saw one to begin with, so a caller that starts it before anything is running does
-not wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
+The workers it takes on are those live at the pass that first saw one. A worker started
+after that is the next task's, and reporting on it would keep this pulse alive into a job
+it was not started for. It looks for that between passes rather than only when one is
+due, so it ends within a second or two of its last worker instead of at the next report.
+
+Exits 0 once every worker it took on has finished, or after about 60 seconds if it never
+saw one to begin with, so a caller that starts it before anything is running does not
+wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
 There is no way to be called rightly and still fail, so exit 1 is not used.
 """
@@ -261,27 +266,45 @@ ever_live = False
 # what makes the plan arrive after the expensive route it names has already been paid
 # for. The file may shorten the opening look but never lengthen it.
 reported = False
+# The workers this pulse took on: those live at the pass that first saw one. A worker
+# started after that is the next task's, and waiting on it would keep this pulse alive
+# into a job it was not started for. A live sighting implies taken is not empty, so the
+# exit check below never fires before the first one is seen.
+taken = set()
 while True:
     runs = live_runs()
     if runs:
         ever_live = True
+        if not taken:
+            taken.update(run for run, _, _ in runs)
         for run, meta, meta_path in runs:
+            if run not in taken:
+                continue
             line = report_line(run, meta, meta_path)
             if line:
                 print(line, flush=True)
                 reported = True
-    elif ever_live:
-        sys.exit(0)
+    if ever_live:
+        if not taken & {run for run, _, _ in runs}:
+            sys.exit(0)
     elif time.time() - start >= FIRST_LIVE_DEADLINE:
         sys.exit(0)
 
     take_cadence()
 
-    if ever_live:
-        time.sleep(pace if reported else min(first, pace))
-    else:
+    if not ever_live:
         # Look again every second until the first worker appears, rather than sleeping a
         # whole interval. A caller may start this a moment before it starts a worker, and
         # on the default five-minute interval that worker would otherwise never be seen:
         # the deadline above would end the run first.
         time.sleep(1)
+        continue
+    gap = pace if reported else min(first, pace)
+    # The gap decides when the next line is due, not when this looks: a worker that ends
+    # mid-gap ends the pulse within a tick, since otherwise the last worker of a job
+    # leaves this running against an empty project for up to a whole interval.
+    deadline = time.time() + gap
+    while time.time() < deadline:
+        time.sleep(1)
+        if not taken & {run for run, _, _ in live_runs()}:
+            sys.exit(0)
