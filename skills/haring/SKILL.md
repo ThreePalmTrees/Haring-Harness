@@ -466,8 +466,11 @@ tool list alone. What the harness holds every kind to, including the shell, is t
 list `haring-worker` writes into each run folder as `settings.json` and passes with
 `--settings`: the client's private paths outside the project — `~/.claude/**`,
 `~/.ssh/**`, `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`.
-A read of any of them is refused, by the Read tool and by a shell command alike, and the
-run's own work is untouched by it. When the project is not haring's own repository, the
+A read of any of them is refused by the Read tool, and by a shell command that names the
+path. Measured: the check reads the path out of the command, so `wc -l ~/.zsh_history` is
+refused and `wc -l "$(echo $HOME/.zsh_history)"` is not. It stops the worker that wanders
+there, which is what happens; it does not stop one that sets out to get round it, and no
+rule inside the process could. The run's own work is untouched by it. When the project is not haring's own repository, the
 same list also holds haring's source — the repository haring is installed from, and the
 `haring-*` links it put in `~/.local/bin` — against a read and against a command that
 would change it, so a worker sent somewhere else cannot edit the tool that sent it there.
