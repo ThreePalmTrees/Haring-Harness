@@ -77,6 +77,7 @@ document.
     bin/            haring-worker    start a worker, or continue one
                     haring-wait      follow a run, then print its report
                     haring-pulse     one line per live worker, at a fixed interval
+                    haring-kill      stop a running worker on purpose
                     haring-report    print a report, with the empty parts removed
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost
