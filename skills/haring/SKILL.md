@@ -403,9 +403,15 @@ outlives whatever started it: if your wait is cut short, or you stop it, or you 
 something else, the worker keeps working and its report still lands. Come back with
 `haring-wait` or `haring-stats` and nothing is lost.
 
+One worker runs in a project at a time. A second `haring-worker` in the same project is
+refused before anything is created, and names the run still going and the `haring-kill`
+line that stops it. That is the rule above made to answer back.
+
 ```
 haring-wait <run-folder>        follow the run, then print its report
-haring-pulse [dir] [--every S]  one line per live worker, at a fixed interval
+haring-pulse [dir] [--first S] [--every S]
+                                one line per live worker, opening fast then
+                                settling at a pace you can retune mid-run
 haring-report <run-folder>      print the report, compacted
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
@@ -415,9 +421,13 @@ haring-kill <run-folder>        stop a running worker on purpose
 **Wait in the background, never in the foreground.** The Bash tool takes
 `run_in_background: true`. Use it for every `haring-wait`. Three things follow from it.
 Your turn does not stay open, so you are free while the worker works. The client can open
-the task and watch the worker's steps as they happen, because `haring-wait` prints them
-while it is waiting, one line each, with a run of the same tool folded into a counted line. And Claude Code brings you back on its own
-when the run ends, so the conversation moves the moment the work is done.
+the task and follow the worker as it happens, because `haring-wait` prints its steps, its
+thinking and its speech while it waits: one line per tool call, with a run of the same
+tool folded into a counted line, and one line per line of a thought or of speech,
+labelled `thinking` and `says` and cropped to the width of a step line. When no step
+arrives for a minute it says so on a line labelled `waiting`, and tells a worker that is
+thinking from one that has stalled. And Claude Code brings you back on its own when the
+run ends, so the conversation moves the moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
 message that reads as finished with a hidden shell behind it. For the same reason, do not
@@ -427,10 +437,18 @@ saying it makes a running job look like a finished one.
 **Start `haring-pulse` under the Monitor tool right after you launch the first worker.**
 That way the client sees progress without opening anything. Each line it emits wakes you.
 Turn it into one short sentence for the client that names what the worker is doing. Do
-not paste the raw line. Every wake-up costs you a turn, which is why the interval is five
-minutes and not thirty seconds. It reports every live worker in the project, so one pulse
-covers however many workers are running. A shell command you are running yourself is not
-a worker and never appears. It stops on its own when the last worker finishes.
+not paste the raw line. The first report on a worker comes `--first` seconds after the
+pulse finds it, 30 by default, which is soon enough to act on the plan it wrote as the
+first line of its progress file while acting is still cheap. After that it reports every
+`--every` seconds, 300 by default. The two flags do not go past those numbers: `--first`
+is refused at 60 or more, `--every` above 300. To change the pace while a run is going,
+write one number of seconds into `.haring/cadence` in the project; the next pass uses it,
+under the same 300-second ceiling, and a line starting `cadence` on the pulse's own
+output says when a number was taken and when one was refused. Every wake-up costs you a
+turn, which is why the settled pace is minutes and the opening one is seconds. It reports
+every live worker in the project, so one pulse covers however many workers are running.
+A shell command you are running yourself is not a worker and never appears. It stops on
+its own when the last worker finishes.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
@@ -492,8 +510,11 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 
 A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
 `settings.json` with the denied paths that run was held to, `events.jsonl` with the
-run's events written by haring itself as they happen, and for the
-kinds that change things a `PROGRESS.md` the worker appends to as it goes. A killed worker
+run's events written by haring itself as they happen, and for every kind but `errand` a
+`PROGRESS.md` the worker appends to as it goes. The prompt names that file and says its
+first line must be the method the worker means to use, so the plan is on disk before
+anything else happens; an `errand` gets neither the file nor the instruction, because it
+has no way to write one. A killed worker
 still leaves the question, the progress, and the events it got to. One stopped with
 `haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
 

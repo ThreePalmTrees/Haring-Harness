@@ -57,7 +57,7 @@ Example:
       events.jsonl   the run's events, written by haring as they happen
       stats.txt      model, tokens, cache reads, turns, seconds
       meta           what the run was, so it can be continued
-      PROGRESS.md    only for kinds that change files, written as they go
+      PROGRESS.md    written as they go, by every kind but errand
       stderr.txt     only when something went wrong
 
 The first time haring writes a run into a repository it adds `.haring/` to that
@@ -76,7 +76,7 @@ document.
 
     bin/            haring-worker    start a worker, or continue one
                     haring-wait      follow a run, then print its report
-                    haring-pulse     one line per live worker, at a fixed interval
+                    haring-pulse     one line per live worker, fast then at a pace you can retune
                     haring-kill      stop a running worker on purpose
                     haring-report    print a report, with the empty parts removed
                     haring-stats     one line of numbers from a run
