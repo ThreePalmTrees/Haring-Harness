@@ -54,6 +54,7 @@ Example:
     .haring/runs/{stamp}-{kind}-{pid}/
       prompt.md      what the worker was asked, the only copy of the question
       report.json    what it returned
+      events.jsonl   the run's events, written by haring as they happen
       stats.txt      model, tokens, cache reads, turns, seconds
       meta           what the run was, so it can be continued
       PROGRESS.md    only for kinds that change files, written as they go

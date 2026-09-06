@@ -482,10 +482,12 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 `.gitignore` and says so. Run records are haring's, not the project's.
 
 A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
-`settings.json` with the denied paths that run was held to, and for the
+`settings.json` with the denied paths that run was held to, `events.jsonl` with the
+run's events written by haring itself as they happen, and for the
 kinds that change things a `PROGRESS.md` the worker appends to as it goes. A killed worker
-still leaves the question, the progress, and a transcript you can read. One stopped with
-`haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
+still leaves the question, the progress, the events it got to, and a transcript you can
+read. One stopped with `haring-kill` also leaves `stopped`, which is what tells it apart
+from a crash.
 
 A worker cannot start a worker of its own, or stop a run: `haring-worker` and
 `haring-kill` refuse when a worker calls them. It should not need to, and almost never
