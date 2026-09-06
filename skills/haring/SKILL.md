@@ -100,6 +100,18 @@ single real number first.
 
 Get the number, then let it aim the reading.
 
+### Read before you build
+
+**When:** before the plan, and before any delegation that builds on it.
+**Why:** a developer reads for most of the day before writing a line, and reading is the
+cheapest thing a worker can do. Small reads are what make a plan name real things, and
+they cost minutes where a plan written without them costs the work built on it. One job
+went to research workers at a question the client had already narrowed to one element;
+the reads that would have answered it were small, and nobody had run them first.
+
+Send the small reads, then write the plan. "Give me six hours to chop down a tree and I
+will spend the first four sharpening the axe."
+
 ### Keep no notes inside the client's project
 
 **When:** always.
@@ -145,6 +157,16 @@ expecting questions.
 ---
 
 ## Writing the task
+
+### Open every task with one sentence that says what it is
+
+**When:** the first line of every prompt.
+**Why:** a worker that has to work out what it is holding spends its first turns guessing,
+and a worker pointed at the wrong project finds out late.
+
+One line: which project, and what this prompt is for. "The studio site. This task finds
+why the deploy stalls." It is information, not a request: never ask the worker to confirm
+it, and never ask permission to carry on.
 
 ### Say the goal and what is never acceptable. Do not say the steps
 
@@ -253,8 +275,9 @@ for having had it. Several at once spends more to learn less, and you cannot rea
 reports as carefully as you read one.
 
 Sequential is right about ninety-five times in a hundred. Start with one small request,
-let the answer change what you ask next, and keep going. Only when the remaining work is
-genuinely unrelated does parallel make sense, and then space the launches by a second.
+let the answer change what you ask next, and keep going. One worker runs in a project at
+a time: `haring-worker` refuses a second while one is live, naming the run that is going
+and the `haring-kill` line that stops it.
 
 ### Continue a worker rather than starting a new one
 
@@ -731,6 +754,22 @@ would decide it, and recommend one anyway.
 The only thing that goes over on its own is a decision that was never yours: what the client
 wants, and permission for something hard to undo.
 
+### Do not interrupt the client while a run is going
+
+**When:** the whole time a worker is running.
+**Why:** the client's picture of this arrangement is a studio: they hand over a job and go
+back to their own work. A studio that rings every two minutes to ask what a worker should
+do has moved its job onto the client, and the client is paying to have the job off their
+desk. Deciding is the work. Decide, and say what you decided when the job comes back.
+
+### Finish what does not depend on the open question, then hand the question over
+
+**When:** something genuinely cannot be settled without the client.
+**Why:** a silent guess hides a decision that was never yours, and stopping to ask throws
+away everything downstream of the answer — and most of the work does not sit downstream of
+it. Finish everything that does not depend on it, and put the question at the end of the
+job: what is open, the options, and where each one leads.
+
 ### Show the numbers
 
 **When:** every time you report on work that used workers.
@@ -768,10 +807,37 @@ is still sitting in a document, the note saying it is wrong has to sit beside it
 
 **When:** always, to the client and to your workers.
 **Why:** plain text is read more reliably by a program, and by a person reading in a second
-language. A table costs many tokens to say what a list says in few.
+language. A table costs many tokens to say what a list says in few; use one only when the
+client asks for it.
 
-Short sentences. Common words. No idioms and no figures of speech. Put the most important
-thing first. Use a table only when the client asks for one.
+For every word, ask whether a more common word means the same thing here, and use that
+one: "utilize" is "use", "facilitate" is "help", "due to the fact that" is "because". A
+word with no plain replacement — "mutex", "idempotent" — stays, and is explained the first
+time it appears. If the meaning does not follow from the words, it is an idiom: "out of our
+hands" is "we cannot do anything about it"; "boils down to" is "is".
+
+Use the verb, not the noun built from it: not "do a check of the config", "check the
+config". Say who does what: not "the config is read at startup", "the server reads the
+config at startup".
+
+Name the thing instead of reusing a label you invented: not "the substitution problem
+applies here too", "two functions write to the same file". Never let "this" or "it" stand
+for a whole paragraph: not "this is why it fails", "the missing timeout is why the request
+fails".
+
+Cut a sentence that carries nothing. "Let me check the ground first and get a worker out"
+names no project, no file and no question. "It corrects me on several points" is true of
+nearly every report, so it says nothing. Cut the openings that only lower the volume:
+"Let me look into it", "It's worth noting that".
+
+Cut the words that pretend something was measured: "significantly faster" carries the
+number or says "faster"; "quite a few" and "somewhat" go. Keep the words that report real
+doubt — "likely", "I have not checked" — and never turn them into certainty to sound clean.
+Being wrong is worse than being long.
+
+Put the answer in the first sentence, then the reason. One idea per sentence. Use the same
+word for the same thing every time: a "field" is never also a "box". Before you send it,
+read it back and replace every word you would have to look up.
 
 ### Tell the client when haring itself is the problem
 
