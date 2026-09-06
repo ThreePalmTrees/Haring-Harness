@@ -5,7 +5,9 @@
 
 While the worker is running, its steps are printed to standard error as they happen:
 one line per tool call, with a run of the same tool folded onto one line that counts
-them. Every line names the run it belongs to, so the last ten lines are self-labelling
+them. Its thinking and its speech reach the same stream as they happen, one line per
+line of the block, named in the column the tool name sits in. Every line names the
+run it belongs to, so the last ten lines are self-labelling
 wherever they are read, and a worker that produces nothing for a minute says so — one
 that is waiting on the endpoint says that instead. The report goes to standard output
 when it lands, so a caller redirecting stdout gets the report and nothing else.
@@ -70,8 +72,9 @@ stopped = os.path.join(run, "stopped")
 
 # The worker's own event stream, written to the run folder as it happens. It is the one
 # record haring owns: Claude Code's transcript lives at a path nothing promises, and when
-# that moved, everything watching a run went blind while the worker carried on. The steps
-# read out of it here are its tool_use blocks; nothing the worker thought or read is shown.
+# that moved, everything watching a run went blind while the worker carried on. What is
+# read out of it here is the worker's tool calls, thinking and speech. Tool results stay
+# hidden: a result can be a whole file, and the panel that shows these lines is ten rows.
 events = os.path.join(run, "events.jsonl")
 
 # Every line carries the run's identity, because the panel these lines are read in keeps
@@ -126,10 +129,10 @@ def say(tool, arg, ts):
 
 
 def steps(path, pos, seen, state):
-    """Print every step added since the last read. Returns the new position.
+    """Print every step, thought and line of speech added since the last read.
 
     Each line carries the run, how long the worker had been running when it made the
-    call, the tool, and the tool's main argument. The gap between two lines is the
+    call, the tool, and the tool's main argument. The gap between two steps is the
     number worth reading: a step that sits for minutes is how a stuck worker shows
     itself, and when nothing at all arrives the loop below says so on its own.
     """
@@ -160,7 +163,22 @@ def steps(path, pos, seen, state):
             if not isinstance(content, list):
                 continue
             for b in content:
-                if not isinstance(b, dict) or b.get("type") != "tool_use":
+                if not isinstance(b, dict):
+                    continue
+                # A thought or a line of speech prints one row per line of the block, in
+                # the layout a step uses and with its kind where the tool name sits, so
+                # the three are told apart at a glance and a long thought is ten short
+                # rows rather than one row the panel wraps. These feed only seen_at, not
+                # when: a worker can think for minutes without a step and is not stalled.
+                kind = b.get("type")
+                if kind in ("thinking", "text"):
+                    ts = d.get("timestamp")
+                    for l in (b.get(kind) or "").splitlines():
+                        l = " ".join(l.split())
+                        if l:
+                            say("thinking" if kind == "thinking" else "says", l, ts)
+                    continue
+                if kind != "tool_use":
                     continue
                 if b.get("id") in seen:
                     continue
