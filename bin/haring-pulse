@@ -12,10 +12,13 @@ progress without opening a transcript. Each pass prints one line per live worker
 
     <kind> <run-basename> <elapsed> <detail>
 
-detail is the worker's own last line of PROGRESS.md when there is one, else its most
-recent tool call, else, when the endpoint has been refusing it since that call, the
-retries it has waited through, else the word "starting". Prints nothing when there is
-nothing to say — silence is correct output here, not a fault.
+detail is the worker's own last line of PROGRESS.md when that line is new since this
+pulse last spoke about the run, else its most recent tool call, else, when the endpoint
+has been refusing it since that call, the retries it has waited through. A detail shown
+on an earlier pass is not shown again: the progress line is written once, as a plan, and
+can sit unchanged for the rest of the run, so repeating it would make a busy worker read
+like a stuck one. A run with nothing new prints nothing — silence is correct output
+here, not a fault, and it covers a worker that has written no line and made no call yet.
 
 Exits 0 once every live worker it found has finished, or after about 60 seconds if it
 never saw one to begin with, so a caller that starts it before anything is running does
@@ -154,9 +157,24 @@ def live_runs():
     return found
 
 
+# What each pass said, by run folder: the progress line last seen and the detail last
+# printed. Only a change against this is worth a line — the progress file holds the plan
+# the worker wrote when it started and is often never appended to again, so without it a
+# pulse says the same sentence every five minutes while the worker moves on.
+shown = {}
+
+
 def report_line(run, meta, meta_path):
     kind = meta.get("kind", "?")
-    detail = last_progress_line(run) or last_step(run) or "starting"
+    prev = shown.get(run, {})
+    progress = last_progress_line(run)
+    if progress and progress != prev.get("progress"):
+        detail = progress
+    else:
+        detail = last_step(run)
+    if not detail or detail == prev.get("detail"):
+        return None
+    shown[run] = {"progress": progress, "detail": detail}
     prefix = f"{kind} {os.path.basename(run)} {elapsed(os.path.getmtime(meta_path))} "
     # The fields before the detail say which run this is and are not negotiable; the
     # detail is the part that can run long, so it is the part that gives way.
@@ -171,7 +189,9 @@ while True:
     if runs:
         ever_live = True
         for run, meta, meta_path in runs:
-            print(report_line(run, meta, meta_path), flush=True)
+            line = report_line(run, meta, meta_path)
+            if line:
+                print(line, flush=True)
     elif ever_live:
         sys.exit(0)
     elif time.time() - start >= FIRST_LIVE_DEADLINE:
