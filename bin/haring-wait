@@ -223,7 +223,10 @@ while not landed():
         if state["last"] == "retry":
             say("waiting", f"on the endpoint, {state['retries']} retries so far", None)
         elif now - state["seen_at"] < IDLE_AFTER / 2:
-            say("thinking", f"no step for {fmt_elapsed(quiet)}, tokens still arriving", None)
+            # Not the word used for a thinking block: that label carries the worker's own
+            # words, and this line carries none. A reader must be able to tell a thought
+            # from a report that there is no thought yet.
+            say("waiting", f"no step for {fmt_elapsed(quiet)}, thinking", None)
         else:
             say("waiting", f"alive, but nothing new for {fmt_elapsed(quiet)}", None)
     if not alive():
