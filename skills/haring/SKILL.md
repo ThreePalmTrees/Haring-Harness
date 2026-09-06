@@ -485,9 +485,8 @@ A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
 `settings.json` with the denied paths that run was held to, `events.jsonl` with the
 run's events written by haring itself as they happen, and for the
 kinds that change things a `PROGRESS.md` the worker appends to as it goes. A killed worker
-still leaves the question, the progress, the events it got to, and a transcript you can
-read. One stopped with `haring-kill` also leaves `stopped`, which is what tells it apart
-from a crash.
+still leaves the question, the progress, and the events it got to. One stopped with
+`haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
 
 A worker cannot start a worker of its own, or stop a run: `haring-worker` and
 `haring-kill` refuse when a worker calls them. It should not need to, and almost never
@@ -495,18 +494,20 @@ does — a worker that stops at that refusal has done the right thing.
 
 ### When one is taking too long
 
-Read `PROGRESS.md` first, then the session transcript under
-`~/.claude/projects/<encoded-path>/`, which is written entry by entry as it happens.
+Read `PROGRESS.md` first, then the run's own `events.jsonl`, which is written entry by
+entry as it happens. `haring-wait` reads the same stream, and a worker waiting on the
+endpoint shows up there as `api_retry` events — a worker that looks stuck may only be
+waiting for the API to answer.
 
 - The same tool call again and again — stuck in a loop. Stop it with `haring-kill`,
   restate the task in a fresh run, and say what it looped on.
 - Reads of files unrelated to the task — lost. The task was under-specified or too wide.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it
   next time.
-- Few calls, transcript stops mid-turn, process alive — a long thinking block. Wait. Next
-  time hand it the design instead of making it derive one.
-- Process gone, transcript ends cleanly — finished or crashed. Read the report. No report
-  plus changed files is a failure.
+- Few calls, no new events, process alive — a long thinking block, or an `api_retry`
+  burst. Wait. Next time hand it the design instead of making it derive one.
+- Process gone, no report — finished or crashed. Read the report. No report plus changed
+  files is a failure.
 
 ---
 
@@ -593,7 +594,7 @@ The four answers:
 **Why:** the work survives on disk and the account of it does not, so it looks finished.
 It is the one state that reads as success while telling you nothing.
 
-Read the transcript and the progress file before you decide anything about it. A worker
+Read the run's events and the progress file before you decide anything about it. A worker
 that finishes on its own writes a report, so a missing one means something stopped it from
 outside. Find out what, and say so, rather than assuming the work was wrong.
 

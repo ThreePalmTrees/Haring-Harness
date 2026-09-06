@@ -13,8 +13,9 @@ progress without opening a transcript. Each pass prints one line per live worker
     <kind> <run-basename> <elapsed> <detail>
 
 detail is the worker's own last line of PROGRESS.md when there is one, else its most
-recent tool call, else the word "starting". Prints nothing when there is nothing to
-say — silence is correct output here, not a fault.
+recent tool call, else, when the endpoint has been refusing it since that call, the
+retries it has waited through, else the word "starting". Prints nothing when there is
+nothing to say — silence is correct output here, not a fault.
 
 Exits 0 once every live worker it found has finished, or after about 60 seconds if it
 never saw one to begin with, so a caller that starts it before anything is running does
@@ -74,16 +75,6 @@ def elapsed(since):
     return f"{s // 60}m{s % 60:02d}s"
 
 
-# Claude writes each transcript under the session id, which the run's meta already
-# names, so the file is found by searching for that one name rather than by guessing
-# how the working directory was encoded into a folder name.
-def transcript(sid):
-    if not sid:
-        return None
-    hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
-    return hits[0] if hits else None
-
-
 def last_progress_line(run):
     path = os.path.join(run, "PROGRESS.md")
     if not os.path.exists(path) or os.path.getsize(path) == 0:
@@ -97,19 +88,25 @@ def last_progress_line(run):
 
 # The worker's own last word on what it is doing beats a guess made from its tool
 # calls, so this is only reached when PROGRESS.md has nothing yet. Scans the whole
-# transcript because what is wanted is the most recent call, not what changed since
-# some earlier position — there is no earlier position, each pass stands alone.
-def last_step(sid):
-    path = transcript(sid)
-    if not path:
+# event stream because what is wanted is the most recent call, not what changed since
+# some earlier position — there is no earlier position, each pass stands alone. The
+# stream is the run's own events.jsonl, the one record haring owns. Retries counted
+# after the last tool call mean the endpoint is refusing the worker, which is the
+# answer to "why has it not moved".
+def last_step(run):
+    path = os.path.join(run, "events.jsonl")
+    if not os.path.exists(path):
         return None
-    name, arg = None, ""
+    name, arg, retries = None, "", 0
     try:
         with open(path, errors="replace") as f:
             for line in f:
                 try:
                     d = json.loads(line)
                 except ValueError:
+                    continue
+                if d.get("type") == "system" and d.get("subtype") == "api_retry":
+                    retries += 1
                     continue
                 content = (d.get("message") or {}).get("content")
                 if not isinstance(content, list):
@@ -121,8 +118,11 @@ def last_step(sid):
                     a = i.get("command") or i.get("file_path") or i.get("pattern") or ""
                     name = b.get("name", "?")
                     arg = " ".join(str(a).split())[:92]
+                    retries = 0
     except OSError:
         return None
+    if retries:
+        return f"waiting on the endpoint ({retries} retries)"
     return f"{name} {arg}".strip() if name else None
 
 
@@ -156,7 +156,7 @@ def live_runs():
 
 def report_line(run, meta, meta_path):
     kind = meta.get("kind", "?")
-    detail = last_progress_line(run) or last_step(meta.get("session_id", "")) or "starting"
+    detail = last_progress_line(run) or last_step(run) or "starting"
     prefix = f"{kind} {os.path.basename(run)} {elapsed(os.path.getmtime(meta_path))} "
     # The fields before the detail say which run this is and are not negotiable; the
     # detail is the part that can run long, so it is the part that gives way.
