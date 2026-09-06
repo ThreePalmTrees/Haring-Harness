@@ -169,20 +169,53 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
 # The private paths every worker is refused, of every kind, whatever it was asked: Claude
 # Code's own transcripts and memory, private keys, cloud credentials, shell history.
-# Written into the run folder and handed to Claude Code with --settings, so the refusal
-# comes from the harness and not from the worker's own good behaviour. A deny rule names a
-# path, and Claude Code checks that path against shell commands as well as against the Read
-# tool — which is why a worker holding a shell is held by this list too.
-cat > "$run/settings.json" <<'DENIED'
-{
-  "permissions": {
-    "deny": [
-      "Read(~/.claude/**)",
+deny_entries='      "Read(~/.claude/**)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.config/gcloud/**)",
       "Read(~/.zsh_history)",
-      "Read(~/.bash_history)"
+      "Read(~/.bash_history)"'
+
+# A worker sent to a project other than haring's own repository is refused haring's source
+# as well: the repository holds every script, rule and schema haring is, and it is reachable
+# again through the links install.sh puts in ~/.local/bin. The skill link in ~/.claude/skills
+# needs no entry of its own: it is inside ~/.claude, which the first entry already names, and
+# the files it points at are inside the repository, which the repository entry names. Left
+# out when the worker was sent to haring, which has to be able to read and change itself.
+#
+# Why these four entries and not fewer or different ones, all measured rather than assumed:
+# a Read rule holds the Read tool and a shell command alike, and it holds them through a
+# symlink, so the repository entry alone already covers a command naming an installed link.
+# It does not hold a command that writes — that is what the Edit rule is for, since a Write
+# rule is ignored by the shell check and Edit is the rule the harness applies to a command
+# that creates, changes or removes a file. And only the ~ form is applied to shell commands
+# at all: the same rule written with an absolute path never fires there, which is why the
+# repository is spelled with ~ and why a repository outside $HOME gets the absolute form as
+# a best effort, holding the Read tool but not known to hold the shell.
+haring_real=$(CDPATH= cd -- "$HARING" && pwd -P)
+project_real=$(CDPATH= cd -- "$project" && pwd -P)
+if [ "$project_real" != "$haring_real" ]; then
+  case "$haring_real" in
+    "$HOME")   haring_home="~" ;;
+    "$HOME"/*) haring_home="~/${haring_real#"$HOME"/}" ;;
+    *)         haring_home="$haring_real" ;;
+  esac
+  deny_entries="$deny_entries$(printf ',\n      "Read(%s/**)"' "$haring_home")"
+  deny_entries="$deny_entries$(printf ',\n      "Edit(%s/**)"' "$haring_home")"
+  deny_entries="$deny_entries,
+      \"Read(~/.local/bin/haring-*)\",
+      \"Edit(~/.local/bin/haring-*)\""
+fi
+
+# Written into the run folder and handed to Claude Code with --settings, so the refusal
+# comes from the harness and not from the worker's own good behaviour. A deny rule names a
+# path, and Claude Code checks that path against shell commands as well as against the Read
+# tool — which is why a worker holding a shell is held by this list too.
+cat > "$run/settings.json" <<DENIED
+{
+  "permissions": {
+    "deny": [
+$deny_entries
     ]
   }
 }

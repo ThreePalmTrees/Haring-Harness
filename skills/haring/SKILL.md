@@ -467,7 +467,11 @@ list `haring-worker` writes into each run folder as `settings.json` and passes w
 `--settings`: the client's private paths outside the project — `~/.claude/**`,
 `~/.ssh/**`, `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`.
 A read of any of them is refused, by the Read tool and by a shell command alike, and the
-run's own work is untouched by it. `implement` and `correct` work on a branch. Write down
+run's own work is untouched by it. When the project is not haring's own repository, the
+same list also holds haring's source — the repository haring is installed from, and the
+`haring-*` links it put in `~/.local/bin` — against a read and against a command that
+would change it, so a worker sent somewhere else cannot edit the tool that sent it there.
+A worker sent to haring itself is held to the private paths alone. `implement` and `correct` work on a branch. Write down
 which branch the project is on, because that is where the work goes back to, then create
 yours:
 

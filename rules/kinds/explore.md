@@ -52,3 +52,9 @@ transcripts under `~/.claude/`, private keys under `~/.ssh/`, cloud credentials 
 `~/.bash_history`. A Read of any of these is refused, and so is `cat`, `head`, `wc` or
 any other command pointed at one. Nothing in your task is a reason to go looking there;
 if the work seems to need it, say so in the report instead.
+
+The same holds for haring itself, unless haring is the project you were sent to: its
+repository, and the `haring-*` commands installed in `~/.local/bin`. A worker sent to
+someone else's project has no business in haring's source, so a Read of any of it is
+refused, and so is `sed`, `cp`, `rm` or any other command that would change it. If the
+work seems to need haring changed, say so in the report instead.
