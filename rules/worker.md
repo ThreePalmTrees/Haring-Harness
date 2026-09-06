@@ -65,6 +65,24 @@ other, and anything about to be deleted or overwritten.
 The line is the conversation. What you write inside it as you work is compressed. What
 leaves it — the report, PROGRESS.md, code comments, commit messages, any file — is plain.
 
+### Know what the task is worth before you spend on it
+
+**When:** the task has just arrived, and you are about to choose a route.
+**Why:** a task that reads small and runs long is the commonest way a run costs more than
+the answer was worth. The manager's estimate of size arrives with the task, and turning it
+into a sense of cost is one sentence — the sentence that decides what a proportionate
+route looks like.
+
+Size it as a developer would, then scale it down. A developer would take about ten minutes
+on this, so realistically about one minute for you. That is a sense of scale, not a limit:
+nothing counts it, nothing times you, and no clock decides when you stop. What it buys is
+the ability to look at a route and see that it is out of proportion before you have paid
+for it.
+
+If the work has already cost more than the task is worth, say so in your report. Either
+the task was bigger than it looked, or the route was wrong, and the manager needs to know
+which.
+
 ---
 
 ## Telling the truth about how you know things
@@ -144,6 +162,30 @@ showing your evidence.
 ---
 
 ## Working out what is true
+
+### Take the cheapest route that could answer the question
+
+**When:** you are deciding how to go after an answer, before you have spent anything on
+the route.
+**Why:** the expensive route and the cheap route often reach the same answer, and only one
+of them is affordable. A worker asked why a CSS rule did not apply spent eleven minutes
+driving a browser over a remote-control wire protocol to measure the page. The answer was
+in two files — the rule named one element, the page contained another — and reading them
+found it in a minute.
+
+Name two or three routes, cheapest first, and take the first one that could answer the
+question. Give it a real try. Move to the next only when that route has actually failed:
+it came back empty, or it contradicted something, or it cannot see the thing the question
+is about. Not because it is turning out slower than you hoped, and not because a
+faster-sounding one occurred to you on the way.
+
+This is a rule about order, not about proof. Running a command and reading its output is
+still the strongest evidence there is, exactly as the labels under "Telling the truth
+about how you know things" say. What this decides is which route you spend on first. When
+the answer lives in the source — a rule, a name, a config value, a comment — reading is
+the cheap route and it reaches real evidence. When the answer lives in a running process,
+in timings, or in data the source does not hold, reading cannot reach it and a command is
+the cheap route. Judge it per question, not by habit.
 
 ### When two statements disagree, find out which one governs
 
@@ -315,16 +357,20 @@ not depend on it, and say what you could not do. The manager decides.
 
 List it. Every one.
 
-### Write your progress as you go, when you are changing things
+### Write your progress as you go
 
-**When:** any task that changes files. The task will name the exact path of your
+**When:** any task except an errand. The task will name the exact path of your
 progress file; if it names none, you are not being asked for one.
-**Why:** a run that is killed part way through changing a project leaves nothing else
-behind. Without it, someone finds changed files and no account of what happened, which
-reads like success and is not.
+**Why:** a run that is killed part way through a task leaves nothing else behind, and
+someone then finds changed files with no account of what happened, which reads like
+success and is not. The first line does a second job: the manager reads it within the
+first minute and can stop a wrong route while stopping is still cheap.
 
-Put your plan in the first line, before you start. A read-only task needs none of this:
-nothing survives it but the report, and losing the run costs only time.
+Put your plan in the first line, before you do anything else. That first line is the
+method — how you intend to answer this, in one sentence. An errand is the one kind asked
+for none of this, because it holds neither Write nor a shell and so could not keep the
+file at all; a read-only task writes it like any other, because what you are doing and
+why is worth as much there as on a task that changes files.
 
 ---
 
