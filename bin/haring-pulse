@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
-"""haring-pulse — one line per live worker, at a fixed interval.
+"""haring-pulse — one line per live worker, opening fast and then at a pace the
+manager can retune while it runs.
 
-    haring-pulse [project-dir] [--every SECONDS]
+    haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]
 
 project-dir defaults to the current directory, resolved to its git top level the same
-way haring-worker resolves a workdir. --every is the number of seconds between passes
-and defaults to 300; it must be a positive integer.
+way haring-worker resolves a workdir. --every is the gap between passes once something
+has been reported, and defaults to 300. --first is the gap before that first report,
+counted from the pass that first saw the worker, and defaults to 30: a worker writes
+its plan as the first line of its progress file, and the plan is only worth stopping a
+route over while that route is still cheap, so it is read within half a minute rather
+than after a whole long gap. Both take a positive integer; --every is refused above 300
+and --first at 60 or more, because an opening look that long could never land before
+the deadline below ends the command.
+
+The pace can also be retuned mid-run, without stopping and restarting this, by writing
+one number of seconds into <project>/.haring/cadence. The file is read between passes,
+so the pass after the write already uses the number, under the same 300-second ceiling.
+A number above the ceiling, or not a number at all, is refused rather than obeyed — the
+pace in force stands. Both the adoption and the refusal are printed on stdout as a line
+starting `cadence`, once each when they happen, so a reader of this stream never has to
+guess why the pace moved or failed to. A missing or empty file is not a refusal: it
+means the --every interval again.
 
 Meant to run under a tool that turns each stdout line into an event, so a caller gets
 progress without opening a transcript. Each pass prints one line per live worker:
@@ -23,14 +39,17 @@ here, not a fault, and it covers a worker that has written no line and made no c
 Exits 0 once every live worker it found has finished, or after about 60 seconds if it
 never saw one to begin with, so a caller that starts it before anything is running does
 not wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
-that does not exist, or --every given something other than a positive integer. There is
-no way to be called rightly and still fail, so exit 1 is not used.
+that does not exist, or --every or --first given something the rules above refuse.
+There is no way to be called rightly and still fail, so exit 1 is not used.
 """
 import sys, os, json, time, glob, subprocess
 
-USAGE = "usage: haring-pulse [project-dir] [--every SECONDS]"
+USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 LINE_LIMIT = 160
 FIRST_LIVE_DEADLINE = 60
+CEILING = 300        # five minutes is the longest gap the manager may ever choose
+FIRST_CEILING = 60   # an opening look must fit inside the deadline above
+CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
 
 
 def die(message, code):
@@ -40,8 +59,14 @@ def die(message, code):
     sys.exit(code)
 
 
+def whole_seconds(flag, val):
+    if not val.isdigit() or int(val) < 1:
+        die(f"{flag} must be a positive integer, got: {val}", 2)
+    return int(val)
+
+
 argv = sys.argv[1:]
-project_arg, every = None, 300
+project_arg, every, first = None, 300, 30
 i = 0
 while i < len(argv):
     a = argv[i]
@@ -49,10 +74,16 @@ while i < len(argv):
         i += 1
         if i >= len(argv):
             die("--every needs a number of seconds", 2)
-        val = argv[i]
-        if not val.isdigit() or int(val) < 1:
-            die(f"--every must be a positive integer, got: {val}", 2)
-        every = int(val)
+        every = whole_seconds("--every", argv[i])
+        if every > CEILING:
+            die(f"--every must be at most {CEILING} seconds, got: {every}", 2)
+    elif a == "--first":
+        i += 1
+        if i >= len(argv):
+            die("--first needs a number of seconds", 2)
+        first = whole_seconds("--first", argv[i])
+        if first >= FIRST_CEILING:
+            die(f"--first must be under {FIRST_CEILING} seconds, got: {first}", 2)
     elif a.startswith("-") and a != "-":
         die(f"unknown option: {a}", 2)
     elif project_arg is None:
@@ -183,8 +214,53 @@ def report_line(run, meta, meta_path):
     return prefix + detail[:room]
 
 
+# The pace in force between passes, and the file content last refused. Refused content
+# is remembered so one bad number is said once rather than on every pass until the file
+# changes — the pulse's silence is its correctness, and a refusal is no exception.
+pace = every
+refused = None
+
+
+def take_cadence():
+    """Fold .haring/cadence into the pace, saying on stdout why a number was not obeyed.
+
+    Called between passes. A number in the file becomes the pace from the next pass on;
+    nothing in the file means the --every interval again; anything else leaves the pace
+    in force standing. The file lives where the manager writes and this reads, so the
+    reader of the run lines cannot see it — which is why both an adoption and a refusal
+    are printed rather than left to be inferred from the timing of later lines.
+    """
+    global pace, refused
+    try:
+        text = open(os.path.join(project, ".haring", CADENCE_FILE), errors="replace").read().strip()
+    except OSError:
+        text = ""
+    if not text:
+        # No file, or an empty one: the manager has taken the flag's interval back.
+        refused = None
+        if pace != every:
+            pace = every
+            print(f"cadence {pace}s", flush=True)
+    elif not text.isdigit() or int(text) < 1:
+        if text != refused:
+            refused = text
+            print(f"cadence {text!r} refused, not a number of seconds", flush=True)
+    elif int(text) > CEILING:
+        refused = text
+        print(f"cadence {text}s refused, above the {CEILING}s ceiling", flush=True)
+    elif int(text) != pace:
+        refused = None
+        pace = int(text)
+        print(f"cadence {pace}s", flush=True)
+
+
 start = time.time()
 ever_live = False
+# Nothing has been reported yet, so the opening interval still governs: a worker found
+# here may not have written its plan yet, and waiting a whole long gap to read it is
+# what makes the plan arrive after the expensive route it names has already been paid
+# for. The file may shorten the opening look but never lengthen it.
+reported = False
 while True:
     runs = live_runs()
     if runs:
@@ -193,13 +269,16 @@ while True:
             line = report_line(run, meta, meta_path)
             if line:
                 print(line, flush=True)
+                reported = True
     elif ever_live:
         sys.exit(0)
     elif time.time() - start >= FIRST_LIVE_DEADLINE:
         sys.exit(0)
 
+    take_cadence()
+
     if ever_live:
-        time.sleep(every)
+        time.sleep(pace if reported else min(first, pace))
     else:
         # Look again every second until the first worker appears, rather than sleeping a
         # whole interval. A caller may start this a moment before it starts a worker, and
