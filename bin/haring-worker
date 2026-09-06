@@ -25,6 +25,26 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
 MODEL_DEFAULT=glm-5.3-flash
 
+# A worker holds a shell, and every haring command is on PATH, so this script is one a
+# worker can call exactly as the manager does. It is refused. Only the manager decides to
+# spend money on another run: spending on a nested run never appears in the parent run's
+# own numbers, every worker competes for the same request limit, and a worker is the same
+# kind of thing as the one that started it, so without this there is nothing to stop a
+# worker starting workers starting workers.
+#
+# The check is the marker HARING_NESTED, which the haring-worker that started this worker
+# put in its environment, below. It travels from there through run.sh into claude and into
+# every shell command the worker runs, so there is no route round it: calling the script
+# through sh, or by its full path, ends here all the same.
+if [ -n "$HARING_NESTED" ]; then
+  echo "haring-worker: refused — you are inside a worker ($HARING_NESTED), and workers do" >&2
+  echo "  not start workers. Only the manager decides to spend on another run." >&2
+  echo "  Instead: say in your report that verification needs one, name the exact command" >&2
+  echo "  you would have run, and put every claim that depends on it in the did_not_check" >&2
+  echo "  doubt list rather than reporting it as verified." >&2
+  exit 2
+fi
+
 usage() {
   echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M]" >&2
   echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file>" >&2
@@ -173,6 +193,18 @@ DENIED
 ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
 ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
 export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+
+# Every worker this script starts is marked, so that haring-worker and haring-kill refuse
+# if it tries to start or stop a run of its own. HARING_ALLOW_NESTING lifts that for one
+# launch: the manager sets it on the way in, and this worker alone is left unmarked and so
+# may start workers. The lift is consumed rather than passed on — it is taken off the
+# environment this worker inherits — so the workers it starts are marked like any other,
+# and the recursion stops at the one level the manager asked for.
+if [ -n "$HARING_ALLOW_NESTING" ]; then
+  unset HARING_ALLOW_NESTING
+else
+  export HARING_NESTED="$run"
+fi
 
 schema="$HARING/schemas/$kind.json"
 # Assembled in memory. It is the same 15KB for every run of a kind, so it is not copied into

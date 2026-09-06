@@ -487,6 +487,21 @@ kinds that change things a `PROGRESS.md` the worker appends to as it goes. A kil
 still leaves the question, the progress, and a transcript you can read. One stopped with
 `haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
 
+### A worker cannot start a worker, or stop one
+
+`haring-worker` marks every worker it starts, in the environment, and `haring-worker` and
+`haring-kill` both refuse with exit 2 when they find that mark. A worker that comes back
+having stopped at the refusal has done the right thing. Its report will say that
+verification needed a worker and name the exact command it would have run: start that run
+yourself, and send the answer back to it.
+
+`HARING_ALLOW_NESTING=1` on a launch starts a worker with no mark, and that worker alone
+can start workers; the ones it starts are marked like any other, so the recursion stops
+at the one level. This is for the haring repository alone — it is the one project where a
+worker may genuinely need to run a worker to verify its own work. Say out loud to the
+client when a lift has been used, because the spending of the runs started inside it
+never appears in the numbers of the run you report from.
+
 ### When one is taking too long
 
 Read `PROGRESS.md` first, then the session transcript under

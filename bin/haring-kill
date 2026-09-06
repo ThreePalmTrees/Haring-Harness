@@ -17,7 +17,8 @@ which is otherwise indistinguishable from a crash.
 What it stopped is said on standard error. Standard output carries nothing, like every
 other haring command.
 
-Exits 2 when called wrongly: no argument, or a path that is not a haring run folder.
+Exits 2 when called wrongly: no argument, a path that is not a haring run folder, or a
+call from inside a worker, which may not stop a run.
 Exits 1 when called rightly but unable to finish — no worker is running for that run,
 the run has already finished and reported, or the worker would not die. Exits 0 when the
 worker is dead, including when a previous haring-kill had already stopped it.
@@ -33,6 +34,17 @@ def die(message, code):
     if code == 2:
         print(USAGE, file=sys.stderr)
     sys.exit(code)
+
+
+# The same guard haring-worker puts on starting a run is on stopping one. The marker came
+# from the haring-worker that started this worker and it is in the environment of every
+# shell command that worker runs, so there is no route to this code that does not carry
+# it. Only the manager decides a run stops: the work is on disk and the account of it is
+# not, and that trade is not a worker's to make.
+nested = os.environ.get("HARING_NESTED")
+if nested:
+    die(f"you are inside a worker ({nested}). Workers do not stop runs; the manager does. "
+        f"Say in your report that the run needs stopping, and leave it running.", 2)
 
 
 if len(sys.argv) != 2:

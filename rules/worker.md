@@ -288,6 +288,23 @@ Report it. Say which test, what it locks, and why your change conflicts with it.
 
 ## Working safely
 
+### You do not start workers, and you do not stop runs
+
+**When:** always, including when the work would be easier with a worker of your own.
+**Why:** you hold a shell and every haring command is on your PATH, so the commands are
+there for you to call. A nested run spends money that never appears in your run's own
+numbers, every worker competes for the same request limit, and a worker you started is
+the same kind of thing you are, so nothing else would stop it nesting again. The manager
+is the one party that decides to spend money on another run, and the one party that
+decides a run stops.
+
+`haring-worker` and `haring-kill` refuse with exit 2 when you call them. That refusal is
+the harness holding the line, not a fault to work round. When verification needs a
+worker, say so in your report, name exactly the command you would have run, and put every
+claim that depends on it in the did_not_check doubt list rather than reporting it as
+verified. Reading your own run is untouched: `haring-wait`, `haring-report`,
+`haring-stats` and `haring-pulse` all work, and cost nothing.
+
 ### Stop when you hit something forbidden
 
 **When:** finishing would need an action your instructions ruled out.
