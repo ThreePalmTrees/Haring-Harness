@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the five kinds of delegation, how to review what comes back, and how to report what it cost.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to report what it cost.
 ---
 
 # Haring
@@ -133,7 +133,7 @@ each option costs. Nobody else in this arrangement holds any of that.
 
 Write it yourself, naming real files and real functions that a worker has confirmed. If you
 cannot make it concrete and actionable, you do not have a planning problem, you have a gap
-in what you know. Name the gap and send an `explore`, a `check` or an `errand` to close it.
+in what you know. Name the gap and send a `check` or an `errand` to close it.
 Then write the plan.
 
 A worker will sometimes tell you the plan cannot be right, because it is reading the code
@@ -204,7 +204,7 @@ A rough size, in the same words a team would use:
   what each of them is.
 - **Large.** More than one thing must be true, or the worker has to decide something you
   did not settle. Split it. If you cannot see the seams, you do not know enough yet: send an
-  `explore`, a `check` or an `errand` to find them.
+  a `check` or an `errand` to find them.
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
@@ -286,12 +286,12 @@ and the `haring-kill` line that stops it.
 costs it a whole context load. Measured: a continued worker read 180 fresh input tokens
 where a new one read 12,527.
 
-The kind can change. A worker that explored can be continued as one that implements, and it
+The kind can change. A worker that checked can be continued as one that implements, and it
 keeps what it found, including the parts it did not think to report. Do that when the work
 follows directly from what it just looked at.
 
 The risk in promoting one is not context size, it is the theory it already holds. It formed
-one while exploring and it wrote that down itself. If you corrected it, your correction is
+one while reading and it wrote that down itself. If you corrected it, your correction is
 competing with its own reasoning. So after a promoted implement, send a `check` worker at
 the claim you most depend on. That is exactly what `check` is for.
 
@@ -300,45 +300,59 @@ forget, or when its context has grown so large that it is losing detail.
 
 ---
 
-## The five kinds of delegation
+## The three kinds of delegation
 
 Pick the kind first. It sets the tools and the shape of the report.
 
-- **explore** — find something out so you can plan. Read-only.
+- **errand** — facts, read only, no shell.
+- **check** — one claim, answered true, false, partly or could_not_check, with evidence.
 - **implement** — do the work, on a branch.
-- **check** — verify one claim, with no memory of having made it.
-- **errand** — a trivial mechanical job.
-- **correct** — apply what your review asked for.
 
-### Find something out
+### Run an errand
 
-Use when you cannot plan yet, or you have an expectation you want corrected. You do not
-need an expectation to send one.
+Facts, read only, no shell. The cheapest thing there is: a median of about a minute
+against ten minutes or more for anything else. Many of them, one after another, is
+how you read a codebase.
+
+Use for mechanical work where a mistake costs nothing. Never for anything that matters.
 
 ```
-Objective: tell me how <thing> works, so I can plan <job>.
+Read <file>. Output <exactly what is wanted>.
+Extraction only. Do not interpret, do not comment, do not suggest anything.
+```
 
-The client wants <what they asked for, in their words>.
-I have not read this code. I expect:
-  1. <expectation>
-  2. <expectation>
-Those are guesses. Answer each one: agree, disagree, or partly, with evidence.
-I would rather be corrected than agreed with.
+### Check one thing
 
-[or: I have no expectation here. I need to understand <thing> before I can
-instruct anyone. Explain it in the smallest number of facts that let me plan.]
+One claim, or one expectation, answered true, false, partly or could_not_check, with
+evidence. It has Read and a shell, for reading only. Also the dry run: state the plan
+as claims and have them read against the code before anything is built.
 
-Then tell me anything I did not think to ask about that would change how I plan
-this.
+Use it when a claim matters and the worker who made it also did the work. A fresh worker
+catches "did the wrong thing correctly", which no test can.
 
-Read only. Do not change any file.
+```
+Objective: check one claim, and nothing else.
+
+The claim: <quote it exactly>.
+Where it says it lives: <file and line>.
+
+[or: I have not read this code. I expect <claim>.]
+
+Answer true, false, partly or could_not_check, and say how you know. Run something
+if you can, and say whether you ran it or read it.
+If the claim is false, say what is actually the case.
+Do not fix anything. Do not review anything else.
 
 Any idea ?
 ```
 
 ### Do the work
 
-Use when the plan is settled. Create the branch first.
+The work, on a branch. Name the change, and name the commands that show it is done.
+Create the branch first.
+
+A review of a worker's own change is an implement task: the review is the task, and
+`rules/kinds/implement.md` tells the worker how to read one.
 
 ```
 Objective: <what must be true at the end>.
@@ -346,7 +360,7 @@ Objective: <what must be true at the end>.
 What the client asked for and why: <context>.
 What has already been established: <findings, with file and line>.
 A way this might be done, though I have not read the code and may be wrong about
-its shape: <approach>. If you see a better structure, use it and say why.
+its shape: <approach>.
 
 Never acceptable, whatever else you do:
   - <limit>
@@ -356,58 +370,9 @@ If you hit something that would need one of those, stop and report it.
 If anything above contradicts what the code actually does, tell me before you change
 anything and stop. I would rather decide now than read it afterwards.
 
-Before you report finished, verify your own work. You know the low-level detail,
-so you decide how. Say what you ran.
-
-Any idea ?
-```
-
-### Check one thing
-
-Use when a claim matters and the worker who made it also did the work. A fresh worker
-catches "did the wrong thing correctly", which no test can.
-
-```
-Objective: check one claim, and nothing else.
-
-The claim: <quote it exactly>.
-Where it says it lives: <file and line>.
-
-Tell me whether it is true and how you know. Run something if you can.
-If it is false, say what is actually the case.
-Do not fix anything. Do not review anything else.
-
-Any idea ?
-```
-
-### Run an errand
-
-Use for mechanical work where a mistake costs nothing. Never for anything that matters.
-
-```
-Read <file>. Output <exactly what is wanted>.
-Extraction only. Do not interpret, do not comment, do not suggest anything.
-```
-
-### Correct after review
-
-Use after you have reviewed. Quote the worker's own words back.
-
-```
-Review of your last change. Most of it is accepted.
-
-Accepted, no change needed:
-  - <name the thing, and say you checked it>
-
-CHANGE 1 — your own words:
-  "<quote the worker exactly>"
-You were right to flag it and wrong to leave it, because <reason>.
-<what to do instead>.
-
-ACCEPTED WITH A NOTE — <the other thing>. You matched the existing behaviour,
-which was the right instinct. Leave it.
-
-Verify as before. Same report rules.
+Before you report finished, run these commands and paste what each printed:
+  - <command that shows the work is done>
+  - <command that shows the work is done>
 
 Any idea ?
 ```
@@ -510,15 +475,15 @@ and there is no worker left to say it to, and 2 when called wrongly. A worker ca
 it, the same as `haring-kill`.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
-have to be the kind the run started as. A worker that explored can be continued as one that
+have to be the kind the run started as. A worker that checked can be continued as one that
 implements, and it keeps everything it learned while looking. A continued run forks: it gets
 its own run folder and its own session, so the run it came from stays whole and can be
 continued again.
 
-Every kind runs in the project itself. `explore`, `check` and `errand` get `Read`,
-`Glob`, `Grep`, and a shell as well — reading a codebase needs one — so a read-only kind
-can change a file if it ignores its rules, and only `errand` is kept to reading by its
-tool list alone. What the harness holds every kind to, including the shell, is the deny
+Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell
+as well — reading a codebase needs one — so a read-only kind can change a file if it
+ignores its rules. `errand` gets the same three without the shell, and is the one kind
+kept to reading by its tool list alone. What the harness holds every kind to, including the shell, is the deny
 list `haring-worker` writes into each run folder as `settings.json` and passes with
 `--settings`: the client's private paths outside the project — `~/.claude/**`,
 `~/.ssh/**`, `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`.
@@ -530,7 +495,8 @@ rule inside the process could. The run's own work is untouched by it. When the p
 same list also holds haring's source — the repository haring is installed from, and the
 `haring-*` links it put in `~/.local/bin` — against a read and against a command that
 would change it, so a worker sent somewhere else cannot edit the tool that sent it there.
-A worker sent to haring itself is held to the private paths alone. `implement` and `correct` work on a branch. Write down
+A worker sent to haring itself is held to the private paths alone. `implement` works on a
+branch. Write down
 which branch the project is on, because that is where the work goes back to, then create
 yours:
 
