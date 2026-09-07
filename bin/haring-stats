@@ -77,16 +77,45 @@ try:
 except Exception as e:
     die(f"unreadable report: {e}", 1)
 
+# report.json is the last result event alone, and every message said to a running worker
+# produces a result event of its own — so on a steered run these fields describe only that
+# last turn, in the direction that flatters. The stream holds all of them, so turns,
+# seconds and the token counts are summed over every result event. What the run ended with
+# still comes from report.json, which is the event that says how it ended. A stream with no
+# readable result event falls back to report.json's own numbers, which is what an unsteered
+# run sums to anyway.
+totals, ms, turns, found = {}, 0, 0, 0
+try:
+    for line in open(os.path.join(run, "events.jsonl")):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") != "result":
+            continue
+        found += 1
+        ms += e.get("duration_ms") or 0
+        turns += e.get("num_turns") or 0
+        for name, u in (e.get("modelUsage") or {}).items():
+            t = totals.setdefault(name, {})
+            for k in ("inputTokens", "outputTokens", "cacheReadInputTokens"):
+                t[k] = t.get(k, 0) + (u.get(k) or 0)
+except OSError:
+    pass
+
 mu = d.get("modelUsage") or {}
 model = next(iter(mu), "?")
-m = mu.get(model, {})
-secs = round(d.get("duration_ms", 0) / 1000)
+m = totals[model] if model in totals else mu.get(model, {})
+if not found:
+    ms = d.get("duration_ms", 0)
+    turns = d.get("num_turns", 0)
+secs = round(ms / 1000)
 print(
     f"model={model} "
     f"in={m.get('inputTokens', 0)} "
     f"out={m.get('outputTokens', 0)} "
     f"cache_read={m.get('cacheReadInputTokens', 0)} "
-    f"turns={d.get('num_turns', 0)} "
+    f"turns={turns} "
     f"secs={secs} "
     f"error={d.get('is_error')} "
     f"ended={d.get('terminal_reason') or d.get('stop_reason')}"
