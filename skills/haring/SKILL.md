@@ -448,8 +448,10 @@ Your turn does not stay open, so you are free while the worker works. The client
 the task and follow the worker as it happens, because `haring-wait` prints its steps, its
 thinking and its speech while it waits: one line per tool call, with a run of the same
 tool folded into a counted line, and one line per line of a thought or of speech,
-labelled `thinking` and `says` and cropped to the width of a step line. A block longer
-than ten lines keeps its last ten, and one line ahead of them says how many came before.
+labelled `thinking` and `says` and cropped to the width of a step line. A block keeps its last
+three lines while the worker is working and its last ten once it has fallen silent, with
+one line ahead of them saying how many came before: while it is acting you want to see
+what it did, and while it is quiet its thinking is the only thing there is to see.
 When no step
 arrives for a minute it says so on a line labelled `waiting`, and tells a worker that is
 thinking from one that has stalled. And Claude Code brings you back on its own when the
