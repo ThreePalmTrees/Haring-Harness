@@ -84,7 +84,7 @@ except Exception as e:
 # still comes from report.json, which is the event that says how it ended. A stream with no
 # readable result event falls back to report.json's own numbers, which is what an unsteered
 # run sums to anyway.
-totals, ms, turns, found = {}, 0, 0, 0
+totals, ms, turns, denials, found = {}, 0, 0, 0, 0
 try:
     for line in open(os.path.join(run, "events.jsonl")):
         try:
@@ -96,6 +96,7 @@ try:
         found += 1
         ms += e.get("duration_ms") or 0
         turns += e.get("num_turns") or 0
+        denials += len(e.get("permission_denials") or [])
         for name, u in (e.get("modelUsage") or {}).items():
             t = totals.setdefault(name, {})
             for k in ("inputTokens", "outputTokens", "cacheReadInputTokens"):
@@ -120,6 +121,9 @@ print(
     f"error={d.get('is_error')} "
     f"ended={d.get('terminal_reason') or d.get('stop_reason')}"
 )
-den = d.get("permission_denials") or []
-if den:
-    print(f"denials={len(den)}")
+# Counted across every result event for the same reason the turns are: a denial in an
+# earlier turn of a steered run is still a denial the manager has to know about.
+if not found:
+    denials = len(d.get("permission_denials") or [])
+if denials:
+    print(f"denials={denials}")
