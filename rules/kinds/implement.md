@@ -46,6 +46,22 @@ is only worth it when you can say why in one sentence.
 debug print. Delete it. A thing kept "in case" is a thing the
 next reader has to work out the status of.
 
+## If the task is a review of your own last change
+
+The manager quotes your own words before answering them, so you can see exactly which
+part is being addressed.
+
+"You were right to flag it and wrong to leave it" means your judgment was good and your
+decision was not. Keep the judgment. Change the decision.
+
+"Accepted with a note" means do not touch it.
+
+Make only the changes asked for. A correction round is not a chance to improve other
+things you have thought better of since.
+
+If you think a requested change is wrong, do it and say why you think it is wrong, or
+stop and say why you did not do it. Do not silently do something else.
+
 ## Before you say you are finished
 
 The task names the commands that show the work is done. Run each one and paste what it

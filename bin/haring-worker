@@ -6,7 +6,7 @@
 #   haring-worker <kind> <workdir> <prompt-file> [--model M]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
-# kind is one of: check implement errand correct
+# kind is one of: check implement errand
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
@@ -113,7 +113,7 @@ case "$kind" in
       tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   errand)
       tools='Read,Glob,Grep';      extra='--bare' ;;
-  implement|correct)
+  implement)
       tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
@@ -196,7 +196,7 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 {
   cat "$promptfile"
   case "$kind" in
-    implement|correct|check)
+    implement|check)
       : > "$run/PROGRESS.md"
       printf '\n\n---\nWrite your progress to this exact path, one line at a time: %s\n' "$run/PROGRESS.md"
       printf 'Your first line is the method — how you intend to answer this, in one\n'
