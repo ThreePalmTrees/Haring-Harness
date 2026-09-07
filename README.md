@@ -9,45 +9,39 @@
 
 A wrapper for using sub-agents, so you do not repeat the same setup every time.
 
-**Manager:** any Anthropic model. `Opus` is recommended.<br/>
-**Worker:** `GLM-5.3-Flash` by default. You can ask the manager to use a different one.
+**Manager:** Any model. `Opus` is recommended.<br/>
+**Worker:** `GLM-5.3-Flash`. You can ask the manager to use a different model.
 
 ## Why Haring
 
-Why note ?
+Using Opus for everything consumes your subscription quickly.<br/>
+Haring gives you more bang for your buck.
 
-But seriously, using Opus for everything consumes your subscription quickly.<br/>
-Haring gives you more miles per gas.
-
-Manager: Plans, architects, orchestrates, and reviews<br/>
-Worker: Collects details, does the coding
+Manager: Plans, architects, orchestrates, and reviews.<br/>
+Worker: Collects details, does the coding.
 
 ## Install Haring
 
-**1. Add your Z.ai API key.** On macOS it goes in the Keychain:
+1. Clone this repository anywhere.
 
-    security add-generic-password -a "$USER" -s haring-zai -U -w
+2. Navigate inside and Run the installer:
+```
+cd haring-harness && ./install.sh
+```
 
-Put `-w` last with no value, so it prompts for the key and the key stays out of your
-shell history.
+3. Add your Z.ai API key to macOS Keychain:
+```
+security add-generic-password -a "$USER" -s haring-zai -U -w
+```
+> The terminal will prompt you for the key. The key stays out of your shell history.
 
-**2. Clone this repository anywhere.**
 
-**3. Run the installer from inside it:**
-
-    cd haring-harness && ./install.sh
 
 ## Use Haring
 
-**1. Launch Claude the way you normally do.**
+Just mention `/haring` in your prompt
 
-**2. Mention haring in your prompt:**
-
-    /haring <what you want done>
-
-Example:
-
-    /haring The app is crashing, find the reason and fix it.
+    /haring The app is crashing. Fix it.
 
 ## What Haring writes into your project
 
