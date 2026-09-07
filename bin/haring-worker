@@ -322,7 +322,7 @@ echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 : > "$run/report.json"
 cat > "$run/keeper.tmp" <<'KPIPE'
-import json, os, select, sys, time
+import json, os, select, signal, sys, time
 
 # Holds the writing end of the pipe claude reads its input from. The task itself is the
 # first thing over that pipe — a line written before claude is up reading waits in the
@@ -342,6 +342,7 @@ import json, os, select, sys, time
 # whole run, so the reader's side of the pipe is polled, and its going is the end too.
 
 run = sys.argv[1]
+limit = int(sys.argv[2])                 # seconds of no new event before the run stops
 queue = os.path.join(run, "say.jsonl")   # haring-say appends one line per message
 state = os.path.join(run, "say.state")   # who is listening, and how much it has taken
 events = os.path.join(run, "events.jsonl")
@@ -404,6 +405,7 @@ qpos = epos = consumed = sent = results = 0
 handed = None   # nothing written to disk yet; the first mark is the first write
 pending = []
 caught_up = False
+last_grew = time.time()   # silence is measured from events this keeper has seen itself
 try:
     with open(os.path.join(run, "prompt.md")) as f:
         pending.append(f.read())
@@ -427,8 +429,22 @@ try:
         handed = mark(max(0, sent - 1), handed)
         lines, epos = added(events, epos)
         results += counted(lines)
+        if lines:
+            last_grew = time.time()
         if reader_gone():
             break
+        if time.time() - last_grew >= limit:
+            # The endpoint has stopped answering: nothing has reached the events for the
+            # limit, and claude would sit here writing api_retry events forever, since its
+            # retry counter starts over on every request. The keeper is the one thing that
+            # lives exactly as long as the run, so the stop is made from inside it. The
+            # file is written before the group is signalled, because this keeper is inside
+            # the group and will not survive the signal; haring-wait reads the file to
+            # report a stall instead of a worker that vanished.
+            with open(os.path.join(run, "stalled"), "w") as f:
+                f.write("at=%s\n" % time.strftime("%Y-%m-%dT%H:%M:%S"))
+                f.write("silent=%d\n" % (time.time() - last_grew))
+            os.killpg(os.getpgrp(), signal.SIGKILL)
         if results >= sent and not pending:
             # One more turn of the loop before closing, so a message handed over in the
             # same breath as the answer is still owed its answer.
@@ -450,7 +466,11 @@ finally:
     except OSError:
         pass
 KPIPE
-python3 "$run/keeper.tmp" "$run" | claude -p \
+# 900 is fifteen minutes of silence, after which the run stops itself and leaves a
+# stalled file. The longest silence any run here has recorded is 7.0 minutes and every
+# run near it finished with a report, so a run quiet for twice that is not working. The
+# limit travels as an argument so it can be tested in seconds rather than minutes.
+python3 "$run/keeper.tmp" "$run" 900 | claude -p \
   --model "$model" \
   --session-id "$session" \
   --append-system-prompt "\$(cat "$run/system.tmp")" \

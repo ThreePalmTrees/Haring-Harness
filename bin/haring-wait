@@ -24,6 +24,8 @@ It means "no report, but there may be work on disk", and it prints the progress 
 the next reader starts from something real. A run stopped with `haring-kill` arrives here
 too, and says so: both leave an empty report, but a stop on purpose and a crash are
 different things, and the `stopped` file haring-kill writes is what tells them apart.
+A run that stopped itself for silence arrives here too, through the `stalled` file it
+leaves naming how long the silence was.
 
 Waits while the worker process is alive. A clock alone is the wrong test: real work has
 run for twenty-seven minutes, and a fixed time limit only makes the manager restart the
@@ -78,6 +80,9 @@ progress = os.path.join(run, "PROGRESS.md")
 # that separates a deliberate stop from a worker that died on its own, since both leave
 # the same empty report.
 stopped = os.path.join(run, "stopped")
+# Written by the run itself when nothing reached its events for fifteen minutes: the run
+# stopped rather than sit on an endpoint that had stopped answering.
+stalled = os.path.join(run, "stalled")
 
 # The worker's own event stream, written to the run folder as it happens. It is the one
 # record haring owns: Claude Code's transcript lives at a path nothing promises, and when
@@ -274,6 +279,15 @@ if not landed():
         print("Its work ends where it had got to. Read the progress and the events it",
               file=sys.stderr)
         print("before you build on any of it.", file=sys.stderr)
+    elif os.path.exists(stalled):
+        rec = dict(l.strip().split("=", 1) for l in open(stalled) if "=" in l)
+        print(f"this run stopped itself at {rec.get('at', '?')} after "
+              f"{rec.get('silent', '?')}s of silence.", file=sys.stderr)
+        print("Nothing reached its events for that long, which is how a run looks when",
+              file=sys.stderr)
+        print("the endpoint has stopped answering. Read the progress before you build on",
+              file=sys.stderr)
+        print("it.", file=sys.stderr)
     elif alive():
         print(f"still running after {waited}s. The process is alive.", file=sys.stderr)
     else:
