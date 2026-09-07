@@ -46,178 +46,35 @@
     ]
    }
   },
-  "claims": {
-   "type": "array",
-   "items": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "n": {
-      "type": "integer"
-     },
-     "claim": {
-      "type": "string"
-     },
-     "where": {
-      "type": "string",
-      "description": "file:line for code, the command for behaviour, the search for absence, what was tried for the environment"
-     },
-     "evidence": {
-      "type": "string",
-      "enum": [
-       "ran_a_command",
-       "read_the_code",
-       "reasoning_only"
-      ]
-     },
-     "command": {
-      "type": "string",
-      "description": "exact command, only when evidence is ran_a_command"
-     },
-     "output": {
-      "type": "string",
-      "description": "the part of the output that is the evidence, trimmed and redacted"
-     }
-    },
-    "required": [
-     "n",
-     "claim",
-     "where",
-     "evidence"
-    ]
-   }
-  },
   "files_changed": {
    "type": "array",
    "items": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "path": {
-      "type": "string"
-     },
-     "why": {
-      "type": "string",
-      "description": "which part of the task this file serves"
-     },
-     "reviewable": {
-      "type": "boolean",
-      "description": "false for generated files, lockfiles, renames, binaries"
-     },
-     "check_instead": {
-      "type": "string",
-      "description": "what to check when the hunk is not worth reading"
-     }
-    },
-    "required": [
-     "path",
-     "why",
-     "reviewable",
-     "check_instead"
-    ]
+    "type": "string"
    }
   },
   "verification": {
-   "type": "object",
-   "additionalProperties": false,
-   "properties": {
-    "baseline": {
-     "type": "object",
-     "additionalProperties": false,
-     "properties": {
-      "command": {
-       "type": "string"
-      },
-      "result": {
-       "type": "string"
-      },
-      "already_failing": {
-       "type": "array",
-       "items": {
-        "type": "string"
-       }
-      }
+   "type": "array",
+   "description": "the manager names the commands and the worker runs them",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "command": {
+      "type": "string"
      },
-     "required": [
-      "command",
-      "result",
-      "already_failing"
-     ]
-    },
-    "checks": {
-     "type": "array",
-     "items": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-       "command": {
-        "type": "string"
-       },
-       "exit": {
-        "type": "integer"
-       },
-       "key_output": {
-        "type": "string"
-       }
-      },
-      "required": [
-       "command",
-       "exit",
-       "key_output"
-      ]
+     "output": {
+      "type": "string"
      }
     },
-    "all_passed": {
-     "type": "boolean"
-    }
-   },
-   "required": [
-    "baseline",
-    "checks",
-    "all_passed"
-   ]
-  },
-  "side_effects": {
-   "type": "array",
-   "items": {
-    "type": "string"
-   },
-   "description": "services started, data changed, files left behind \u2014 you must not install anything"
+    "required": [
+     "command",
+     "output"
+    ]
+   }
   },
   "commit": {
    "type": "string",
    "description": "the one commit made, or empty with the reason in a doubt"
-  },
-  "tests_left_alone": {
-   "type": "array",
-   "items": {
-    "type": "string"
-   },
-   "description": "existing tests that conflict with this change and were reported rather than edited"
-  },
-  "line_numbers_at": {
-   "type": "string",
-   "description": "the commit or revision the line numbers were read at"
-  },
-  "one_true_thing": {
-   "type": "string",
-   "description": "one line: what would most change how the next task is planned. Say so if there is nothing."
-  },
-  "environment": {
-   "type": "object",
-   "additionalProperties": false,
-   "properties": {
-    "ok": {
-     "type": "boolean"
-    },
-    "what_failed": {
-     "type": "string"
-    }
-   },
-   "required": [
-    "ok",
-    "what_failed"
-   ]
   },
   "blocked": {
    "type": "object",
@@ -273,16 +130,10 @@
  },
  "required": [
   "answers",
-  "claims",
   "files_changed",
   "verification",
-  "side_effects",
   "commit",
-  "tests_left_alone",
-  "line_numbers_at",
-  "one_true_thing",
-  "environment",
-  "redacted",
-  "doubts"
+  "doubts",
+  "redacted"
  ]
 }

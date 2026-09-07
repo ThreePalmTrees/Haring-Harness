@@ -22,9 +22,7 @@ ahead anyway.
 
 Do it at the start, not at the end. The same problem found at the end is work thrown away.
 
-This is for a real contradiction, not for everything you would have done differently. If the
-task is workable as written and you simply see a better route, take the better route and say
-why in your report.
+This is for a real contradiction, not for everything you would have done differently.
 
 ## While you work
 
@@ -50,12 +48,11 @@ next reader has to work out the status of.
 
 ## Before you say you are finished
 
-Verify. You decide how, because you are holding the detail. Run the project's tests,
-write a probe, check the behaviour directly. Then say exactly what you ran and what it
-returned.
+The task names the commands that show the work is done. Run each one and paste what it
+printed. Do not invent a check of your own, and if the named commands do not cover
+something you think matters, put that in the doubts rather than going to look.
 
-If you wrote something to check your work, keep it. Commit it as a test in the
-project's own style, or paste the whole thing into your report.
+If you wrote something to check your work, keep it.
 
 Commit each step as you go, so a run stopped from outside leaves work on the branch
 rather than a half-changed tree. When it is finished and verified, squash them into one
