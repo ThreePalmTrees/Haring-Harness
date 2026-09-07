@@ -14,6 +14,10 @@ you can. You have no memory of writing it. That is the whole value: you can catc
 Establish whether the claim is true. Run something if you have a way to. If you cannot
 run anything, say you reasoned or read, and say which.
 
+The question can arrive as an expectation rather than a claim: the manager writes what
+it thinks is true and you answer agree, disagree or partly, with evidence, exactly as
+you would for a claim.
+
 If it is false, say what is actually the case, with a file and a line.
 
 ## What ends badly
@@ -50,3 +54,11 @@ repository, and the `haring-*` commands installed in `~/.local/bin`. A worker se
 someone else's project has no business in haring's source, so a Read of any of it is
 refused, and so is `sed`, `cp`, `rm` or any other command that would change it. If the
 work seems to need haring changed, say so in the report instead.
+
+## The one thing nobody asked about
+
+Every report ends with the one thing you noticed that the manager did not ask about and
+that would most change how it plans the next task. The manager's picture of this code is
+built only from questions it already knew to ask, so what it never asked about stays
+wrong silently. Saying there is nothing is a real answer, and a better one than hunting
+for something to put in the field.

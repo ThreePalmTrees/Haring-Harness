@@ -37,6 +37,10 @@
   "line_numbers_at": {
    "type": "string"
   },
+  "one_true_thing": {
+   "type": "string",
+   "description": "one line: what would most change how the next task is planned. Say so if there is nothing."
+  },
   "environment": {
    "type": "object",
    "additionalProperties": false,
@@ -93,6 +97,7 @@
   "where",
   "evidence",
   "line_numbers_at",
+  "one_true_thing",
   "environment",
   "redacted",
   "doubts"

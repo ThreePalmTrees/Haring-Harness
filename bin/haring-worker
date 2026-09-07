@@ -6,7 +6,7 @@
 #   haring-worker <kind> <workdir> <prompt-file> [--model M]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
-# kind is one of: explore implement check errand correct
+# kind is one of: check implement errand correct
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
@@ -58,8 +58,8 @@ usage() {
 #
 # The kind is named again on every continue because the kind is what sets the tools, and
 # tools are chosen at each launch rather than fixed when a session begins. So the kind may
-# differ from the one the run started as: a worker that explored can be continued as one
-# that implements, and it keeps everything it learned while exploring.
+# differ from the one the run started as: a worker that checked a claim can be continued
+# as one that implements, and it keeps everything it learned while checking.
 #
 # A continued run forks. It resumes the previous conversation under a session id of its own,
 # so the run it came from keeps its transcript whole and can be continued again.
@@ -109,8 +109,6 @@ done
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
-  explore)
-      tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   check)
       tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
   errand)
@@ -190,7 +188,7 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
 # The prompt the worker actually receives: the task, and — for every kind but errand —
 # where to write progress and what the first line of it must be. The method line is what
-# the manager reads inside the first minute, so an explore that means to spend eleven
+# the manager reads inside the first minute, so a worker that means to spend eleven
 # minutes driving a browser over a two-file question is visible while stopping is cheap.
 # An errand is asked for none of it because it holds neither Write nor a shell, and so
 # could not keep the file at all. This is the only copy of the question, so it is the one
@@ -198,7 +196,7 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 {
   cat "$promptfile"
   case "$kind" in
-    implement|correct|explore|check)
+    implement|correct|check)
       : > "$run/PROGRESS.md"
       printf '\n\n---\nWrite your progress to this exact path, one line at a time: %s\n' "$run/PROGRESS.md"
       printf 'Your first line is the method — how you intend to answer this, in one\n'
