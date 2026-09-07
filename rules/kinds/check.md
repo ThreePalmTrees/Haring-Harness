@@ -15,8 +15,9 @@ Establish whether the claim is true. Run something if you have a way to. If you 
 run anything, say you reasoned or read, and say which.
 
 The question can arrive as an expectation rather than a claim: the manager writes what
-it thinks is true and you answer agree, disagree or partly, with evidence, exactly as
-you would for a claim.
+it thinks is true and you answer it the same way, with evidence — `true` if it holds,
+`false` if it does not, `partly` if half of it does, `could_not_check` if you had no way
+to find out.
 
 If it is false, say what is actually the case, with a file and a line.
 
