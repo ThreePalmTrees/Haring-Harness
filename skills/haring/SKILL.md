@@ -439,6 +439,7 @@ haring-report <run-folder>      print the report, compacted
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
+haring-say <run-folder>         say a word to a running worker
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
@@ -447,7 +448,9 @@ Your turn does not stay open, so you are free while the worker works. The client
 the task and follow the worker as it happens, because `haring-wait` prints its steps, its
 thinking and its speech while it waits: one line per tool call, with a run of the same
 tool folded into a counted line, and one line per line of a thought or of speech,
-labelled `thinking` and `says` and cropped to the width of a step line. When no step
+labelled `thinking` and `says` and cropped to the width of a step line. A block longer
+than ten lines keeps its last ten, and one line ahead of them says how many came before.
+When no step
 arrives for a minute it says so on a line labelled `waiting`, and tells a worker that is
 thinking from one that has stalled. And Claude Code brings you back on its own when the
 run ends, so the conversation moves the moment the work is done.
@@ -468,10 +471,12 @@ is refused at 60 or more, `--every` above 300. To change the pace while a run is
 write one number of seconds into `.haring/cadence` in the project; the next pass uses it,
 under the same 300-second ceiling, and a line starting `cadence` on the pulse's own
 output says when a number was taken and when one was refused. Every wake-up costs you a
-turn, which is why the settled pace is minutes and the opening one is seconds. It reports
-every live worker in the project, so one pulse covers however many workers are running.
-A shell command you are running yourself is not a worker and never appears. It stops on
-its own when the last worker finishes.
+turn, which is why the settled pace is minutes and the opening one is seconds. The
+workers it reports are the ones live at the pass that found the first of them: a worker
+you start after that belongs to the next pulse, not this one. That is also why it ends
+within a second or two of the last worker it took on, and about a minute after starting
+if none was running. A shell command you are running yourself is not a worker and never
+appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
@@ -493,6 +498,14 @@ what it stopped, and writes a `stopped` file into the run folder. A stopped run 
 crashed one leave the same empty report, so that file is the only thing that says the stop
 was yours: `haring-wait` reads it and reports a stop on purpose instead of a worker that
 vanished.
+
+**Saying something to a worker that is running is `haring-say <run-folder> "<message>"`.**
+It is for a correction the worker can act on without starting over. The message is queued
+into `say.jsonl` in the run folder and answered before the run ends; a worker mid-turn
+takes it when that turn ends, not in the middle of one. It exits 0 once the message is
+handed over, or queued for a worker that will take it, 1 when the run has already finished
+and there is no worker left to say it to, and 2 when called wrongly. A worker cannot call
+it, the same as `haring-kill`.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that explored can be continued as one that
@@ -544,6 +557,29 @@ still leaves the question, the progress, and the events it got to. One stopped w
 A worker cannot start a worker of its own, or stop a run: `haring-worker` and
 `haring-kill` refuse when a worker calls them. It should not need to, and almost never
 does — a worker that stops at that refusal has done the right thing.
+
+### Steer a wrong route; kill a wrong task
+
+**When:** a worker is spending time you did not mean it to spend.
+**Why:** the question is whether the task is the right one, and nothing else. One spent
+seventeen minutes waiting out a timer it could have read in a line, and was left alone
+because thirty minutes already spent seemed too much to throw away for six. That
+arithmetic compares the wrong things: the half hour was gone whatever you decided, and
+the decision was only ever about the minutes from then on.
+
+`haring-say` puts a correction in front of a worker that is on the right task by the wrong
+route, and costs one message. `haring-kill` is for a worker on the wrong task, where no
+message can put it back and every further minute goes on work you will throw away.
+
+### A steering message names what is still unfinished
+
+**When:** you write the message for `haring-say`.
+**Why:** the worker takes your message as the whole of its job from that point on. One was
+told to change its route, treated the correction as the entire task, and reported finished
+while the rest of what you had asked for was not done.
+
+Name what it is to keep doing, what it is to do instead, and what is still left of the
+original task. The last of those is what keeps the run going to the end.
 
 ### When one is taking too long
 
@@ -640,6 +676,17 @@ The four answers:
 
 **When:** a worker reaches a right answer by wrong reasoning.
 **Why:** the answer is right once. The reasoning will be used again.
+
+### The progress file is the worker's account, not the state of the run
+
+**When:** a `PROGRESS.md` reads as finished and you are about to report the run over.
+**Why:** the file is the worker's own running account of what it is doing, and it can sit
+minutes behind the worker writing it. One read finished while its worker worked on for
+another two minutes, and the run was reported over on that word alone.
+
+Two things cannot be behind in that way: `haring-stats` exits 3 and says `still running`
+while the worker is alive, and `haring-pulse` only ever prints live runs. Ask one of them
+before you report a run over.
 
 ### A run that returns no report is a failure, whatever else it looks like
 
@@ -777,6 +824,8 @@ job: what is open, the options, and where each one leads.
 make one run comparable to the next.
 
 `haring-stats` gives which model ran, tokens in and out, cache reads, turns and seconds.
+On a run you steered, those numbers are summed over every result event in the run's own
+`events.jsonl`, so they describe the whole run and not the turn it ended on.
 **Never quote money.** The dollar figure in the result JSON is computed with the wrong
 price table for these models: it once valued a three-token answer at two and a half cents.
 

@@ -78,6 +78,7 @@ document.
                     haring-wait      follow a run, then print its report
                     haring-pulse     one line per live worker, fast then at a pace you can retune
                     haring-kill      stop a running worker on purpose
+                    haring-say       say a word to a running worker
                     haring-report    print a report, with the empty parts removed
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost
