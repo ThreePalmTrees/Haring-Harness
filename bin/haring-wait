@@ -34,7 +34,12 @@ from datetime import datetime
 
 USAGE = "usage: haring-wait <run-folder> [max-seconds]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-WIDTH = 200       # past the panel's 154 columns, which clips what does not fit anyway
+# The panel clips at its own width and the file keeps the rest, so this is set by what
+# keeps the tail usable rather than by what fits on screen: the panel reads the last 8 KB
+# and shows ten lines, so a line longer than 819 characters would leave fewer than ten to
+# choose from. 500 sits under that with room, and holds a long command whole for anyone
+# reading the file rather than the panel.
+WIDTH = 500
 BLOCK_LINES = 10  # the panel's own row count: a thought ends with its conclusion
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
 IDLE_AFTER = 60   # seconds without a printed step before this wait speaks up
