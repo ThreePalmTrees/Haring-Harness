@@ -211,9 +211,9 @@ A rough size, in the same words a team would use:
 - **Small.** One thing must be true, and one command shows whether it is. Send it.
 - **Medium.** One thing must be true, but several must hold for it to be. Send it, and say
   what each of them is.
-- **Large.** More than one thing must be true, or the worker has to decide something you
-  did not settle. Split it. If you cannot see the seams, you do not know enough yet: send an
-  a `check` or an `errand` to find them.
+- **Large.** More than one thing must be true, or the worker has to decide something you did
+  not settle. Split it. If you cannot see the seams, you do not know enough yet: send a
+  `check` or an `errand` to find them.
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
@@ -439,12 +439,10 @@ tool folded into a counted line, and one line per line of a thought or of speech
 labelled `thinking` and `says` and cropped to the width of a step line. A block keeps its last
 three lines while the worker is working and its last six once it has fallen silent, with one
 line ahead of them saying how many came before and a rule of ─ closing the block: while it is
-acting you want to see what it did, and while it is quiet its thinking is the only thing
-there is to see.
-When no step
-arrives for a minute it says so on a line labelled `waiting`, and tells a worker that is
-thinking from one that has stalled. And Claude Code brings you back on its own when the
-run ends, so the conversation moves the moment the work is done.
+acting you want to see what it did, and while it is quiet its thinking is the only thing there
+is to see. When no step arrives for a minute it says so on a line labelled `waiting`, and tells
+a worker that is thinking from one that has stalled. And Claude Code brings you back on its own
+when the run ends, so the conversation moves the moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
 message that reads as finished with a hidden shell behind it. For the same reason, do not
@@ -476,9 +474,8 @@ Every command that acts on a run takes the run folder. Called wrongly, any of th
 with a usage line on standard error; called correctly but unable to finish, exit 1.
 Two add a 3 of their own: `haring-wait` when the worker vanished without a report, and
 `haring-stats` when the worker is still alive and has not reported yet, which is an answer
-rather than a failure. Standard
-output carries only what a caller reads, so `haring-worker` prints the run folder and
-nothing else.
+rather than a failure. Standard output carries only what a caller reads, so `haring-worker`
+prints the run folder and nothing else.
 
 **Stopping a worker is `haring-kill <run-folder>`.** The "x" on a background task is not
 it: that kills the `haring-wait` process and nothing else, and the worker keeps working —
@@ -504,25 +501,24 @@ implements, and it keeps everything it learned while looking. A continued run fo
 its own run folder and its own session, so the run it came from stays whole and can be
 continued again.
 
-Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell
-as well — reading a codebase needs one — so a read-only kind can change a file if it
-ignores its rules. `errand` gets the same three without the shell, and is the one kind
-kept to reading by its tool list alone. What the harness holds every kind to, including the shell, is the deny
+Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell as well
+— reading a codebase needs one — so a read-only kind can change a file if it ignores its
+rules. `errand` gets the same three without the shell, and is the one kind kept to reading by
+its tool list alone. What the harness holds every kind to, including the shell, is the deny
 list `haring-worker` writes into each run folder as `settings.json` and passes with
-`--settings`: the client's private paths outside the project — `~/.claude/**`,
-`~/.ssh/**`, `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`.
-A read of any of them is refused by the Read tool, and by a shell command that names the
-path. Measured: the check reads the path out of the command, so `wc -l ~/.zsh_history` is
-refused and `wc -l "$(echo $HOME/.zsh_history)"` is not. It stops the worker that wanders
-there, which is what happens; it does not stop one that sets out to get round it, and no
-rule inside the process could. The run's own work is untouched by it. When the project is not haring's own repository, the
-same list also holds haring's source — the repository haring is installed from, and the
-`haring-*` links it put in `~/.local/bin` — against a read and against a command that
-would change it, so a worker sent somewhere else cannot edit the tool that sent it there.
-A worker sent to haring itself is held to the private paths alone. `implement` works on a
-branch. Write down
-which branch the project is on, because that is where the work goes back to, then create
-yours:
+`--settings`: the client's private paths outside the project — `~/.claude/**`, `~/.ssh/**`,
+`~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`. A read of any of them
+is refused by the Read tool, and by a shell command that names the path. Measured: the check
+reads the path out of the command, so `wc -l ~/.zsh_history` is refused and
+`wc -l "$(echo $HOME/.zsh_history)"` is not. It stops the worker that wanders there, which is
+what happens; it does not stop one that sets out to get round it, and no rule inside the
+process could. The run's own work is untouched by it. When the project is not haring's own
+repository, the same list also holds haring's source — the repository haring is installed
+from, and the `haring-*` links it put in `~/.local/bin` — against a read and against a
+command that would change it, so a worker sent somewhere else cannot edit the tool that sent it
+there. A worker sent to haring itself is held to the private paths alone. `implement` works on
+a branch. Write down which branch the project is on, because that is where the work goes back
+to, then create yours:
 
 ```
 git -C <project> rev-parse --abbrev-ref HEAD
@@ -542,9 +538,9 @@ run's events written by haring itself as they happen, and for every kind but `er
 `PROGRESS.md` the worker appends to as it goes. The prompt names that file and says its
 first line must be the method the worker means to use, so the plan is on disk before
 anything else happens; an `errand` gets neither the file nor the instruction, because it
-has no way to write one. A killed worker
-still leaves the question, the progress, and the events it got to. One stopped with
-`haring-kill` also leaves `stopped`, which is what tells it apart from a crash.
+has no way to write one. A killed worker still leaves the question, the progress, and the
+events it got to. One stopped with `haring-kill` also leaves `stopped`, which is what tells it
+apart from a crash.
 
 A worker cannot start a worker of its own, or stop a run: `haring-worker` and
 `haring-kill` refuse when a worker calls them. It should not need to, and almost never
