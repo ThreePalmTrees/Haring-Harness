@@ -1,6 +1,7 @@
 #!/bin/sh
 # haring-worker — start one worker, or continue one you already started.
-# Always in the background; prints the run folder.
+# Always in the background; prints the run folder, and on standard error the pulse
+# that follows it.
 #
 #   haring-worker <kind> <workdir> <prompt-file> [--model M]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
@@ -511,4 +512,8 @@ while [ ! -s "$run/meta" ] || ! grep -q '^pid=' "$run/meta"; do
   sleep 0.1
 done
 
+# Nothing else names the pulse, and three runs in a row went unwatched for it. The
+# moment a manager would start one is this one: it is reading this launch's output, and
+# the pulse it starts here covers the run it is about to read.
+echo "haring: watch it as it goes — haring-pulse $project" >&2
 echo "$run"

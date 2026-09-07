@@ -6,9 +6,10 @@
 While the worker is running, its steps are printed to standard error as they happen:
 one line per tool call, with a run of the same tool folded onto one line that counts
 them. Its thinking and its speech reach the same stream as they happen, one line per
-line of the block, a block of more than ten lines showing its last ten, named in the
-column the tool name sits in. Every line names the run it belongs to, so the last ten
-lines are self-labelling
+line of the block, a block of more lines than are being kept showing its last few —
+three while the worker is working, ten once this wait has had to say there is no step —
+named in the column the tool name sits in. Every line names the run it belongs to, so
+the kept lines are self-labelling
 wherever they are read, and a worker that produces nothing for a minute says so — one
 that is waiting on the endpoint says that instead. The report goes to standard output
 when it lands, so a caller redirecting stdout gets the report and nothing else.
@@ -33,8 +34,9 @@ from datetime import datetime
 
 USAGE = "usage: haring-wait <run-folder> [max-seconds]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-WIDTH = 100       # the panel these lines are read in clips them here
+WIDTH = 200       # past the panel's 154 columns, which clips what does not fit anyway
 BLOCK_LINES = 10  # the panel's own row count: a thought ends with its conclusion
+BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
 IDLE_AFTER = 60   # seconds without a printed step before this wait speaks up
 
 
@@ -114,13 +116,17 @@ def elapsed():
 # and take the moment this wait read them, which for a live tail is the same second.
 # Stamping from the event rather than from the clock is what lets a wait that joined late
 # replay a run with the real time each call was made.
-def event_elapsed(ts):
+def ts_value(ts):
     if ts:
         try:
-            return fmt_elapsed(datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() - started)
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
         except ValueError:
             pass
-    return elapsed()
+    return time.time()
+
+
+def event_elapsed(ts):
+    return fmt_elapsed(ts_value(ts) - started)
 
 
 def say(tool, arg, ts):
@@ -152,6 +158,7 @@ def steps(path, pos, seen, state):
                 state["retries"] += 1
                 state["last"] = "retry"
                 state["when"] = time.time()
+                state["when_ts"] = ts_value(d.get("timestamp"))
                 if state["retries"] >= state["retry_next"]:
                     say("api_retry", f"x{state['retries']} waiting on the endpoint",
                         d.get("timestamp"))
@@ -178,12 +185,17 @@ def steps(path, pos, seen, state):
                     rows = [l for l in (" ".join(x.split()) for x in (b.get(kind) or "").splitlines()) if l]
                     # A single thought has filled 485 rows here and pushed every tool call
                     # out of the panel, and the ending of a thought is the part that says
-                    # whether the route is wrong. So a block keeps its last ten rows and
-                    # the count line ahead of them keeps a reader from taking it for the
-                    # whole thought.
-                    if len(rows) > BLOCK_LINES:
-                        say(label, f"{len(rows) - BLOCK_LINES} earlier lines of this block not shown", ts)
-                        rows = rows[-BLOCK_LINES:]
+                    # whether the route is wrong. The count line ahead of the kept rows
+                    # keeps a reader from taking them for the whole thought. While the
+                    # worker is acting, three rows are enough of the ending and the steps
+                    # keep the rest of the panel; once it has been quiet since its last
+                    # step for as long as the waiting line needs, the thought is all there
+                    # is to read and it keeps ten. Measured on the events' own moments, not
+                    # this reader's clock, so a replay sees the silences a live watch saw.
+                    kept = BLOCK_LINES if ts_value(ts) - state["when_ts"] >= IDLE_AFTER else BLOCK_LINES_WORKING
+                    if len(rows) > kept:
+                        say(label, f"{len(rows) - kept} earlier lines of this block not shown", ts)
+                        rows = rows[-kept:]
                     for l in rows:
                         say(label, l, ts)
                     continue
@@ -198,6 +210,7 @@ def steps(path, pos, seen, state):
                 name = b.get("name", "?")
                 ts = d.get("timestamp")
                 state["when"] = time.time()
+                state["when_ts"] = ts_value(ts)
                 state["last"] = "step"
                 if name == state["tool"]:
                     state["n"] += 1
@@ -215,10 +228,12 @@ def steps(path, pos, seen, state):
 
 
 # when: the last time a step or a retry was printed, which is what "the worker has done
-# nothing" is measured from. seen_at: the last time the stream produced anything at all,
-# thinking included, which separates a worker that is generating from one that is silent.
+# nothing" is measured from. when_ts: the same thing on the events' own moments, which is
+# what the block tails are measured on. seen_at: the last time the stream produced anything
+# at all, thinking included, which separates a worker that is generating from one that is
+# silent.
 state = {"tool": None, "n": 0, "next": 2, "retries": 0, "retry_next": 1,
-         "when": time.time(), "seen_at": 0.0, "last": None}
+         "when": time.time(), "when_ts": started, "seen_at": 0.0, "last": None}
 pos, seen, waited, last_idle = 0, set(), 0, 0.0
 while not landed():
     if os.path.exists(events):
