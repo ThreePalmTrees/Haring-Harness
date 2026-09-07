@@ -7,10 +7,10 @@ While the worker is running, its steps are printed to standard error as they hap
 one line per tool call, with a run of the same tool folded onto one line that counts
 them. Its thinking and its speech reach the same stream as they happen, one line per
 line of the block, a block of more lines than are being kept showing its last few —
-three while the worker is working, ten once this wait has had to say there is no step —
-named in the column the tool name sits in. Every line names the run it belongs to, so
-the kept lines are self-labelling
-wherever they are read, and a worker that produces nothing for a minute says so — one
+three while the worker is working, six once this wait has had to say there is no step —
+named in the column the tool name sits in, a quiet block closed by a rule of ─. Every
+line names the run it belongs to, so the kept lines are self-labelling wherever they
+are read, and a worker that produces nothing for a minute says so — one
 that is waiting on the endpoint says that instead. The report goes to standard output
 when it lands, so a caller redirecting stdout gets the report and nothing else.
 
@@ -38,12 +38,17 @@ USAGE = "usage: haring-wait <run-folder> [max-seconds]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # The panel clips at its own width and the file keeps the rest, so this is set by what
 # keeps the tail usable rather than by what fits on screen: the panel reads the last 8 KB
-# and shows ten lines, so a line longer than 819 characters would leave fewer than ten to
-# choose from. 500 sits under that with room, and holds a long command whole for anyone
+# and shows eight rows, so a line longer than 1024 characters would leave fewer than eight
+# to choose from. 500 sits under that with room, and holds a long command whole for anyone
 # reading the file rather than the panel.
 WIDTH = 500
-BLOCK_LINES = 10  # the panel's own row count: a thought ends with its conclusion
+BLOCK_LINES = 6  # the thought lines a quiet block keeps; with the count line ahead of
+                 # them that is seven rows, and the rule below closes the eighth
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
+# The rule that closes a quiet block runs to the width the panel clips at, and 154 is
+# where that clipping sits. The panel clips a long line rather than wrapping it, so a
+# rule too long is safe and one too short leaves a gap in the bottom of the box.
+RULE_WIDTH = 154
 IDLE_AFTER = 60   # seconds without a printed step before this wait speaks up
 
 
@@ -88,11 +93,11 @@ stalled = os.path.join(run, "stalled")
 # record haring owns: Claude Code's transcript lives at a path nothing promises, and when
 # that moved, everything watching a run went blind while the worker carried on. What is
 # read out of it here is the worker's tool calls, thinking and speech. Tool results stay
-# hidden: a result can be a whole file, and the panel that shows these lines is ten rows.
+# hidden: a result can be a whole file, and the panel that shows these lines is eight rows.
 events = os.path.join(run, "events.jsonl")
 
 # Every line carries the run's identity, because the panel these lines are read in keeps
-# only the last ten and a header would have scrolled away before the first step. The date
+# only the last eight and a header would have scrolled away before the first step. The date
 # and time of the stamp are dropped and the kind and pid kept:
 # 2026-09-06-150947-implement-10407 becomes implement-10407.
 parts = os.path.basename(run).split("-")
@@ -141,7 +146,7 @@ def event_elapsed(ts):
 
 def say(tool, arg, ts):
     head = f"{rid} {event_elapsed(ts)} {tool:<12s} "
-    # Clipped here rather than left to the panel: a line that wraps costs two of the ten
+    # Clipped here rather than left to the panel: a line that wraps costs two of the eight
     # rows the display has.
     print((head + arg)[:WIDTH].rstrip(), file=sys.stderr, flush=True)
 
@@ -200,7 +205,7 @@ def steps(path, pos, seen, state):
                     # worker is acting, three rows are enough of the ending and the steps
                     # keep the rest of the panel; once it has been quiet since its last
                     # step for as long as the waiting line needs, the thought is all there
-                    # is to read and it keeps ten. Measured on the events' own moments, not
+                    # is to read and it keeps six. Measured on the events' own moments, not
                     # this reader's clock, so a replay sees the silences a live watch saw.
                     kept = BLOCK_LINES if ts_value(ts) - state["when_ts"] >= IDLE_AFTER else BLOCK_LINES_WORKING
                     if len(rows) > kept:
@@ -208,6 +213,12 @@ def steps(path, pos, seen, state):
                         rows = rows[-kept:]
                     for l in rows:
                         say(label, l, ts)
+                    # A quiet block is the last thing on the panel, so a rule closes it;
+                    # a block printed while the worker acts is followed by more steps and
+                    # ends itself. Printed directly, not through say(): a rule is the
+                    # bottom of the box, not a step, and say() would name it like one.
+                    if kept == BLOCK_LINES:
+                        print("─" * RULE_WIDTH, file=sys.stderr, flush=True)
                     continue
                 if kind != "tool_use":
                     continue
