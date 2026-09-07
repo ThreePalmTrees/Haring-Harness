@@ -52,8 +52,6 @@ The task names the commands that show the work is done. Run each one and paste w
 printed. Do not invent a check of your own, and if the named commands do not cover
 something you think matters, put that in the doubts rather than going to look.
 
-If you wrote something to check your work, keep it.
-
 Commit each step as you go, so a run stopped from outside leaves work on the branch
 rather than a half-changed tree. When it is finished and verified, squash them into one
 commit. Read the log first and match the message style. You do not need to ask
