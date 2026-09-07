@@ -395,6 +395,18 @@ def counted(lines):
     return answers
 
 
+def stamped(lines):
+    """Whether any of these lines carries a timestamp, which only real message events do."""
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if "timestamp" in d:
+            return True
+    return False
+
+
 def hand_over(text):
     sys.stdout.write(json.dumps({"type": "user",
                                  "message": {"role": "user", "content": text}}) + "\n")
@@ -405,7 +417,7 @@ qpos = epos = consumed = sent = results = 0
 handed = None   # nothing written to disk yet; the first mark is the first write
 pending = []
 caught_up = False
-last_grew = time.time()   # silence is measured from events this keeper has seen itself
+last_grew = time.time()   # silence is measured from message events, not from every line
 try:
     with open(os.path.join(run, "prompt.md")) as f:
         pending.append(f.read())
@@ -429,14 +441,17 @@ try:
         handed = mark(max(0, sent - 1), handed)
         lines, epos = added(events, epos)
         results += counted(lines)
-        if lines:
+        if stamped(lines):
             last_grew = time.time()
         if reader_gone():
             break
         if time.time() - last_grew >= limit:
-            # The endpoint has stopped answering: nothing has reached the events for the
-            # limit, and claude would sit here writing api_retry events forever, since its
-            # retry counter starts over on every request. The keeper is the one thing that
+            # The endpoint has stopped answering: no message event has carried a
+            # timestamp for the limit, and claude would sit here writing api_retry events
+            # forever, since its retry counter starts over on every request. api_retry and
+            # thinking_tokens carry no timestamp, because they are written while nothing
+            # is arriving, and resetting on them would keep a failing run alive
+            # indefinitely. The keeper is the one thing that
             # lives exactly as long as the run, so the stop is made from inside it. The
             # file is written before the group is signalled, because this keeper is inside
             # the group and will not survive the signal; haring-wait reads the file to
