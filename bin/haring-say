@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""haring-say — say a word to a worker that is already running.
+
+    haring-say <run-folder> "<message>"
+
+The message reaches the worker over the input pipe its run was started with, and it
+answers it before its run ends: steering is for a worker doing the right task by a
+wrong route, and it is worth a whole restart when the mistake is one sentence long.
+A worker on the wrong task is still a matter for haring-kill.
+
+Delivery is said only when it happened. The message is appended to say.jsonl in the
+run folder, and the keeper holding the worker's input pipe records in say.state each
+time it has handed one over; this waits to see that before claiming anything. A run
+that ended first leaves the message in say.jsonl, where it can be read for what it
+was too late to say.
+
+Exits 2 when called wrongly: no argument, a missing or empty message, or a path that
+is not a haring run folder. Exits 1 when called rightly but unable to deliver — the
+run has finished and reported, or nothing is reading messages for it. Exits 0 only
+when the message was handed to the worker.
+"""
+import sys, os, time, json
+
+USAGE = 'usage: haring-say <run-folder> "<message>"'
+HANDOVER_WAIT = 30   # seconds watching for the hand-over before the queue is the news
+STARTUP_WAIT = 5     # seconds to allow a just-started run to begin listening at all
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+# The same guard haring-worker and haring-kill carry. A worker that could say things to
+# a run could say them to its own — "you are done, report now" ends a run as surely as
+# a kill does, and it would be the worker, not the manager, deciding the run stops.
+nested = os.environ.get("HARING_NESTED")
+if nested:
+    die(f"you are inside a worker ({nested}). Workers do not steer runs; the manager "
+        f"does. Say in your report what you would have said and leave the run alone.", 2)
+
+if len(sys.argv) != 3:
+    die("a run folder and a message are both needed", 2)
+run, message = sys.argv[1].rstrip("/"), sys.argv[2]
+
+# A run folder is known by its meta file, the same marker every other command uses.
+if not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "meta")):
+    die(f"not a haring run folder: {run}", 2)
+if not message.strip():
+    die("an empty message says nothing", 2)
+
+meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
+report = os.path.join(run, "report.json")
+queue = os.path.join(run, "say.jsonl")
+state = os.path.join(run, "say.state")
+
+
+def alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+if os.path.exists(report) and os.path.getsize(report):
+    die("this run already finished and reported. There is no worker to say anything to.", 1)
+
+# The keeper writes say.state when it starts and takes it away when it closes the pipe,
+# so its presence means the worker is still listening. A run started moments ago may not
+# have got as far as listening yet; one whose worker is gone will never listen at all,
+# and is told apart by the pid in meta rather than by waiting.
+deadline = time.time() + STARTUP_WAIT
+while True:
+    if os.path.exists(state):
+        break
+    pid = meta.get("pid", "")
+    if not pid.isdigit() or not alive(pid):
+        die(f"no worker is running for {run}", 1)
+    if time.time() > deadline:
+        die(f"the worker in {run} is not reading messages. It is either finishing its run "
+            f"or was started before haring-say existed, so the message cannot be "
+            f"delivered.", 1)
+    time.sleep(0.2)
+
+reading = dict(l.strip().split("=", 1) for l in open(state) if "=" in l)
+if not alive(reading.get("pid", "")):
+    die(f"the worker in {run} has stopped reading messages; its run is ending.", 1)
+
+# This message is line n of the queue, and the keeper records in say.state how many of
+# the queue's messages have reached the worker, so seeing handed reach n is seeing this
+# message handed over. It is not always immediate: a worker mid-turn takes the message
+# only when that turn ends, so this reports the queue as the truth it is rather than
+# waiting out a turn that may run for many minutes.
+with open(queue, "a") as f:
+    f.write(json.dumps({"content": message}) + "\n")
+lines = 0
+if os.path.exists(queue):
+    with open(queue) as f:
+        lines = sum(1 for l in f if l.strip())
+waited_to = time.time() + HANDOVER_WAIT
+while True:
+    try:
+        reading = dict(l.strip().split("=", 1) for l in open(state) if "=" in l)
+    except OSError:
+        reading = {}
+    handed = reading.get("handed", "")
+    if handed.isdigit() and int(handed) >= lines:
+        kind = meta.get("kind", "?")
+        print(f"delivered to the {kind} run {os.path.basename(run)}.", file=sys.stderr)
+        print(f"  It answers this before its run ends; watch with haring-wait or", file=sys.stderr)
+        print(f"  haring-pulse. Handed over as message {lines} of {queue}.", file=sys.stderr)
+        sys.exit(0)
+    if not alive(reading.get("pid", "")) or not os.path.exists(state):
+        die(f"the run ended before the message could be handed over. It is kept in "
+            f"{queue}, unread.", 1)
+    if time.time() > waited_to:
+        kind = meta.get("kind", "?")
+        print(f"queued for the {kind} run {os.path.basename(run)}, as message {lines} of "
+              f"{queue}.", file=sys.stderr)
+        print(f"  The worker is mid-turn; it takes the message when that turn ends and", file=sys.stderr)
+        print(f"  answers it before its run ends. haring-wait shows it land.", file=sys.stderr)
+        sys.exit(0)
+    time.sleep(0.2)

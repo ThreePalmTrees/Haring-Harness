@@ -311,17 +311,152 @@ resume_flag=""
 # end is a run that looks unfinished the whole time it runs; an empty one is what
 # haring-wait and haring-pulse already treat as "not landed yet", and what a killed worker
 # leaves behind.
+# claude reads its input from a pipe rather than from nothing, so that a word said to a
+# running worker can reach it: --input-format stream-json makes it read user messages
+# from stdin while it works, and the task itself travels over that pipe as the first of
+# them. Holding the pipe open for the life of the run is the keeper written just below —
+# it is the only thing holding it, so a keeper that dies ends the run instead of hanging
+# it, and it closes the pipe itself once claude has answered everything it was sent.
 cat > "$run/run.sh" <<RUNNER
 #!/bin/sh
 echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 : > "$run/report.json"
-claude -p "\$(cat "$run/prompt.md")" \
+cat > "$run/keeper.tmp" <<'KPIPE'
+import json, os, select, sys, time
+
+# Holds the writing end of the pipe claude reads its input from. The task itself is the
+# first thing over that pipe — a line written before claude is up reading waits in the
+# pipe for it, as a pipe does — and everything the manager says later with haring-say
+# goes over the same one, appended to say.jsonl in the run folder. A message is handed
+# over only once everything before it has been answered, because claude reads its input
+# between turns: one written mid-turn sat unread for the rest of the run, where one
+# written after a result starts the next turn and gets its own. When claude has answered
+# everything handed to it, the pipe is closed, which is how an unsteered run ends exactly
+# when it always did and a steered one ends once it has answered.
+#
+# This process is the only holder of the pipe, on purpose. If it dies for any reason the
+# pipe closes with it, claude reads end of input and finishes the turn it is on rather
+# than waiting forever for a message that will never come. The other half of that is
+# watched the same way: claude can end while a message is still owed — a crash, or a
+# turn that was its last — and a write end held to a pipe nobody reads would hang the
+# whole run, so the reader's side of the pipe is polled, and its going is the end too.
+
+run = sys.argv[1]
+queue = os.path.join(run, "say.jsonl")   # haring-say appends one line per message
+state = os.path.join(run, "say.state")   # who is listening, and how much it has taken
+events = os.path.join(run, "events.jsonl")
+
+reader = select.poll()
+reader.register(sys.stdout.fileno(), select.POLLERR | select.POLLHUP | select.POLLNVAL)
+
+
+def reader_gone():
+    return bool(reader.poll(0))
+
+
+def added(path, pos):
+    """Complete lines appended at path since pos, and the position to read from next."""
+    out = []
+    if os.path.exists(path):
+        with open(path) as f:
+            f.seek(pos)
+            rest = f.read()
+        while True:
+            cut = rest.find("\n")
+            if cut < 0:
+                break
+            out.append(rest[:cut])
+            rest = rest[cut + 1:]
+            pos += cut + 1
+    return out, pos
+
+
+def mark(handed, written):
+    if handed == written:
+        return written
+    tmp = state + ".tmp"
+    with open(tmp, "w") as f:
+        f.write("pid=%d\nhanded=%d\n" % (os.getpid(), handed))
+    os.replace(tmp, state)
+    return handed
+
+
+def counted(lines):
+    """How many of these lines are answers."""
+    answers = 0
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if d.get("type") == "result":
+            answers += 1
+    return answers
+
+
+def hand_over(text):
+    sys.stdout.write(json.dumps({"type": "user",
+                                 "message": {"role": "user", "content": text}}) + "\n")
+    sys.stdout.flush()
+
+
+qpos = epos = consumed = sent = results = 0
+handed = None   # nothing written to disk yet; the first mark is the first write
+pending = []
+caught_up = False
+try:
+    with open(os.path.join(run, "prompt.md")) as f:
+        pending.append(f.read())
+    while True:
+        lines, qpos = added(queue, qpos)
+        for line in lines:
+            consumed += 1
+            try:
+                text = json.loads(line).get("content")
+            except ValueError:
+                text = None
+            if isinstance(text, str) and text.strip():
+                pending.append(text)
+        # Idle means every message so far has its result, so the next one starts a turn
+        # of its own. The task itself goes over by the same rule, before any result.
+        if pending and results >= sent:
+            hand_over(pending.pop(0))
+            sent += 1
+        # Handed is what haring-say watches for: how many of the queue's messages have
+        # actually reached claude, which is one behind sent until the task is in.
+        handed = mark(max(0, sent - 1), handed)
+        lines, epos = added(events, epos)
+        results += counted(lines)
+        if reader_gone():
+            break
+        if results >= sent and not pending:
+            # One more turn of the loop before closing, so a message handed over in the
+            # same breath as the answer is still owed its answer.
+            if caught_up:
+                break
+            caught_up = True
+        else:
+            caught_up = False
+        time.sleep(0.2)
+except BrokenPipeError:
+    pass
+finally:
+    try:
+        sys.stdout.close()
+    except OSError:
+        pass
+    try:
+        os.remove(state)
+    except OSError:
+        pass
+KPIPE
+python3 "$run/keeper.tmp" "$run" | claude -p \
   --model "$model" \
   --session-id "$session" \
   --append-system-prompt "\$(cat "$run/system.tmp")" \
   --allowedTools "$tools" \
-  --output-format stream-json --verbose \
+  --output-format stream-json --input-format stream-json --verbose \
   --json-schema "\$(cat "$schema")" \
   --settings "$run/settings.json" \
   $extra $resume_flag \
@@ -353,7 +488,7 @@ if found is not None:
         f.write("\n")
 ' "$run/events.jsonl" "$run/report.json"
 "$HARING/bin/haring-stats" "$run" > "$run/stats.txt" 2>/dev/null || true
-rm -f "$run/system.tmp" "$run/run.sh"
+rm -f "$run/system.tmp" "$run/keeper.tmp" "$run/run.sh"
 RUNNER
 chmod +x "$run/run.sh"
 printf '%s' "$sysprompt" > "$run/system.tmp"
