@@ -49,5 +49,5 @@ than a half-changed tree. When it is finished and verified, squash them into one
 whether to commit: being sent this task is the asking, and the branch exists to be thrown
 away if the work is not kept.
 
-Verify again, the same way, including the new behaviour. Report against the same
-structure, so the manager can compare the two side by side.
+Run the check the manager named in its review and paste what it printed. Do not invent
+your own verification: the manager named the command, so that is the one that counts.
