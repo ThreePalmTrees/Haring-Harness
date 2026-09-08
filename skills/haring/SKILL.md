@@ -333,6 +333,20 @@ Pick the kind first. It sets the tools and the shape of the report.
 - **check** — one claim, answered true, false, partly or could_not_check, with evidence.
 - **implement** — do the work, on a branch.
 
+### Pick the kind by whether the question needs a shell
+
+**When:** before every delegation, before you write a word of the task.
+**Why:** an errand holds Read, Glob and Grep and no shell. Given a question a command
+would answer, it cannot run the command, and it will keep asking for a shell it does not
+have. Measured: six such questions as an errand made seventy tool calls, sixty-nine of
+them for a tool it did not hold, and ran over half an hour without finishing; the same
+six as a check, with the commands written out, took a hundred and seventy seconds.
+
+An errand answers what Read, Glob and Grep can answer: read this file, list the files
+matching this, find the lines matching that. The moment a question needs a pipe, a count,
+a length, a sort, or a comparison between two lines, it is a check, and you write the
+command out rather than describing it.
+
 ### Run an errand
 
 Facts, read only, no shell. The cheapest thing there is: a median of about a minute
@@ -438,11 +452,12 @@ thinking and its speech while it waits: one line per tool call, with a run of th
 tool folded into a counted line, and one line per line of a thought or of speech,
 labelled `thinking` and `says` and cropped to the width of a step line. A block keeps its last
 three lines while the worker is working and its last six once it has fallen silent, with one
-line ahead of them saying how many came before and a rule of ─ closing the block: while it is
-acting you want to see what it did, and while it is quiet its thinking is the only thing there
-is to see. When no step arrives for a minute it says so on a line labelled `waiting`, and tells
-a worker that is thinking from one that has stalled. And Claude Code brings you back on its own
-when the run ends, so the conversation moves the moment the work is done.
+line ahead of them saying how many came before and a rule of ─ closing the stream once it
+has ended: while it is acting you want to see what it did, and while it is quiet its thinking
+is the only thing there is to see. When no step arrives for a minute it says so on a line
+labelled `waiting`, and tells a worker that is thinking from one that has stalled. And
+Claude Code brings you back on its own when the run ends, so the conversation moves the
+moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
 message that reads as finished with a hidden shell behind it. For the same reason, do not

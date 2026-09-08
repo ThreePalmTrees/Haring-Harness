@@ -13,7 +13,7 @@ named in the column the tool name sits in. Every
 line names the run it belongs to, so the kept lines are self-labelling wherever they
 are read, and a worker that produces nothing for a minute says so — one
 that is waiting on the endpoint says that instead. A rule of ─ closes the stream once
-it has ended, after the last step line and after no one block. The report goes to
+it has ended, printed once at its end and never between blocks. The report goes to
 standard output when it lands, so a caller redirecting stdout gets the report and
 nothing else.
 
