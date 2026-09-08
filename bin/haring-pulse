@@ -41,8 +41,13 @@ pulse last spoke about the run, else its most recent tool call, else, when the e
 has been refusing it since that call, the retries it has waited through. A detail shown
 on an earlier pass is not shown again: the progress line is written once, as a plan, and
 can sit unchanged for the rest of the run, so repeating it would make a busy worker read
-like a stuck one. A run with nothing new prints nothing — silence is correct output
-here, not a fault, and it covers a worker that has written no line and made no call yet.
+like a stuck one. A pass that finds nothing new still says so once the run's last step
+is more than QUIET_AFTER seconds old: one line naming the run as ever, with a detail
+saying the worker is thinking and how long since that step. The elapsed time in it
+grows, so no two of these lines are the same — which is the point, because a worker
+deep in a long thought must not read as one that has died. Silence on a pass still
+means a run younger than that with nothing to say yet, which is correct output here,
+not a fault, and it covers a worker that has written no line and made no call yet.
 
 The workers it takes on are those live at the pass that first saw one. A worker started
 after that is the next task's, and reporting on it would keep this pulse alive into a job
@@ -56,10 +61,12 @@ that does not exist, or --every or --first given something the rules above refus
 There is no way to be called rightly and still fail, so exit 1 is not used.
 """
 import sys, os, json, time, glob, subprocess, signal
+from datetime import datetime
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 LINE_LIMIT = 160
 FIRST_LIVE_DEADLINE = 60
+QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says so
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
 FIRST_CEILING = 60   # an opening look must fit inside the deadline above
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
@@ -135,17 +142,28 @@ def last_progress_line(run):
 
 
 # The worker's own last word on what it is doing beats a guess made from its tool
-# calls, so this is only reached when PROGRESS.md has nothing yet. Scans the whole
+# calls, so a new progress line is preferred over this. Scans the whole
 # event stream because what is wanted is the most recent call, not what changed since
 # some earlier position — there is no earlier position, each pass stands alone. The
 # stream is the run's own events.jsonl, the one record haring owns. Retries counted
 # after the last tool call mean the endpoint is refusing the worker, which is the
-# answer to "why has it not moved".
+# answer to "why has it not moved". The moment of that call comes back with the
+# detail, on the event's own timestamp: it is what tells a run that has gone quiet
+# from one that is only between steps.
+def step_time(ts):
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
 def last_step(run):
     path = os.path.join(run, "events.jsonl")
     if not os.path.exists(path):
-        return None
-    name, arg, retries = None, "", 0
+        return None, None
+    name, arg, retries, at = None, "", 0, None
     try:
         with open(path, errors="replace") as f:
             for line in f:
@@ -168,11 +186,14 @@ def last_step(run):
                     name = b.get("name", "?")
                     arg = " ".join(str(a).split())[:92]
                     retries = 0
+                    at = step_time(d.get("timestamp"))
     except OSError:
-        return None
+        return None, None
     if retries:
-        return f"waiting on the endpoint ({retries} retries)"
-    return f"{name} {arg}".strip() if name else None
+        return f"waiting on the endpoint ({retries} retries)", at
+    if not name:
+        return None, None
+    return f"{name} {arg}".strip(), at
 
 
 def alive(pid):
@@ -203,8 +224,9 @@ def live_runs():
     return found
 
 
-# What each pass said, by run folder: the progress line last seen and the detail last
-# printed. Only a change against this is worth a line — the progress file holds the plan
+# What each pass said, by run folder: the progress line last seen, the step detail last
+# printed and the detail of the last line sent at all. Only a change against this is
+# worth a line — the progress file holds the plan
 # the worker wrote when it started and is often never appended to again, so without it a
 # pulse says the same sentence every five minutes while the worker moves on.
 shown = {}
@@ -214,13 +236,24 @@ def report_line(run, meta, meta_path):
     kind = meta.get("kind", "?")
     prev = shown.get(run, {})
     progress = last_progress_line(run)
+    step, step_at = last_step(run)
     if progress and progress != prev.get("progress"):
         detail = progress
+    elif step and step != prev.get("step"):
+        detail = step
     else:
-        detail = last_step(run)
-    if not detail or detail == prev.get("detail"):
-        return None
-    shown[run] = {"progress": progress, "detail": detail}
+        detail = None
+    if detail is None:
+        # Nothing new is not the same as nothing to say: a worker deep in a long thought
+        # looks, from here, like a dead one, and this is what keeps the two apart. The
+        # elapsed time in the line grows, so each pass's line is new under the rule every
+        # line here answers to.
+        if step_at is None or time.time() - step_at < QUIET_AFTER:
+            return None
+        detail = f"thinking, no step for {elapsed(step_at)}"
+        if detail == prev.get("detail"):
+            return None
+    shown[run] = {"progress": progress, "step": step, "detail": detail}
     prefix = f"{kind} {os.path.basename(run)} {elapsed(os.path.getmtime(meta_path))} "
     # The fields before the detail say which run this is and are not negotiable; the
     # detail is the part that can run long, so it is the part that gives way.
