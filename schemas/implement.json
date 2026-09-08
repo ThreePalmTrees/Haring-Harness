@@ -2,6 +2,21 @@
  "type": "object",
  "additionalProperties": false,
  "properties": {
+  "task_as_i_read_it": {
+   "type": "string",
+   "description": "the task as you read it, in your own words, one or two sentences, written before the work. The manager compares it with what was sent, so a misreading shows here."
+  },
+  "narrowest_reading": {
+   "type": "string",
+   "description": "only if the task was ambiguous: the narrowest reading you took, and what the other reading would have been. Empty if it was not ambiguous."
+  },
+  "followups": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "work you found that mattered and did not do, one line each. Empty if there is none."
+  },
   "answers": {
    "type": "array",
    "description": "One entry for every numbered thing the task asked for. If you could not answer one, say why in detail. Never leave a number out.",
@@ -129,6 +144,7 @@
   }
  },
  "required": [
+  "task_as_i_read_it",
   "answers",
   "files_changed",
   "verification",
