@@ -520,11 +520,12 @@ its own run folder and its own session, so the run it came from stays whole and 
 continued again.
 
 Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell as well
-— reading a codebase needs one — so a read-only kind can change a file if it ignores its
-rules. `errand` gets the same three without the shell, and is the one kind kept to reading by
-its tool list alone. What the harness holds every kind to, including the shell, is the deny
-list `haring-worker` writes into each run folder as `settings.json` and passes with
-`--settings`: the client's private paths outside the project — `~/.claude/**`, `~/.ssh/**`,
+— reading a codebase needs one — and `Write` and `Edit` are denied it, so a check cannot
+change a file by ignoring its rules. `errand` gets the same three without the shell, and
+`Bash`, `Write` and `Edit` are denied it outright. What the harness holds every kind to,
+including the shell, is the deny list `haring-worker` writes into each run folder as
+`settings.json` and passes with `--settings`: the client's private paths outside the project
+— `~/.claude/**`, `~/.ssh/**`,
 `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`. A read of any of them
 is refused by the Read tool, and by a shell command that names the path. Measured: the check
 reads the path out of the command, so `wc -l ~/.zsh_history` is refused and

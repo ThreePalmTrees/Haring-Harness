@@ -106,19 +106,24 @@ done
 
 : "${model:=$MODEL_DEFAULT}"
 
-# The tools each kind may use, and the flags that go with them. A read-only kind gets a
-# shell because reading needs one, and its rules forbid using it to change anything.
+# The tools each kind may use, the tools it is denied, and the effort it thinks at. A
+# read-only kind gets a shell because reading needs one, and has the writing tools denied
+# rather than being talked out of them by its rules. implement takes no effort flag and
+# runs at the default.
 #
 # There is no spending limit. A limit that fires returns NO REPORT AT ALL: the work is on
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
   check)
-      tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
+      tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
+      extra='--bare --effort medium' ;;
   errand)
-      tools='Read,Glob,Grep';      extra='--bare' ;;
+      tools='Read,Glob,Grep'; denied='Bash,Write,Edit'
+      extra='--bare --effort low' ;;
   implement)
-      tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits' ;;
+      tools='Read,Write,Edit,Glob,Grep,Bash'; denied=''
+      extra='--permission-mode acceptEdits' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 
@@ -352,6 +357,11 @@ resume_flag=""
 # them. Holding the pipe open for the life of the run is the keeper written just below —
 # it is the only thing holding it, so a keeper that dies ends the run instead of hanging
 # it, and it closes the pipe itself once claude has answered everything it was sent.
+# The denied list travels as --disallowedTools only when the kind denies something: the
+# run.sh heredoc expands parameters but does not split words, so an empty value written
+# straight into it would leave the bare flag holding the next argument as its list.
+denied_flag=''
+if [ -n "$denied" ]; then denied_flag="--disallowedTools $denied"; fi
 cat > "$run/run.sh" <<RUNNER
 #!/bin/sh
 echo "pid=\$\$" >> "$run/meta"
@@ -526,6 +536,7 @@ python3 "$run/keeper.tmp" "$run" 900 | claude -p \
   --session-id "$session" \
   --append-system-prompt "\$(cat "$run/system.tmp")" \
   --allowedTools "$tools" \
+  $denied_flag \
   --output-format stream-json --input-format stream-json --verbose \
   --json-schema "\$(cat "$schema")" \
   --settings "$run/settings.json" \
