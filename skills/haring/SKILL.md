@@ -298,6 +298,9 @@ lift is taken off the worker's own environment, so it carries no lift of its own
 `haring-worker` refuses a third even with the lift set — the plan allows two requests in
 flight, and a third is a rate-limit failure in every worker already going.
 
+The ceiling is the setting `MAX_PARALLEL_WORKERS` in `bin/haring-worker`, and it is 2.
+Measured: two errands run together finished in 25 seconds where one alone took 22.
+
 ### Continue a worker rather than starting a new one
 
 **When:** the next small task is in the same area as the one just finished.
@@ -356,6 +359,13 @@ An errand answers what Read, Glob and Grep can answer: read this file, list the 
 matching this, find the lines matching that. The moment a question needs a pipe, a count,
 a length, a sort, or a comparison between two lines, it is a check, and you write the
 command out rather than describing it.
+
+The choice also sets how long the job takes, and whether an answer comes back at all.
+Measured on one task — list the files under two directories, give each markdown file's
+first heading, and count the lines mentioning one word — sent as an errand it ran 331
+seconds one way and 494 another, and twice more it came back wrong or empty. Sent as a
+check that gathered everything in one script it took 68 seconds and was correct. The cost
+of choosing wrong is five times the time and the answer as well.
 
 ### Run an errand
 
@@ -429,7 +439,7 @@ Any idea ?
 ## Starting and watching a worker
 
 ```
-haring-worker <kind> <workdir> <prompt-file>
+haring-worker <kind> <workdir> <prompt-file> [--effort L]
 haring-worker continue <kind> <previous-run-folder> <prompt-file>
 ```
 
@@ -437,6 +447,15 @@ It prints a run folder and returns at once. A worker runs in its own session, so
 outlives whatever started it: if your wait is cut short, or you stop it, or you go and do
 something else, the worker keeps working and its report still lands. Come back with
 `haring-wait` or `haring-stats` and nothing is lost.
+
+`--effort` is optional and no kind sets one: without it, every kind runs at the tool's
+own default. The levels are low, medium, high, xhigh and max. Measured on a single-fact
+extraction, low was correct all three times and twice as fast: 9, 12 and 9 seconds
+against 18, 14 and 26. Measured on a task with several numbered questions, low and medium
+each came back with a non-answer of about 180 characters where the default answered in
+full, and one real errand at low effort returned an empty report having made no tool call
+at all. Low is for one fact from one file, and for nothing with several numbered
+questions.
 
 One worker runs in a project at a time. A second `haring-worker` in the same project is
 refused before anything is created, and names the run still going and the `haring-kill`
@@ -626,17 +645,22 @@ waiting for the API to answer.
 
 Read it in this order.
 
-1. **The doubts.** Three lists: needs the client, did not check, weak evidence. They need
+1. **The task as the worker read it.** Every report begins with `task_as_i_read_it`, the
+   task in the worker's own words. Compare it against what you sent before you read
+   anything else: a misreading is visible there in one line and nowhere else. Two more
+   fields may be filled beside it: `narrowest_reading`, when the task was ambiguous and
+   the worker took the narrowest reading, and `followups`, work it found and did not do.
+2. **The doubts.** Three lists: needs the client, did not check, weak evidence. They need
    three different responses, which is why they are separate.
-2. **The numbered answers.** Match them against what you asked for. One entry per number.
-3. **Environment.** If it could not run the tests, most of the report is reasoning.
-4. **Verification**, including the baseline. Tests that were already failing are a note.
+3. **The numbered answers.** Match them against what you asked for. One entry per number.
+4. **Environment.** If it could not run the tests, most of the report is reasoning.
+5. **Verification**, including the baseline. Tests that were already failing are a note.
    Tests its change broke are a blocker.
-5. **Side effects.** Services started, data changed, files left. A diff shows none of it.
+6. **Side effects.** Services started, data changed, files left. A diff shows none of it.
    A worker is not allowed to install anything, so a request to install arrives here as a
    blocker and the decision is yours.
-6. **The claims.**
-7. **The one true thing** it told you without being asked.
+7. **The claims.**
+8. **The one true thing** it told you without being asked.
 
 ### A worker that stops on a contradiction has done the right thing
 
@@ -655,6 +679,17 @@ someone to look further, change the task, or tell it to go ahead as written and 
 findings and ranked options read as decisive while its sixth doubt admitted the analysis
 had never reached the question asked. Reading top to bottom would have shipped a confident
 wrong answer.
+
+### The read-nothing warning marks a report written without evidence
+
+**When:** `haring-report` or `haring-wait` prints its warning that the worker read
+nothing.
+**Why:** the mistakes in such a report are the kind you cannot spot from inside it. One
+gave a line number for a word that is not on that line, counted 12 where the truth was 28,
+and said two directories did not exist when both do.
+
+It is a warning and not a failure, because a task that genuinely needs no reading is
+possible.
 
 ### Match what you asked against what you got
 
