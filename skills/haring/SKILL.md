@@ -450,11 +450,11 @@ Your turn does not stay open, so you are free while the worker works. The client
 the task and follow the worker as it happens, because `haring-wait` prints its steps, its
 thinking and its speech while it waits: one line per tool call, with a run of the same
 tool folded into a counted line, and one line per line of a thought or of speech,
-labelled `thinking` and `says` and cropped to the width of a step line. A block keeps its last
-three lines while the worker is working and its last six once it has fallen silent, with one
-line ahead of them saying how many came before and a rule of ─ closing the stream once it
-has ended: while it is acting you want to see what it did, and while it is quiet its thinking
-is the only thing there is to see. When no step arrives for a minute it says so on a line
+labelled `thinking` and `says` and cropped to the width of a step line. A block keeps
+its last three lines while the worker is working and its last ten once it has fallen
+silent, with one line ahead of them saying how many came before: while it is acting you
+want to see what it did, and while it is quiet its thinking is the only thing there is
+to see. When no step arrives for a minute it says so on a line
 labelled `waiting`, and tells a worker that is thinking from one that has stalled. And
 Claude Code brings you back on its own when the run ends, so the conversation moves the
 moment the work is done.
@@ -474,7 +474,10 @@ first line of its progress file while acting is still cheap. After that it repor
 is refused at 60 or more, `--every` above 300. To change the pace while a run is going,
 write one number of seconds into `.haring/cadence` in the project; the next pass uses it,
 under the same 300-second ceiling, and a line starting `cadence` on the pulse's own
-output says when a number was taken and when one was refused. Every wake-up costs you a
+output says when a number was taken and when one was refused. A pass with nothing new
+still speaks once a run's last step is more than a minute old: one line saying the
+worker is thinking and how long since that step, so a deep thought does not read as a
+worker that has died. Every wake-up costs you a
 turn, which is why the settled pace is minutes and the opening one is seconds. The
 workers it reports are the ones live at the pass that found the first of them: a worker
 you start after that belongs to the next pulse, not this one. That is also why it ends

@@ -8,14 +8,12 @@ one line per tool call, with a run of the same tool folded onto one line that co
 them, naming how many distinct arguments the fold has held when they were not all the
 same. Its thinking and its speech reach the same stream as they happen, one line per
 line of the block, a block of more lines than are being kept showing its last few —
-three while the worker is working, six once this wait has had to say there is no step —
-named in the column the tool name sits in. Every
-line names the run it belongs to, so the kept lines are self-labelling wherever they
-are read, and a worker that produces nothing for a minute says so — one
-that is waiting on the endpoint says that instead. A rule of ─ closes the stream once
-it has ended, printed once at its end and never between blocks. The report goes to
-standard output when it lands, so a caller redirecting stdout gets the report and
-nothing else.
+three while the worker is working, ten once this wait has had to say there is no step —
+named in the column the tool name sits in. Every line names the run it belongs to, so
+the kept lines are self-labelling wherever they are read, and a worker that produces
+nothing for a minute says so — one that is waiting on the endpoint says that instead.
+The report goes to standard output when it lands, so a caller redirecting stdout gets
+the report and nothing else.
 
 Exits 0 when the worker reported, and 1 when it left a report that cannot be read.
 Exits 2 when it was called wrongly: no arguments, or a path that is not a haring run
@@ -40,18 +38,13 @@ from datetime import datetime
 USAGE = "usage: haring-wait <run-folder> [max-seconds]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # The panel clips at its own width and the file keeps the rest, so this is set by what
-# keeps the tail usable rather than by what fits on screen: the panel reads the last 8 KB
-# and shows eight rows, so a line longer than 1024 characters would leave fewer than eight
-# to choose from. 500 sits under that with room, and holds a long command whole for anyone
-# reading the file rather than the panel.
+# keeps the tail usable rather than by what fits on screen: the panel reads the last
+# 8 KB, and a long line spends that budget on itself that the kept lines could have had.
+# 500 sits under it with room, and holds a long command whole for anyone reading the
+# file rather than the panel.
 WIDTH = 500
-BLOCK_LINES = 6  # the thought lines a quiet block keeps; with the count line ahead of
-                 # them that is seven rows
+BLOCK_LINES = 10  # how much of a finished thought is worth reading
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
-# The rule that closes the stream runs to the width the panel clips at, and 154 is
-# where that clipping sits. The panel clips a long line rather than wrapping it, so a
-# rule too long is safe and one too short leaves a gap in the bottom of the box.
-RULE_WIDTH = 154
 IDLE_AFTER = 60   # seconds without a printed step before this wait speaks up
 
 
@@ -96,11 +89,11 @@ stalled = os.path.join(run, "stalled")
 # record haring owns: Claude Code's transcript lives at a path nothing promises, and when
 # that moved, everything watching a run went blind while the worker carried on. What is
 # read out of it here is the worker's tool calls, thinking and speech. Tool results stay
-# hidden: a result can be a whole file, and the panel that shows these lines is eight rows.
+# hidden: a result can be a whole file.
 events = os.path.join(run, "events.jsonl")
 
-# Every line carries the run's identity, because the panel these lines are read in keeps
-# only the last eight and a header would have scrolled away before the first step. The date
+# Every line carries the run's identity, because a header at the top of the stream would
+# have scrolled away before the first step. The date
 # and time of the stamp are dropped and the kind and pid kept:
 # 2026-09-06-150947-implement-10407 becomes implement-10407.
 parts = os.path.basename(run).split("-")
@@ -149,15 +142,9 @@ def event_elapsed(ts):
 
 def say(tool, arg, ts):
     head = f"{rid} {event_elapsed(ts)} {tool:<12s} "
-    # Clipped here rather than left to the panel: a line that wraps costs two of the eight
-    # rows the display has.
+    # Clipped here rather than left to the panel: a line that wraps costs a second row
+    # to itself.
     print((head + arg)[:WIDTH].rstrip(), file=sys.stderr, flush=True)
-
-
-def rule():
-    # Printed directly, not through say(): a rule is the bottom of the box, not a step,
-    # and say() would name it like one.
-    print("─" * RULE_WIDTH, file=sys.stderr, flush=True)
 
 
 def steps(path, pos, seen, state):
@@ -211,11 +198,12 @@ def steps(path, pos, seen, state):
                     # out of the panel, and the ending of a thought is the part that says
                     # whether the route is wrong. The count line ahead of the kept rows
                     # keeps a reader from taking them for the whole thought. While the
-                    # worker is acting, three rows are enough of the ending and the steps
-                    # keep the rest of the panel; once it has been quiet since its last
-                    # step for as long as the waiting line needs, the thought is all there
-                    # is to read and it keeps six. Measured on the events' own moments, not
-                    # this reader's clock, so a replay sees the silences a live watch saw.
+                    # worker is acting, BLOCK_LINES_WORKING of them are enough of the
+                    # ending and the steps keep the rest of the panel; once it has been
+                    # quiet since its last step for as long as the waiting line needs, the
+                    # thought is all there is to read and it keeps BLOCK_LINES. Measured on
+                    # the events' own moments, not this reader's clock, so a replay sees
+                    # the silences a live watch saw.
                     kept = BLOCK_LINES if ts_value(ts) - state["when_ts"] >= IDLE_AFTER else BLOCK_LINES_WORKING
                     if len(rows) > kept:
                         say(label, f"{len(rows) - kept} earlier lines of this block not shown", ts)
@@ -294,9 +282,6 @@ while not landed():
     waited += 1
 
 if not landed():
-    # The stream ends with the run's stop, so the rule closes it here rather than
-    # after any one block.
-    rule()
     if os.path.exists(stopped):
         rec = dict(l.strip().split("=", 1) for l in open(stopped) if "=" in l)
         print(f"this run was stopped on purpose with haring-kill at {rec.get('at', '?')} "
@@ -328,8 +313,6 @@ if not landed():
 # shows instead, with the time each call was made taken from the events themselves.
 if os.path.exists(events):
     steps(events, pos, seen, state)
-    # The rule closes the stream now that it has been read to the end.
-    rule()
 
 stats = os.path.join(run, "stats.txt")
 if os.path.exists(stats) and os.path.getsize(stats):
