@@ -28,6 +28,12 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
 MODEL_DEFAULT=glm-5.3-flash
 
+# The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
+# is set. The number is the plan's concurrency limit — the most requests the model provider
+# allows in flight at the tier being paid for — and not a guess about the machine: one over
+# it is a rate-limit failure in every worker already going. Raising it is one edit here.
+MAX_PARALLEL_WORKERS=2
+
 # A worker holds a shell, and every haring command is on PATH, so this script is one a
 # worker can call exactly as the manager does. It is refused. Only the manager decides to
 # spend money on another run: spending on a nested run never appears in the parent run's
@@ -173,10 +179,11 @@ fi
 # test reads only runs already on disk, and refuses before the .gitignore below or the run
 # folder below that is written, so a refused start leaves nothing behind.
 #
-# HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, for the rare
-# case where two workers in one project is genuinely right. It is unset rather than passed
-# on, so a worker started under it carries no lift of its own.
+# HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, up to
+# MAX_PARALLEL_WORKERS: the plan's concurrency limit, which holds even under the lift. It
+# is unset rather than passed on, so a worker started under it carries no lift of its own.
 live=""
+live_count=0
 for meta in "$project"/.haring/runs/*/meta; do
   [ -f "$meta" ] || continue
   run_dir=${meta%/meta}
@@ -184,6 +191,7 @@ for meta in "$project"/.haring/runs/*/meta; do
   case "$pid" in ''|*[!0-9]*) continue ;; esac
   kill -0 "$pid" 2>/dev/null || continue
   [ -s "$run_dir/report.json" ] && continue
+  live_count=$((live_count + 1))
   live="$live
 $run_dir"
 done
@@ -196,6 +204,16 @@ if [ -n "$live" ] && [ -z "$HARING_ALLOW_PARALLEL" ]; then
   done
   echo "  When two at once is genuinely right, start this one with" >&2
   echo "  HARING_ALLOW_PARALLEL set, as the nesting lift is set." >&2
+  exit 2
+fi
+if [ "$live_count" -ge "$MAX_PARALLEL_WORKERS" ]; then
+  echo "haring-worker: refused — HARING_ALLOW_PARALLEL is set, and the ceiling still" >&2
+  echo "  holds: $MAX_PARALLEL_WORKERS workers at once is what the plan allows, and" >&2
+  echo "  $live_count are already going in this project." >&2
+  printf '%s\n' "$live" | sed '/^$/d' | while IFS= read -r other; do
+    echo "  $other" >&2
+    echo "    stop it with: haring-kill $other" >&2
+  done
   exit 2
 fi
 unset HARING_ALLOW_PARALLEL

@@ -288,6 +288,16 @@ let the answer change what you ask next, and keep going. One worker runs in a pr
 a time: `haring-worker` refuses a second while one is live, naming the run that is going
 and the `haring-kill` line that stops it.
 
+Two is the ceiling, not a habit. When you can say out loud why two tasks cannot inform
+each other, run them together — but say the sentence first, and hear whether it survives
+reading back. "These are the same question asked of fifteen repositories that do not
+refer to each other" survives. "They are both about testing" does not. A worker whose
+answer would change what the next task even is is never one of them, whatever the
+resemblance on the surface. Set `HARING_ALLOW_PARALLEL` for the second launch only; the
+lift is taken off the worker's own environment, so it carries no lift of its own, and
+`haring-worker` refuses a third even with the lift set — the plan allows two requests in
+flight, and a third is a rate-limit failure in every worker already going.
+
 ### Continue a worker rather than starting a new one
 
 **When:** the next small task is in the same area as the one just finished.
@@ -430,7 +440,9 @@ something else, the worker keeps working and its report still lands. Come back w
 
 One worker runs in a project at a time. A second `haring-worker` in the same project is
 refused before anything is created, and names the run still going and the `haring-kill`
-line that stops it. That is the rule above made to answer back.
+line that stops it. That is the rule above made to answer back. `HARING_ALLOW_PARALLEL`
+lifts it for one launch, and only up to two: the plan's concurrency ceiling, which holds
+even under the lift.
 
 ```
 haring-wait <run-folder>        follow the run, then print its report
