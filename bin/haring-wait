@@ -5,14 +5,17 @@
 
 While the worker is running, its steps are printed to standard error as they happen:
 one line per tool call, with a run of the same tool folded onto one line that counts
-them. Its thinking and its speech reach the same stream as they happen, one line per
+them, naming how many distinct arguments the fold has held when they were not all the
+same. Its thinking and its speech reach the same stream as they happen, one line per
 line of the block, a block of more lines than are being kept showing its last few —
 three while the worker is working, six once this wait has had to say there is no step —
-named in the column the tool name sits in, a quiet block closed by a rule of ─. Every
+named in the column the tool name sits in. Every
 line names the run it belongs to, so the kept lines are self-labelling wherever they
 are read, and a worker that produces nothing for a minute says so — one
-that is waiting on the endpoint says that instead. The report goes to standard output
-when it lands, so a caller redirecting stdout gets the report and nothing else.
+that is waiting on the endpoint says that instead. A rule of ─ closes the stream once
+it has ended, after the last step line and after no one block. The report goes to
+standard output when it lands, so a caller redirecting stdout gets the report and
+nothing else.
 
 Exits 0 when the worker reported, and 1 when it left a report that cannot be read.
 Exits 2 when it was called wrongly: no arguments, or a path that is not a haring run
@@ -43,9 +46,9 @@ HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # reading the file rather than the panel.
 WIDTH = 500
 BLOCK_LINES = 6  # the thought lines a quiet block keeps; with the count line ahead of
-                 # them that is seven rows, and the rule below closes the eighth
+                 # them that is seven rows
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
-# The rule that closes a quiet block runs to the width the panel clips at, and 154 is
+# The rule that closes the stream runs to the width the panel clips at, and 154 is
 # where that clipping sits. The panel clips a long line rather than wrapping it, so a
 # rule too long is safe and one too short leaves a gap in the bottom of the box.
 RULE_WIDTH = 154
@@ -151,6 +154,12 @@ def say(tool, arg, ts):
     print((head + arg)[:WIDTH].rstrip(), file=sys.stderr, flush=True)
 
 
+def rule():
+    # Printed directly, not through say(): a rule is the bottom of the box, not a step,
+    # and say() would name it like one.
+    print("─" * RULE_WIDTH, file=sys.stderr, flush=True)
+
+
 def steps(path, pos, seen, state):
     """Print every step, thought and line of speech added since the last read.
 
@@ -213,12 +222,6 @@ def steps(path, pos, seen, state):
                         rows = rows[-kept:]
                     for l in rows:
                         say(label, l, ts)
-                    # A quiet block is the last thing on the panel, so a rule closes it;
-                    # a block printed while the worker acts is followed by more steps and
-                    # ends itself. Printed directly, not through say(): a rule is the
-                    # bottom of the box, not a step, and say() would name it like one.
-                    if kept == BLOCK_LINES:
-                        print("─" * RULE_WIDTH, file=sys.stderr, flush=True)
                     continue
                 if kind != "tool_use":
                     continue
@@ -235,15 +238,22 @@ def steps(path, pos, seen, state):
                 state["last"] = "step"
                 if name == state["tool"]:
                     state["n"] += 1
+                    state["args"].add(arg)
                     # A run of one tool — a scan, a string of edits — would spend the
                     # whole display on near-identical rows. It gets one line at the
                     # second call and one at each doubling, and the line that does print
-                    # carries the most recent argument.
+                    # carries the most recent argument. The same call repeating is a
+                    # worker stuck in a loop and keeps this plain form; calls that
+                    # differed say how many distinct ones the fold has held.
                     if state["n"] >= state["next"]:
-                        say(name, f"x{state['n']} {arg}", ts)
+                        if len(state["args"]) == 1:
+                            say(name, f"x{state['n']} {arg}", ts)
+                        else:
+                            say(name,
+                                f"x{state['n']} {len(state['args'])} different, last: {arg}", ts)
                         state["next"] = state["n"] * 2
                 else:
-                    state["tool"], state["n"], state["next"] = name, 1, 2
+                    state["tool"], state["n"], state["next"], state["args"] = name, 1, 2, {arg}
                     say(name, arg, ts)
         return f.tell()
 
@@ -254,7 +264,8 @@ def steps(path, pos, seen, state):
 # at all, thinking included, which separates a worker that is generating from one that is
 # silent.
 state = {"tool": None, "n": 0, "next": 2, "retries": 0, "retry_next": 1,
-         "when": time.time(), "when_ts": started, "seen_at": 0.0, "last": None}
+         "when": time.time(), "when_ts": started, "seen_at": 0.0, "last": None,
+         "args": set()}
 pos, seen, waited, last_idle = 0, set(), 0, 0.0
 while not landed():
     if os.path.exists(events):
@@ -283,6 +294,9 @@ while not landed():
     waited += 1
 
 if not landed():
+    # The stream ends with the run's stop, so the rule closes it here rather than
+    # after any one block.
+    rule()
     if os.path.exists(stopped):
         rec = dict(l.strip().split("=", 1) for l in open(stopped) if "=" in l)
         print(f"this run was stopped on purpose with haring-kill at {rec.get('at', '?')} "
@@ -314,6 +328,8 @@ if not landed():
 # shows instead, with the time each call was made taken from the events themselves.
 if os.path.exists(events):
     steps(events, pos, seen, state)
+    # The rule closes the stream now that it has been read to the end.
+    rule()
 
 stats = os.path.join(run, "stats.txt")
 if os.path.exists(stats) and os.path.getsize(stats):
