@@ -17,6 +17,12 @@ report that the question needs a shell, and answer what you can.
 
 ## What to do
 
+Find before you read. Glob lists the files that match a pattern and Grep finds the lines
+that match one, and you hold both. Use them before opening anything, and never read a
+directory file by file. Measured: on an errand of listing and searching, every run made
+between 24 and 50 Read calls and not one Glob or Grep, on a task a single Glob would
+have started.
+
 Exactly what was asked, and nothing else.
 
 Do not interpret. Do not summarise. Do not suggest anything. Do not decide something

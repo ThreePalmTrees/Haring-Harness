@@ -3,13 +3,16 @@
 # Always in the background; prints the run folder, and on standard error the pulse
 # that follows it.
 #
-#   haring-worker <kind> <workdir> <prompt-file> [--model M] [--no-pulse]
+#   haring-worker <kind> <workdir> <prompt-file> [--model M] [--effort L] [--no-pulse]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
 # kind is one of: check implement errand
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
+# --effort lowers or raises how hard the worker thinks, and exists only for when the
+# person who asked for the work asks for it. No kind sets it: see the comment above
+# the kind table.
 # --no-pulse starts a run without a live haring-pulse watching the project, which
 # otherwise is refused. It is consumed here and never reaches the worker.
 set -e
@@ -55,7 +58,7 @@ if [ -n "$HARING_NESTED" ]; then
 fi
 
 usage() {
-  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M]" >&2
+  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M] [--effort L] [--no-pulse]" >&2
   echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file>" >&2
   exit 2
 }
@@ -99,12 +102,20 @@ fi
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
 no_pulse=""
+effort=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2
              echo "haring-worker: WARNING — model overridden to '$model'." >&2
              echo "  The manager must not do this on its own. Only do it when the person" >&2
              echo "  who asked for the work asked for it." >&2 ;;
+    --effort) [ $# -ge 2 ] && [ -n "$2" ] || usage; effort=$2; shift 2
+             case "$effort" in
+               low|medium|high|xhigh|max) ;;
+               *) echo "haring-worker: unknown effort level: $effort" >&2
+                  echo "  The tool takes: low, medium, high, xhigh, max." >&2
+                  usage ;;
+             esac ;;
     --no-pulse) no_pulse=1; shift ;;
     *) echo "haring-worker: unknown argument: $1" >&2; usage ;;
   esac
@@ -112,10 +123,16 @@ done
 
 : "${model:=$MODEL_DEFAULT}"
 
-# The tools each kind may use, the tools it is denied, and the effort it thinks at. A
-# read-only kind gets a shell because reading needs one, and has the writing tools denied
-# rather than being talked out of them by its rules. implement takes no effort flag and
-# runs at the default.
+# The tools each kind may use, and the tools it is denied. A read-only kind gets a shell
+# because reading needs one, and has the writing tools denied rather than being talked
+# out of them by its rules.
+#
+# No kind sets --effort. Measured: at --effort low a single-fact extraction ran twice as
+# fast and stayed correct, but a multi-part task came back in 179 characters where the
+# task cannot be answered under 3000 — the low runs returned nothing having done nothing —
+# and a real errand at low returned an empty result with no tool call at all. Half the
+# time is not worth any chance of no answer, so effort stays the tool's default unless
+# the caller passes --effort above.
 #
 # There is no spending limit. A limit that fires returns NO REPORT AT ALL: the work is on
 # disk, unverified, with no account of itself, which is worse than any run it would have
@@ -123,15 +140,16 @@ done
 case "$kind" in
   check)
       tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
-      extra='--bare --effort medium' ;;
+      extra='--bare' ;;
   errand)
       tools='Read,Glob,Grep'; denied='Bash,Write,Edit'
-      extra='--bare --effort low' ;;
+      extra='--bare' ;;
   implement)
       tools='Read,Write,Edit,Glob,Grep,Bash'; denied=''
       extra='--permission-mode acceptEdits' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
+[ -n "$effort" ] && extra="$extra --effort $effort"
 
 # Checked here, after the kind, so both modes are covered: in continue mode the
 # workdir comes out of the previous run's meta.
