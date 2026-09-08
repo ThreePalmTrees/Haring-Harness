@@ -73,7 +73,7 @@ document.
                     haring-pulse     one line per live worker, fast then at a pace you can retune
                     haring-kill      stop a running worker on purpose
                     haring-say       say a word to a running worker
-                    haring-report    print a report, with the empty parts removed
+                    haring-report    print a report, with the empty parts removed, and warn when the worker read nothing
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost
                     haring-prompt    build a worker's system prompt

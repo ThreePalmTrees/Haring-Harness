@@ -449,7 +449,10 @@ haring-wait <run-folder>        follow the run, then print its report
 haring-pulse [dir] [--first S] [--every S]
                                 one line per live worker, opening fast then
                                 settling at a pace you can retune mid-run
-haring-report <run-folder>      print the report, compacted
+haring-report <run-folder>      print the report, compacted, and warn when the
+                                worker read nothing — no Read, Glob, Grep or
+                                Bash call in its events, so every claim in it
+                                needs checking against the project
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose

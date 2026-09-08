@@ -7,10 +7,21 @@ Prints the structured output only, dropping nulls, empty lists and empty strings
 and trimming long verbatim output. The whole report.json is roughly twice this size
 and most of the difference is fields the worker had nothing to put in.
 
+A run that reported without making a single call to a tool that gathers evidence —
+Read, Glob, Grep or Bash — says so beside its report: nothing in it was read from
+anything, so every claim in it needs checking against the project. This is a warning
+on standard error, not a failure, since a task that genuinely needs no reading is
+possible, and no exit code changes for it. A missing or unreadable events.jsonl is
+not an error either: no stream, no warning.
+
 Exits 2 when called wrongly — no argument, a path that is not a run folder — and 1
 when it was called rightly but the run has no report worth reading yet.
 """
 import sys, json, os
+
+# The tools whose calls can put a fact in a report. Everything else — Edit, Write,
+# Task — spends work without gathering any.
+EVIDENCE = ("Read", "Glob", "Grep", "Bash")
 
 def prune(x, depth=0):
     if isinstance(x, dict):
@@ -28,6 +39,54 @@ def prune(x, depth=0):
     return x
 
 USAGE = "usage: haring-report <run-folder>"
+
+
+def evidence_counts(run):
+    """Count this run's calls to the tools that can put a fact in its report.
+
+    The events stream records every tool call as a tool_use block, walked the same
+    way haring-wait walks it: a message event whose content is a list of blocks. A
+    line that does not parse is skipped. A stream that cannot be read at all is no
+    evidence either way, so this returns None rather than a count of zero — a run
+    whose stream is missing must not be accused on numbers nobody counted.
+    """
+    counts = dict.fromkeys(EVIDENCE, 0)
+    try:
+        f = open(os.path.join(run, "events.jsonl"))
+    except OSError:
+        return None
+    with f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            message = d.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, list):
+                continue
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in counts:
+                    counts[b["name"]] += 1
+    return counts
+
+
+def warn_unread(run):
+    """Say out loud when a report carries nothing that was read from anything.
+
+    The run reported without making one call that gathers evidence, so the whole
+    report can be invention and the report itself gives no other sign of it —
+    the one failure a reader cannot see from the report. The counts are named so
+    the reader can see the zeros themselves. No stream, no accusation: without
+    one there is nothing counted and nothing said.
+    """
+    counts = evidence_counts(run)
+    if counts is None or any(counts.values()):
+        return
+    tally = ", ".join(f"{tool} {counts[tool]}" for tool in EVIDENCE)
+    print(f"!! WARNING: nothing in this report was read from anything. The run made "
+          f"no call to a tool that gathers evidence before it reported ({tally}). "
+          f"Check every claim before you believe it.", file=sys.stderr)
 
 
 def die(message, code):
@@ -64,8 +123,10 @@ if so is None:
     # to give it; the banner explaining why is for a person, so it goes to stderr.
     print("NO STRUCTURED OUTPUT.", file=sys.stderr)
     print((d.get("result") or "")[:4000])
+    warn_unread(run)
     sys.exit(0)
 print(json.dumps(prune(so), indent=1, ensure_ascii=False))
 if d.get("is_error"):
     print(f"!! the run reported an error. ended={d.get('terminal_reason') or d.get('stop_reason')}",
           file=sys.stderr)
+warn_unread(run)
