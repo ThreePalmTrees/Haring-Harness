@@ -3,13 +3,15 @@
 # Always in the background; prints the run folder, and on standard error the pulse
 # that follows it.
 #
-#   haring-worker <kind> <workdir> <prompt-file> [--model M]
+#   haring-worker <kind> <workdir> <prompt-file> [--model M] [--no-pulse]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
 # kind is one of: check implement errand
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
+# --no-pulse starts a run without a live haring-pulse watching the project, which
+# otherwise is refused. It is consumed here and never reaches the worker.
 set -e
 
 # Resolve our own real location, following symlinks, so this keeps working when
@@ -90,12 +92,14 @@ fi
 
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
+no_pulse=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2
              echo "haring-worker: WARNING — model overridden to '$model'." >&2
              echo "  The manager must not do this on its own. Only do it when the person" >&2
              echo "  who asked for the work asked for it." >&2 ;;
+    --no-pulse) no_pulse=1; shift ;;
     *) echo "haring-worker: unknown argument: $1" >&2; usage ;;
   esac
 done
@@ -124,6 +128,38 @@ esac
 
 # The project is the git top level of the workdir when there is one, else the workdir.
 project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
+
+# A run nobody is watching is a run the manager hears nothing about: haring-pulse prints
+# one line per live worker, and starting it is the rule the manager was told to follow
+# and forgot, six runs running, one of them over half an hour in silence. So the pulse is
+# required here rather than remembered, before anything is created. The pulse writes its
+# own pid into <project>/.haring/pulse while it lives and removes it on the way out, so
+# the test is the pid the file names being alive: a file left by a pulse killed hard is
+# not a pulse, and the refusal says so rather than taking the file as the guarantee.
+# --no-pulse lifts the check for one launch, as HARING_ALLOW_PARALLEL does; it is
+# consumed here and never reaches the worker or its environment.
+if [ -z "$no_pulse" ]; then
+  pulse_file="$project/.haring/pulse"
+  why=""
+  if [ ! -f "$pulse_file" ]; then
+    why="no haring-pulse is watching this project: there is no $pulse_file"
+  else
+    pulse_pid=$(cat "$pulse_file" 2>/dev/null) || true
+    case "$pulse_pid" in
+      '') why="$pulse_file gave no process id" ;;
+      *[!0-9]*) why="$pulse_file holds '$pulse_pid', which is not a process id" ;;
+      *) kill -0 "$pulse_pid" 2>/dev/null || why="the pulse that wrote $pulse_file is gone: pid $pulse_pid is not alive — a pulse killed hard is not a pulse" ;;
+    esac
+  fi
+  if [ -n "$why" ]; then
+    echo "haring-worker: refused — nobody is watching this run. haring-pulse prints one" >&2
+    echo "  line per live worker, and a run started without one runs in silence until" >&2
+    echo "  someone asks what is happening." >&2
+    echo "  $why" >&2
+    echo "  Watch it as it goes: haring-pulse $project" >&2
+    exit 2
+  fi
+fi
 
 # One worker at a time in a project. The manager's own rules say this and broke it anyway,
 # so the limit lives here, next to the nesting guard above, where a rule becomes something

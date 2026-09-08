@@ -23,6 +23,14 @@ starting `cadence`, once each when they happen, so a reader of this stream never
 guess why the pace moved or failed to. A missing or empty file is not a refusal: it
 means the --every interval again.
 
+While it lives, this process's own pid is written to <project>/.haring/pulse, and the
+file is removed on every way out — each exit above, a Ctrl-C, a kill — so the file being
+there means this pulse is alive. haring-worker refuses to start a run into a project
+without it, which is what turns starting a pulse from a rule the manager has to remember
+into something that answers back. A pulse killed with SIGKILL leaves the file behind,
+because SIGKILL is the one death nothing can be done on the way out of; the check on the
+other side reads the pid and not just the file, so what it names being dead is no pulse.
+
 Meant to run under a tool that turns each stdout line into an event, so a caller gets
 progress without opening a transcript. Each pass prints one line per live worker:
 
@@ -47,7 +55,7 @@ wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
 There is no way to be called rightly and still fail, so exit 1 is not used.
 """
-import sys, os, json, time, glob, subprocess
+import sys, os, json, time, glob, subprocess, signal
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 LINE_LIMIT = 160
@@ -55,6 +63,7 @@ FIRST_LIVE_DEADLINE = 60
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
 FIRST_CEILING = 60   # an opening look must fit inside the deadline above
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
+PULSE_FILE = "pulse"       # <project>/.haring/pulse, this process's own pid
 
 
 def die(message, code):
@@ -259,52 +268,78 @@ def take_cadence():
         print(f"cadence {pace}s", flush=True)
 
 
-start = time.time()
-ever_live = False
-# Nothing has been reported yet, so the opening interval still governs: a worker found
-# here may not have written its plan yet, and waiting a whole long gap to read it is
-# what makes the plan arrive after the expensive route it names has already been paid
-# for. The file may shorten the opening look but never lengthen it.
-reported = False
-# The workers this pulse took on: those live at the pass that first saw one. A worker
-# started after that is the next task's, and waiting on it would keep this pulse alive
-# into a job it was not started for. A live sighting implies taken is not empty, so the
-# exit check below never fires before the first one is seen.
-taken = set()
-while True:
-    runs = live_runs()
-    if runs:
-        ever_live = True
-        if not taken:
-            taken.update(run for run, _, _ in runs)
-        for run, meta, meta_path in runs:
-            if run not in taken:
-                continue
-            line = report_line(run, meta, meta_path)
-            if line:
-                print(line, flush=True)
-                reported = True
-    if ever_live:
-        if not taken & {run for run, _, _ in runs}:
-            sys.exit(0)
-    elif time.time() - start >= FIRST_LIVE_DEADLINE:
-        sys.exit(0)
+# The pid file is the other side of haring-worker's refusal to start a run nobody is
+# watching: while it names this process, a run may start, and once it does not, none may.
+# It goes down after every check above has passed, so a call refused for a bad flag or a
+# missing project leaves no file behind. The removal sits in a finally, so every exit in
+# the loop below lands there; the handler turns a kill into an exit so a killed pulse
+# reaches it as well, since the default action for SIGTERM stops the process without
+# unwinding. SIGKILL is the one death nothing can be done on the way out of, which is
+# why the reader of this file is made to check the pid and not just the file.
+os.makedirs(os.path.join(project, ".haring"), exist_ok=True)
+pulse_file = os.path.join(project, ".haring", PULSE_FILE)
+with open(pulse_file, "w") as f:
+    f.write(f"{os.getpid()}\n")
 
-    take_cadence()
 
-    if not ever_live:
-        # Look again every second until the first worker appears, rather than sleeping a
-        # whole interval. A caller may start this a moment before it starts a worker, and
-        # on the default five-minute interval that worker would otherwise never be seen:
-        # the deadline above would end the run first.
-        time.sleep(1)
-        continue
-    gap = pace if reported else min(first, pace)
-    # The gap decides when the next line is due, not when this looks: a worker that ends
-    # mid-gap ends the pulse within a tick, since otherwise the last worker of a job
-    # leaves this running against an empty project for up to a whole interval.
-    deadline = time.time() + gap
-    while time.time() < deadline:
-        time.sleep(1)
-        if not taken & {run for run, _, _ in live_runs()}:
+def leave(signum, frame):
+    sys.exit(0)   # into the finally, which is where the pid file is removed
+
+
+signal.signal(signal.SIGTERM, leave)
+
+try:
+    start = time.time()
+    ever_live = False
+    # Nothing has been reported yet, so the opening interval still governs: a worker found
+    # here may not have written its plan yet, and waiting a whole long gap to read it is
+    # what makes the plan arrive after the expensive route it names has already been paid
+    # for. The file may shorten the opening look but never lengthen it.
+    reported = False
+    # The workers this pulse took on: those live at the pass that first saw one. A worker
+    # started after that is the next task's, and waiting on it would keep this pulse alive
+    # into a job it was not started for. A live sighting implies taken is not empty, so the
+    # exit check below never fires before the first one is seen.
+    taken = set()
+    while True:
+        runs = live_runs()
+        if runs:
+            ever_live = True
+            if not taken:
+                taken.update(run for run, _, _ in runs)
+            for run, meta, meta_path in runs:
+                if run not in taken:
+                    continue
+                line = report_line(run, meta, meta_path)
+                if line:
+                    print(line, flush=True)
+                    reported = True
+        if ever_live:
+            if not taken & {run for run, _, _ in runs}:
+                sys.exit(0)
+        elif time.time() - start >= FIRST_LIVE_DEADLINE:
             sys.exit(0)
+
+        take_cadence()
+
+        if not ever_live:
+            # Look again every second until the first worker appears, rather than sleeping a
+            # whole interval. A caller may start this a moment before it starts a worker, and
+            # on the default five-minute interval that worker would otherwise never be seen:
+            # the deadline above would end the run first.
+            time.sleep(1)
+            continue
+        gap = pace if reported else min(first, pace)
+        # The gap decides when the next line is due, not when this looks: a worker that ends
+        # mid-gap ends the pulse within a tick, since otherwise the last worker of a job
+        # leaves this running against an empty project for up to a whole interval.
+        deadline = time.time() + gap
+        while time.time() < deadline:
+            time.sleep(1)
+            if not taken & {run for run, _, _ in live_runs()}:
+                sys.exit(0)
+finally:
+    try:
+        os.remove(pulse_file)
+    except OSError:
+        pass
