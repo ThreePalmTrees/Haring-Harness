@@ -472,6 +472,8 @@ outlives whatever started it: if your wait is cut short, or you stop it, or you 
 something else, the worker keeps working and its report still lands. Come back with
 `haring-wait` or `haring-stats` and nothing is lost.
 
+`haring-worker` puts `Quick: ` at the front of every prompt it hands over, fresh or
+continued. You do not write it — typing it as well makes the prompt open `Quick: Quick:`.
 `--effort` is optional and no kind sets one: without it, every kind runs at the tool's
 own default. The levels are low, medium, high, xhigh and max. Measured on a single-fact
 extraction, low was correct all three times and twice as fast: 9, 12 and 9 seconds
