@@ -288,16 +288,15 @@ let the answer change what you ask next, and keep going. One worker runs in a pr
 a time: `haring-worker` refuses a second while one is live, naming the run that is going
 and the `haring-kill` line that stops it.
 
-Two is the ceiling, not a habit. Before a second launch, ask one question: if this
-worker came back and contradicted something you assumed, would you have to change the
-other worker's task? If the answer is yes, they were never independent, whatever they
-look like, and they go one after the other. The reason is that the cost of a correction
-grows with how many workers are in flight: one contradicting report forces steering to
-the others, and their replies force more steering. Set `HARING_ALLOW_PARALLEL` for the
-second launch only; the
-lift is taken off the worker's own environment, so it carries no lift of its own, and
-`haring-worker` refuses a third even with the lift set — the plan allows two requests in
-flight, and a third is a rate-limit failure in every worker already going.
+Two is the ceiling, not a habit. Before a second launch, ask one question: if this worker came
+back and contradicted something you assumed, would you have to change the other worker's task?
+If the answer is yes, they were never independent, whatever they look like, and they go one
+after the other. The reason is that the cost of a correction grows with how many workers are in
+flight: one contradicting report forces steering to the others, and their replies force more
+steering. Set `HARING_ALLOW_PARALLEL` for the second launch only; the lift is taken off the
+worker's own environment, so it carries no lift of its own, and `haring-worker` refuses a third
+even with the lift set — the plan allows two requests in flight, and a third is a rate-limit
+failure in every worker already going.
 
 The ceiling is the setting `MAX_PARALLEL_WORKERS` in `bin/haring-worker`, and it is 2.
 Measured: two errands run together finished in 25 seconds where one alone took 22.
@@ -480,48 +479,43 @@ haring-say <run-folder>         say a word to a running worker
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
-`run_in_background: true`. Use it for every `haring-wait`. Three things follow from it.
-Your turn does not stay open, so you are free while the worker works. The client can
-open the task and follow the worker as it happens — they may open it and look; they
-will not watch — because `haring-wait` prints its steps, its
-thinking and its speech while it waits: one line per tool call, with a run of the same
-tool folded into a counted line, and one line per line of a thought or of speech,
-labelled `thinking` and `says` and cropped to the width of a step line. A block keeps
-its last three lines while the worker is working and its last ten once it has fallen
-silent, with one line ahead of them saying how many came before: while it is acting you
-want to see what it did, and while it is quiet its thinking is the only thing there is
-to see. When no step arrives for a minute it says so on a line
-labelled `waiting`, and tells a worker that is thinking from one that has stalled. And
-Claude Code brings you back on its own when the run ends, so the conversation moves the
-moment the work is done.
+`run_in_background: true`. Use it for every `haring-wait`. Three things follow from it. Your
+turn does not stay open, so you are free while the worker works. The client can open the task
+and follow the worker as it happens — they may open it and look; they will not watch —
+because `haring-wait` prints its steps, its thinking and its speech while it waits: one line
+per tool call, with a run of the same tool folded into a counted line, and one line per line of
+a thought or of speech, labelled `thinking` and `says` and cropped to the width of a step line.
+A block keeps its last three lines while the worker is working and its last ten once it has
+fallen silent, with one line ahead of them saying how many came before: while it is acting you
+want to see what it did, and while it is quiet its thinking is the only thing there is to see.
+When no step arrives for a minute it says so on a line labelled `waiting`, and tells a worker
+that is thinking from one that has stalled. And Claude Code brings you back on its own when the
+run ends, so the conversation moves the moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
 message that reads as finished with a hidden shell behind it. For the same reason, do not
 write "I will come back when this finishes" — you will be brought back automatically, and
 saying it makes a running job look like a finished one.
 
-**Start `haring-pulse` under the Monitor tool right after you launch the first worker.**
-The pulse exists so you can act on a worker that has gone sideways, and that is its
-first purpose; the client seeing progress without opening anything is the second. Each
-line it emits wakes you. Turn it into one short sentence for the client that names what
-the worker is doing. Do not paste the raw line. The first report on a worker comes
-`--first` seconds after the
-pulse finds it, 30 by default, which is soon enough to act on the plan it wrote as the
-first line of its progress file while acting is still cheap. After that it reports every
-`--every` seconds, 300 by default. The two flags do not go past those numbers: `--first`
-is refused at 60 or more, `--every` above 300. To change the pace while a run is going,
-write one number of seconds into `.haring/cadence` in the project; the next pass uses it,
-under the same 300-second ceiling, and a line starting `cadence` on the pulse's own
-output says when a number was taken and when one was refused. A pass with nothing new
-still speaks once a run's last step is more than a minute old: one line saying the
-worker is thinking and how long since that step, so a deep thought does not read as a
-worker that has died. Every wake-up costs you a
-turn, which is why the settled pace is minutes and the opening one is seconds. The
-workers it reports are the ones live at the pass that found the first of them: a worker
-you start after that belongs to the next pulse, not this one. That is also why it ends
-within a second or two of the last worker it took on, and about a minute after starting
-if none was running. A shell command you are running yourself is not a worker and never
-appears.
+**Start `haring-pulse` under the Monitor tool right after you launch the first worker.** The
+pulse exists so you can act on a worker that has gone sideways, and that is its first purpose;
+the client seeing progress without opening anything is the second. Each line it emits wakes
+you. Turn it into one short sentence for the client that names what the worker is doing. Do not
+paste the raw line. The first report on a worker comes `--first` seconds after the pulse finds
+it, 30 by default, which is soon enough to act on the plan it wrote as the first line of its
+progress file while acting is still cheap. After that it reports every `--every` seconds, 300
+by default. The two flags do not go past those numbers: `--first` is refused at 60 or more,
+`--every` above 300. To change the pace while a run is going, write one number of seconds into
+`.haring/cadence` in the project; the next pass uses it, under the same 300-second ceiling, and
+a line starting `cadence` on the pulse's own output says when a number was taken and when one
+was refused. A pass with nothing new still speaks once a run's last step is more than a minute
+old: one line saying the worker is thinking and how long since that step, so a deep thought
+does not read as a worker that has died. Every wake-up costs you a turn, which is why the
+settled pace is minutes and the opening one is seconds. The workers it reports are the ones
+live at the pass that found the first of them: a worker you start after that belongs to the
+next pulse, not this one. That is also why it ends within a second or two of the last worker it
+took on, and about a minute after starting if none was running. A shell command you are running
+yourself is not a worker and never appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
