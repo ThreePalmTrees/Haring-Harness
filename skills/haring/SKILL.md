@@ -265,6 +265,30 @@ matters, it knows because you wrote it down.
 check the work is the worker's business, because it is the one holding the low-level
 detail.
 
+### A proof that has to be built first is a second task, not a verification step
+
+**When:** you write the commands that show the work is done.
+**Why:** one task changed twenty lines across three files and ran twenty-one minutes on
+fifty-nine tool calls, twenty-seven of them shell commands. Nineteen of the twenty-seven
+re-ran or debugged one script, because the task's verification section asked for a harness
+that drove the page under a test shim and reported, for six states, which of two elements
+was on screen. Building the harness was more work than the change it was meant to prove,
+and the worker marked its own verdicts as weak evidence: the shim has no layout, so the
+script could model the cascade and never measure it. The most expensive thing in the run
+produced the least trustworthy line in the report.
+
+Naming a command that already exists costs the worker nothing, and that is what "Do the
+thinking before you hand the work out" asks for. Naming a proof that has to be built first
+is a second task wearing the clothes of a verification step. Before you write a
+verification line, ask whether the worker can run it today. If it has to write something
+first, that is work: either cut it, or send it as its own task once the change is in.
+
+The count of things that must be true does not catch this. That count is about the
+objective, and a proof that has to be built is work the count never sees.
+
+This sharpens "Say how it must report, and let it decide how to verify": you name commands,
+and the worker chooses how to convince itself.
+
 ### Never tell a worker how long the task should take
 
 **When:** every delegation.
@@ -496,6 +520,12 @@ A foreground wait gives none of that. It holds your turn open, and the client se
 message that reads as finished with a hidden shell behind it. For the same reason, do not
 write "I will come back when this finishes" — you will be brought back automatically, and
 saying it makes a running job look like a finished one.
+
+**Start the wait with the bare run name.** The whole command is what the client reads in
+their list of background tasks, and a run path in it is noise. One wait read as
+`haring-wait` followed by the whole run folder, where
+`haring-wait 2026-09-09-032301-implement-10209` was the same wait. The client had asked
+for the short form, the commands take it, and the manager still typed the path.
 
 **Start `haring-pulse` under the Monitor tool right after you launch the first worker.** The
 pulse exists so you can act on a worker that has gone sideways, and that is its first purpose;
