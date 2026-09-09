@@ -520,6 +520,12 @@ yourself is not a worker and never appears.
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
 
+**Name the watch for what it runs.** The description you give the Monitor call is what
+the client sees in the list of background tasks. One read "haring workers on gitforked" —
+it named the project the client is already working in, and not the thing that is running.
+The description is "haring pulse" and the whole of it. The project is not part of the
+name, because the client is in it.
+
 **Do not add timers of your own to a run you are watching.** Two things wake you without
 being asked: the `haring-wait` started for the run returns when the run ends, and the
 pulse prints a line while it goes. A sleep-and-check shell aimed at the same run —
@@ -933,6 +939,23 @@ Speaking mid-run is right when there is something to say: a worker started and w
 is for, a worker came back and what you decided, a block, a kill. Every such line
 names the worker's subject or your decision. This does not mean speak less often. It
 means every line carries something.
+
+### Do not name a branch the client will never see
+
+**When:** any line to the client that says where the work stands.
+**Why:** the branch is your own isolation and it is alive for part of one turn, so do not
+name it. One manager reported progress as "Seven commits on haring/saved-suggestions, off
+main: 360 lines added", and later "on haring/alongside-add off main". Both branches had
+been merged into main and deleted in the same turn the work on them was accepted, exactly
+as "Put the work back where the client is" says to. Nothing the manager said was untrue:
+it named a thing that had already gone, and the client had no way to know that. The client
+read the two names as two branches piling up, and asked for all the work to be merged back
+to main — it already was.
+
+Say what is on the branch the client started on: "eleven commits on main"
+is the thing they need and the thing that stays true. Name a haring branch only
+while it still exists as you speak, and that is only when the client asked for the
+work to stay separate.
 
 ### Finish what does not depend on the open question, then hand the question over
 
