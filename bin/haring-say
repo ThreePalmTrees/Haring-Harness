@@ -19,7 +19,7 @@ is not a haring run folder. Exits 1 when called rightly but unable to deliver â€
 run has finished and reported, or nothing is reading messages for it. Exits 0 only
 when the message was handed to the worker.
 """
-import sys, os, time, json
+import sys, os, time, json, subprocess
 
 USAGE = 'usage: haring-say <run-folder> "<message>"'
 HANDOVER_WAIT = 30   # seconds watching for the hand-over before the queue is the news
@@ -43,11 +43,34 @@ if nested:
 
 if len(sys.argv) != 3:
     die("a run folder and a message are both needed", 2)
-run, message = sys.argv[1].rstrip("/"), sys.argv[2]
 
-# A run folder is known by its meta file, the same marker every other command uses.
-if not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "meta")):
-    die(f"not a haring run folder: {run}", 2)
+
+def resolve_run(arg):
+    """The run folder named by the argument: a path as given, or a bare run name.
+
+    A path is used as it stands, relative ones included, and is known by its meta file.
+    A name with no slash is looked up under the current project's runs folder, the
+    project being the git top level of the working directory, as haring-pulse resolves
+    it. Each way of failing says which way it was.
+    """
+    run = arg.rstrip("/")
+    if os.path.isdir(run) and os.path.isfile(os.path.join(run, "meta")):
+        return run
+    if "/" in run:
+        die(f"not a haring run folder: {run}", 2)
+    top = subprocess.run(["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True).stdout.strip()
+    runs = os.path.join(top or os.getcwd(), ".haring", "runs")
+    found = os.path.join(runs, run)
+    if not os.path.isdir(found) or not os.path.isfile(os.path.join(found, "meta")):
+        die(f"no run named {run} under {runs}", 2)
+    return found
+
+
+run, message = resolve_run(sys.argv[1]), sys.argv[2]
+
+# A run folder is known by its meta file, the same marker every other command uses;
+# the argument may also be a bare run name under the current project.
 if not message.strip():
     die("an empty message says nothing", 2)
 

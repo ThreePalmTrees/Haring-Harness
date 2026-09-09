@@ -51,10 +51,31 @@ if len(sys.argv) != 2:
     print(USAGE, file=sys.stderr)
     sys.exit(2)
 
-# A run folder is known by its meta file, the same marker `haring-worker continue` uses.
-run = sys.argv[1].rstrip("/")
-if not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "meta")):
-    die(f"not a haring run folder: {run}", 2)
+def resolve_run(arg):
+    """The run folder named by the argument: a path as given, or a bare run name.
+
+    A path is used as it stands, relative ones included, and is known by its meta file.
+    A name with no slash is looked up under the current project's runs folder, the
+    project being the git top level of the working directory, as haring-pulse resolves
+    it. Each way of failing says which way it was.
+    """
+    run = arg.rstrip("/")
+    if os.path.isdir(run) and os.path.isfile(os.path.join(run, "meta")):
+        return run
+    if "/" in run:
+        die(f"not a haring run folder: {run}", 2)
+    top = subprocess.run(["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True).stdout.strip()
+    runs = os.path.join(top or os.getcwd(), ".haring", "runs")
+    found = os.path.join(runs, run)
+    if not os.path.isdir(found) or not os.path.isfile(os.path.join(found, "meta")):
+        die(f"no run named {run} under {runs}", 2)
+    return found
+
+
+# A run folder is known by its meta file, the same marker `haring-worker continue` uses;
+# the argument may also be a bare run name under the current project.
+run = resolve_run(sys.argv[1])
 meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
 marker = os.path.join(run, "stopped")
 

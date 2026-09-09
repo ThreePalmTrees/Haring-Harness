@@ -55,19 +55,40 @@ def die(message, code):
     sys.exit(code)
 
 
+def resolve_run(arg):
+    """The run folder named by the argument: a path as given, or a bare run name.
+
+    A path is used as it stands, relative ones included, and is known by its meta file.
+    A name with no slash is looked up under the current project's runs folder, the
+    project being the git top level of the working directory, as haring-pulse resolves
+    it. Each way of failing says which way it was.
+    """
+    run = arg.rstrip("/")
+    if os.path.isfile(os.path.join(run, "meta")):
+        return run
+    if "/" in run:
+        die(f"not a haring run folder: {run}", 2)
+    top = subprocess.run(["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True).stdout.strip()
+    runs = os.path.join(top or os.getcwd(), ".haring", "runs")
+    found = os.path.join(runs, run)
+    if not os.path.isfile(os.path.join(found, "meta")):
+        die(f"no run named {run} under {runs}", 2)
+    return found
+
+
 argv = sys.argv[1:]
 if not 1 <= len(argv) <= 2:
     print(USAGE, file=sys.stderr)
     sys.exit(2)
-run = argv[0].rstrip("/")
 limit = argv[1] if len(argv) == 2 else "7200"
 if not limit.isdigit():
     die(f"max-seconds must be a number, got: {limit}", 2)
 limit = int(limit)
 
-# A run folder is known by its meta file, the same marker `haring-worker continue` uses.
-if not os.path.isfile(os.path.join(run, "meta")):
-    die(f"not a haring run folder: {run}", 2)
+# A run folder is known by its meta file, the same marker `haring-worker continue` uses;
+# the argument may also be a bare run name under the current project.
+run = resolve_run(argv[0])
 meta_path = os.path.join(run, "meta")
 meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
 # Time is measured from the worker, not from this wait, because the two can start minutes
