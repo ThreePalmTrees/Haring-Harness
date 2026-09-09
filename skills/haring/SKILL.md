@@ -538,8 +538,10 @@ wanted: it is how a worker that has gone sideways is caught in five minutes inst
 thirty, and every line it emits is there for you to act on. What is waste is your own
 extra timers on top of it, never the pulse.
 
-Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
-with a usage line on standard error; called correctly but unable to finish, exit 1.
+Every command that acts on a run takes the run folder, which may be given as a bare run
+name and is then looked up under the current project's runs folder. Called wrongly, any
+of them exits 2 with a usage line on standard error; called correctly but unable to
+finish, exit 1.
 Two add a 3 of their own: `haring-wait` when the worker vanished without a report, and
 `haring-stats` when the worker is still alive and has not reported yet, which is an answer
 rather than a failure. Standard output carries only what a caller reads, so `haring-worker`
