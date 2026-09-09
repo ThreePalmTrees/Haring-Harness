@@ -288,6 +288,19 @@ let the answer change what you ask next, and keep going. One worker runs in a pr
 a time: `haring-worker` refuses a second while one is live, naming the run that is going
 and the `haring-kill` line that stops it.
 
+Two is the ceiling, not a habit. When you can say out loud why two tasks cannot inform
+each other, run them together — but say the sentence first, and hear whether it survives
+reading back. "These are the same question asked of fifteen repositories that do not
+refer to each other" survives. "They are both about testing" does not. A worker whose
+answer would change what the next task even is is never one of them, whatever the
+resemblance on the surface. Set `HARING_ALLOW_PARALLEL` for the second launch only; the
+lift is taken off the worker's own environment, so it carries no lift of its own, and
+`haring-worker` refuses a third even with the lift set — the plan allows two requests in
+flight, and a third is a rate-limit failure in every worker already going.
+
+The ceiling is the setting `MAX_PARALLEL_WORKERS` in `bin/haring-worker`, and it is 2.
+Measured: two errands run together finished in 25 seconds where one alone took 22.
+
 ### Continue a worker rather than starting a new one
 
 **When:** the next small task is in the same area as the one just finished.
@@ -346,6 +359,13 @@ An errand answers what Read, Glob and Grep can answer: read this file, list the 
 matching this, find the lines matching that. The moment a question needs a pipe, a count,
 a length, a sort, or a comparison between two lines, it is a check, and you write the
 command out rather than describing it.
+
+The choice also sets how long the job takes, and whether an answer comes back at all.
+Measured on one task — list the files under two directories, give each markdown file's
+first heading, and count the lines mentioning one word — sent as an errand it ran 331
+seconds one way and 494 another, and twice more it came back wrong or empty. Sent as a
+check that gathered everything in one script it took 68 seconds and was correct. The cost
+of choosing wrong is five times the time and the answer as well.
 
 ### Run an errand
 
@@ -419,7 +439,7 @@ Any idea ?
 ## Starting and watching a worker
 
 ```
-haring-worker <kind> <workdir> <prompt-file>
+haring-worker <kind> <workdir> <prompt-file> [--effort L]
 haring-worker continue <kind> <previous-run-folder> <prompt-file>
 ```
 
@@ -428,16 +448,30 @@ outlives whatever started it: if your wait is cut short, or you stop it, or you 
 something else, the worker keeps working and its report still lands. Come back with
 `haring-wait` or `haring-stats` and nothing is lost.
 
+`--effort` is optional and no kind sets one: without it, every kind runs at the tool's
+own default. The levels are low, medium, high, xhigh and max. Measured on a single-fact
+extraction, low was correct all three times and twice as fast: 9, 12 and 9 seconds
+against 18, 14 and 26. Measured on a task with several numbered questions, low and medium
+each came back with a non-answer of about 180 characters where the default answered in
+full, and one real errand at low effort returned an empty report having made no tool call
+at all. Low is for one fact from one file, and for nothing with several numbered
+questions.
+
 One worker runs in a project at a time. A second `haring-worker` in the same project is
 refused before anything is created, and names the run still going and the `haring-kill`
-line that stops it. That is the rule above made to answer back.
+line that stops it. That is the rule above made to answer back. `HARING_ALLOW_PARALLEL`
+lifts it for one launch, and only up to two: the plan's concurrency ceiling, which holds
+even under the lift.
 
 ```
 haring-wait <run-folder>        follow the run, then print its report
 haring-pulse [dir] [--first S] [--every S]
                                 one line per live worker, opening fast then
                                 settling at a pace you can retune mid-run
-haring-report <run-folder>      print the report, compacted
+haring-report <run-folder>      print the report, compacted, and warn when the
+                                worker read nothing — no Read, Glob, Grep or
+                                Bash call in its events, so every claim in it
+                                needs checking against the project
 haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
@@ -520,11 +554,12 @@ its own run folder and its own session, so the run it came from stays whole and 
 continued again.
 
 Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell as well
-— reading a codebase needs one — so a read-only kind can change a file if it ignores its
-rules. `errand` gets the same three without the shell, and is the one kind kept to reading by
-its tool list alone. What the harness holds every kind to, including the shell, is the deny
-list `haring-worker` writes into each run folder as `settings.json` and passes with
-`--settings`: the client's private paths outside the project — `~/.claude/**`, `~/.ssh/**`,
+— reading a codebase needs one — and `Write` and `Edit` are denied it, so a check cannot
+change a file by ignoring its rules. `errand` gets the same three without the shell, and
+`Bash`, `Write` and `Edit` are denied it outright. What the harness holds every kind to,
+including the shell, is the deny list `haring-worker` writes into each run folder as
+`settings.json` and passes with `--settings`: the client's private paths outside the project
+— `~/.claude/**`, `~/.ssh/**`,
 `~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`. A read of any of them
 is refused by the Read tool, and by a shell command that names the path. Measured: the check
 reads the path out of the command, so `wc -l ~/.zsh_history` is refused and
@@ -610,17 +645,22 @@ waiting for the API to answer.
 
 Read it in this order.
 
-1. **The doubts.** Three lists: needs the client, did not check, weak evidence. They need
+1. **The task as the worker read it.** Every report begins with `task_as_i_read_it`, the
+   task in the worker's own words. Compare it against what you sent before you read
+   anything else: a misreading is visible there in one line and nowhere else. Two more
+   fields may be filled beside it: `narrowest_reading`, when the task was ambiguous and
+   the worker took the narrowest reading, and `followups`, work it found and did not do.
+2. **The doubts.** Three lists: needs the client, did not check, weak evidence. They need
    three different responses, which is why they are separate.
-2. **The numbered answers.** Match them against what you asked for. One entry per number.
-3. **Environment.** If it could not run the tests, most of the report is reasoning.
-4. **Verification**, including the baseline. Tests that were already failing are a note.
+3. **The numbered answers.** Match them against what you asked for. One entry per number.
+4. **Environment.** If it could not run the tests, most of the report is reasoning.
+5. **Verification**, including the baseline. Tests that were already failing are a note.
    Tests its change broke are a blocker.
-5. **Side effects.** Services started, data changed, files left. A diff shows none of it.
+6. **Side effects.** Services started, data changed, files left. A diff shows none of it.
    A worker is not allowed to install anything, so a request to install arrives here as a
    blocker and the decision is yours.
-6. **The claims.**
-7. **The one true thing** it told you without being asked.
+7. **The claims.**
+8. **The one true thing** it told you without being asked.
 
 ### A worker that stops on a contradiction has done the right thing
 
@@ -639,6 +679,17 @@ someone to look further, change the task, or tell it to go ahead as written and 
 findings and ranked options read as decisive while its sixth doubt admitted the analysis
 had never reached the question asked. Reading top to bottom would have shipped a confident
 wrong answer.
+
+### The read-nothing warning marks a report written without evidence
+
+**When:** `haring-report` or `haring-wait` prints its warning that the worker read
+nothing.
+**Why:** the mistakes in such a report are the kind you cannot spot from inside it. One
+gave a line number for a word that is not on that line, counted 12 where the truth was 28,
+and said two directories did not exist when both do.
+
+It is a warning and not a failure, because a task that genuinely needs no reading is
+possible.
 
 ### Match what you asked against what you got
 

@@ -2,6 +2,21 @@
  "type": "object",
  "additionalProperties": false,
  "properties": {
+  "task_as_i_read_it": {
+   "type": "string",
+   "description": "the task as you read it, in your own words, one or two sentences, written before the work. The manager compares it with what was sent, so a misreading shows here."
+  },
+  "narrowest_reading": {
+   "type": "string",
+   "description": "only if the task was ambiguous: the narrowest reading you took, and what the other reading would have been. Empty if it was not ambiguous."
+  },
+  "followups": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "work you found that mattered and did not do, one line each. Empty if there is none."
+  },
   "claim_checked": {
    "type": "string"
   },
@@ -91,6 +106,7 @@
   }
  },
  "required": [
+  "task_as_i_read_it",
   "claim_checked",
   "verdict",
   "what_is_actually_the_case",

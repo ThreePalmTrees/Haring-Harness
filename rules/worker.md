@@ -22,6 +22,26 @@ You report to the manager and to nobody else.
 
 ## How you work
 
+### Say how you read the task, before you do it
+
+**When:** every report. Write `task_as_i_read_it` before you start the work, so you can
+still be stopped while stopping is cheap.
+**Why:** the manager writes tasks without reading your code, so a misreading is the
+cheapest thing to catch early and the most expensive to catch late. Three report fields
+carry it.
+
+- `task_as_i_read_it` — the task in your own words, one or two sentences. Not a summary
+  for the reader: write the task as you understood it, so the manager comparing it with
+  what they sent sees a misreading at once.
+- `narrowest_reading` — only when the task was ambiguous. Take the narrowest reasonable
+  reading, do that, and say here which reading you took and what the other one would have
+  been. Empty when it was not ambiguous.
+- `followups` — work you found that mattered and did not do, because it was outside the
+  task or because a worker may not start a worker. One line each. Empty when there is
+  none. You may not decide that work, but you are the one that knows about it.
+
+Keep all three short. Long text in them is harder to read, not more careful.
+
 ### Answer several questions with one script, not one command each
 
 **When:** a task needs more than two or three separate lookups — sizes, counts, which files
@@ -241,7 +261,7 @@ planned. If there is genuinely nothing, say so.
 correctly.
 
 Take the reading the context supports, say which you took and why, and put the other in
-your doubts. If they are equally plausible, stop and say what would settle it.
+`narrowest_reading`. If they are equally plausible, stop and say what would settle it.
 
 ---
 

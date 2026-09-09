@@ -3,13 +3,16 @@
 # Always in the background; prints the run folder, and on standard error the pulse
 # that follows it.
 #
-#   haring-worker <kind> <workdir> <prompt-file> [--model M] [--no-pulse]
+#   haring-worker <kind> <workdir> <prompt-file> [--model M] [--effort L] [--no-pulse]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
 # kind is one of: check implement errand
 #
 # The model is glm-5.3-flash for every kind. The manager never chooses another one.
 # --model exists only for when the person who asked for the work asks for it.
+# --effort lowers or raises how hard the worker thinks, and exists only for when the
+# person who asked for the work asks for it. No kind sets it: see the comment above
+# the kind table.
 # --no-pulse starts a run without a live haring-pulse watching the project, which
 # otherwise is refused. It is consumed here and never reaches the worker.
 set -e
@@ -27,6 +30,12 @@ done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
 MODEL_DEFAULT=glm-5.3-flash
+
+# The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
+# is set. The number is the plan's concurrency limit — the most requests the model provider
+# allows in flight at the tier being paid for — and not a guess about the machine: one over
+# it is a rate-limit failure in every worker already going. Raising it is one edit here.
+MAX_PARALLEL_WORKERS=2
 
 # A worker holds a shell, and every haring command is on PATH, so this script is one a
 # worker can call exactly as the manager does. It is refused. Only the manager decides to
@@ -49,7 +58,7 @@ if [ -n "$HARING_NESTED" ]; then
 fi
 
 usage() {
-  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M]" >&2
+  echo "usage: haring-worker <kind> <workdir> <prompt-file> [--model M] [--effort L] [--no-pulse]" >&2
   echo "       haring-worker continue <kind> <previous-run-folder> <prompt-file>" >&2
   exit 2
 }
@@ -93,12 +102,20 @@ fi
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
 no_pulse=""
+effort=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2
              echo "haring-worker: WARNING — model overridden to '$model'." >&2
              echo "  The manager must not do this on its own. Only do it when the person" >&2
              echo "  who asked for the work asked for it." >&2 ;;
+    --effort) [ $# -ge 2 ] && [ -n "$2" ] || usage; effort=$2; shift 2
+             case "$effort" in
+               low|medium|high|xhigh|max) ;;
+               *) echo "haring-worker: unknown effort level: $effort" >&2
+                  echo "  The tool takes: low, medium, high, xhigh, max." >&2
+                  usage ;;
+             esac ;;
     --no-pulse) no_pulse=1; shift ;;
     *) echo "haring-worker: unknown argument: $1" >&2; usage ;;
   esac
@@ -106,21 +123,33 @@ done
 
 : "${model:=$MODEL_DEFAULT}"
 
-# The tools each kind may use, and the flags that go with them. A read-only kind gets a
-# shell because reading needs one, and its rules forbid using it to change anything.
+# The tools each kind may use, and the tools it is denied. A read-only kind gets a shell
+# because reading needs one, and has the writing tools denied rather than being talked
+# out of them by its rules.
+#
+# No kind sets --effort. Measured: at --effort low a single-fact extraction ran twice as
+# fast and stayed correct, but a multi-part task came back in 179 characters where the
+# task cannot be answered under 3000 — the low runs returned nothing having done nothing —
+# and a real errand at low returned an empty result with no tool call at all. Half the
+# time is not worth any chance of no answer, so effort stays the tool's default unless
+# the caller passes --effort above.
 #
 # There is no spending limit. A limit that fires returns NO REPORT AT ALL: the work is on
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
   check)
-      tools='Read,Glob,Grep,Bash'; extra='--bare' ;;
+      tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
+      extra='--bare' ;;
   errand)
-      tools='Read,Glob,Grep';      extra='--bare' ;;
+      tools='Read,Glob,Grep'; denied='Bash,Write,Edit'
+      extra='--bare' ;;
   implement)
-      tools='Read,Write,Edit,Glob,Grep,Bash'; extra='--permission-mode acceptEdits' ;;
+      tools='Read,Write,Edit,Glob,Grep,Bash'; denied=''
+      extra='--permission-mode acceptEdits' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
+[ -n "$effort" ] && extra="$extra --effort $effort"
 
 # Checked here, after the kind, so both modes are covered: in continue mode the
 # workdir comes out of the previous run's meta.
@@ -168,10 +197,11 @@ fi
 # test reads only runs already on disk, and refuses before the .gitignore below or the run
 # folder below that is written, so a refused start leaves nothing behind.
 #
-# HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, for the rare
-# case where two workers in one project is genuinely right. It is unset rather than passed
-# on, so a worker started under it carries no lift of its own.
+# HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, up to
+# MAX_PARALLEL_WORKERS: the plan's concurrency limit, which holds even under the lift. It
+# is unset rather than passed on, so a worker started under it carries no lift of its own.
 live=""
+live_count=0
 for meta in "$project"/.haring/runs/*/meta; do
   [ -f "$meta" ] || continue
   run_dir=${meta%/meta}
@@ -179,6 +209,7 @@ for meta in "$project"/.haring/runs/*/meta; do
   case "$pid" in ''|*[!0-9]*) continue ;; esac
   kill -0 "$pid" 2>/dev/null || continue
   [ -s "$run_dir/report.json" ] && continue
+  live_count=$((live_count + 1))
   live="$live
 $run_dir"
 done
@@ -191,6 +222,16 @@ if [ -n "$live" ] && [ -z "$HARING_ALLOW_PARALLEL" ]; then
   done
   echo "  When two at once is genuinely right, start this one with" >&2
   echo "  HARING_ALLOW_PARALLEL set, as the nesting lift is set." >&2
+  exit 2
+fi
+if [ "$live_count" -ge "$MAX_PARALLEL_WORKERS" ]; then
+  echo "haring-worker: refused — HARING_ALLOW_PARALLEL is set, and the ceiling still" >&2
+  echo "  holds: $MAX_PARALLEL_WORKERS workers at once is what the plan allows, and" >&2
+  echo "  $live_count are already going in this project." >&2
+  printf '%s\n' "$live" | sed '/^$/d' | while IFS= read -r other; do
+    echo "  $other" >&2
+    echo "    stop it with: haring-kill $other" >&2
+  done
   exit 2
 fi
 unset HARING_ALLOW_PARALLEL
@@ -352,6 +393,11 @@ resume_flag=""
 # them. Holding the pipe open for the life of the run is the keeper written just below —
 # it is the only thing holding it, so a keeper that dies ends the run instead of hanging
 # it, and it closes the pipe itself once claude has answered everything it was sent.
+# The denied list travels as --disallowedTools only when the kind denies something: the
+# run.sh heredoc expands parameters but does not split words, so an empty value written
+# straight into it would leave the bare flag holding the next argument as its list.
+denied_flag=''
+if [ -n "$denied" ]; then denied_flag="--disallowedTools $denied"; fi
 cat > "$run/run.sh" <<RUNNER
 #!/bin/sh
 echo "pid=\$\$" >> "$run/meta"
@@ -526,6 +572,7 @@ python3 "$run/keeper.tmp" "$run" 900 | claude -p \
   --session-id "$session" \
   --append-system-prompt "\$(cat "$run/system.tmp")" \
   --allowedTools "$tools" \
+  $denied_flag \
   --output-format stream-json --input-format stream-json --verbose \
   --json-schema "\$(cat "$schema")" \
   --settings "$run/settings.json" \

@@ -47,7 +47,7 @@ Just mention `/haring` in your prompt
 
     .haring/runs/{stamp}-{kind}-{pid}/
       prompt.md      what the worker was asked, the only copy of the question
-      report.json    what it returned
+      report.json    what it returned, starting with the task as the worker read it
       events.jsonl   the run's events, written by haring as they happen
       stats.txt      model, tokens, cache reads, turns, seconds
       meta           what the run was, so it can be continued
@@ -73,7 +73,8 @@ document.
                     haring-pulse     one line per live worker, fast then at a pace you can retune
                     haring-kill      stop a running worker on purpose
                     haring-say       say a word to a running worker
-                    haring-report    print a report, with the empty parts removed
+                    haring-report    print a report, with the empty parts removed, and warn
+                                    when the worker made no Read, Glob, Grep or Bash call
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost
                     haring-prompt    build a worker's system prompt

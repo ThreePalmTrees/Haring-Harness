@@ -24,8 +24,12 @@ guess why the pace moved or failed to. A missing or empty file is not a refusal:
 means the --every interval again.
 
 While it lives, this process's own pid is written to <project>/.haring/pulse, and the
-file is removed on every way out — each exit above, a Ctrl-C, a kill — so the file being
-there means this pulse is alive. haring-worker refuses to start a run into a project
+file is removed on every way out — each exit above, a Ctrl-C, a kill — but only while it
+still names this process: a second pulse in the same project writes its own pid over
+this one's, and the first one out must leave the file standing for the pulse still
+holding it. A file that cannot be read, or holds nothing readable, is taken as this
+pulse's own and removed. The file being there means a pulse is alive. haring-worker
+refuses to start a run into a project
 without it, which is what turns starting a pulse from a rule the manager has to remember
 into something that answers back. A pulse killed with SIGKILL leaves the file behind,
 because SIGKILL is the one death nothing can be done on the way out of; the check on the
@@ -49,12 +53,12 @@ deep in a long thought must not read as one that has died. Silence on a pass sti
 means a run younger than that with nothing to say yet, which is correct output here,
 not a fault, and it covers a worker that has written no line and made no call yet.
 
-The workers it takes on are those live at the pass that first saw one. A worker started
-after that is the next task's, and reporting on it would keep this pulse alive into a job
-it was not started for. It looks for that between passes rather than only when one is
-due, so it ends within a second or two of its last worker instead of at the next report.
+The workers it takes on are every worker live while it watches, whenever it started, so
+a job that runs its independent work two at a time is covered from the first worker to
+the last. It looks for them between passes rather than only when one is due, so it ends
+within a second or two of the last one instead of at the next report.
 
-Exits 0 once every worker it took on has finished, or after about 60 seconds if it never
+Exits 0 once no worker it took on is live any more, or after about 60 seconds if it never
 saw one to begin with, so a caller that starts it before anything is running does not
 wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
@@ -307,12 +311,29 @@ def take_cadence():
 # missing project leaves no file behind. The removal sits in a finally, so every exit in
 # the loop below lands there; the handler turns a kill into an exit so a killed pulse
 # reaches it as well, since the default action for SIGTERM stops the process without
-# unwinding. SIGKILL is the one death nothing can be done on the way out of, which is
-# why the reader of this file is made to check the pid and not just the file.
+# unwinding. The removal reads the file first, because a second pulse in this project
+# writes its own pid over this one's, and taking the file down would leave a live pulse
+# with no file at all. SIGKILL is the one death nothing can be done on the way out of,
+# which is why the reader of this file is made to check the pid and not just the file.
 os.makedirs(os.path.join(project, ".haring"), exist_ok=True)
 pulse_file = os.path.join(project, ".haring", PULSE_FILE)
 with open(pulse_file, "w") as f:
     f.write(f"{os.getpid()}\n")
+
+
+def take_pulse_down():
+    """Remove the pid file, but only while it still names this process."""
+    try:
+        with open(pulse_file) as f:
+            text = f.read().strip()
+    except OSError:
+        text = ""
+    if text and text != str(os.getpid()):
+        return   # another pulse holds the file now, and needs it standing
+    try:
+        os.remove(pulse_file)
+    except OSError:
+        pass
 
 
 def leave(signum, frame):
@@ -329,26 +350,21 @@ try:
     # what makes the plan arrive after the expensive route it names has already been paid
     # for. The file may shorten the opening look but never lengthen it.
     reported = False
-    # The workers this pulse took on: those live at the pass that first saw one. A worker
-    # started after that is the next task's, and waiting on it would keep this pulse alive
-    # into a job it was not started for. A live sighting implies taken is not empty, so the
-    # exit check below never fires before the first one is seen.
-    taken = set()
     while True:
         runs = live_runs()
         if runs:
             ever_live = True
-            if not taken:
-                taken.update(run for run, _, _ in runs)
+            # Every worker live on a pass is taken on, whenever it started, so a job
+            # that runs its independent work two at a time is covered to the last one.
+            # The exit checks against the live set below follow from that: this ends
+            # when nothing it would have taken on is left.
             for run, meta, meta_path in runs:
-                if run not in taken:
-                    continue
                 line = report_line(run, meta, meta_path)
                 if line:
                     print(line, flush=True)
                     reported = True
         if ever_live:
-            if not taken & {run for run, _, _ in runs}:
+            if not runs:
                 sys.exit(0)
         elif time.time() - start >= FIRST_LIVE_DEADLINE:
             sys.exit(0)
@@ -369,10 +385,7 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
-            if not taken & {run for run, _, _ in live_runs()}:
+            if not live_runs():
                 sys.exit(0)
 finally:
-    try:
-        os.remove(pulse_file)
-    except OSError:
-        pass
+    take_pulse_down()
