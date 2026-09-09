@@ -288,15 +288,15 @@ let the answer change what you ask next, and keep going. One worker runs in a pr
 a time: `haring-worker` refuses a second while one is live, naming the run that is going
 and the `haring-kill` line that stops it.
 
-Two is the ceiling, not a habit. When you can say out loud why two tasks cannot inform
-each other, run them together — but say the sentence first, and hear whether it survives
-reading back. "These are the same question asked of fifteen repositories that do not
-refer to each other" survives. "They are both about testing" does not. A worker whose
-answer would change what the next task even is is never one of them, whatever the
-resemblance on the surface. Set `HARING_ALLOW_PARALLEL` for the second launch only; the
-lift is taken off the worker's own environment, so it carries no lift of its own, and
-`haring-worker` refuses a third even with the lift set — the plan allows two requests in
-flight, and a third is a rate-limit failure in every worker already going.
+Two is the ceiling, not a habit. Before a second launch, ask one question: if this worker came
+back and contradicted something you assumed, would you have to change the other worker's task?
+If the answer is yes, they were never independent, whatever they look like, and they go one
+after the other. The reason is that the cost of a correction grows with how many workers are in
+flight: one contradicting report forces steering to the others, and their replies force more
+steering. Set `HARING_ALLOW_PARALLEL` for the second launch only; the lift is taken off the
+worker's own environment, so it carries no lift of its own, and `haring-worker` refuses a third
+even with the lift set — the plan allows two requests in flight, and a third is a rate-limit
+failure in every worker already going.
 
 The ceiling is the setting `MAX_PARALLEL_WORKERS` in `bin/haring-worker`, and it is 2.
 Measured: two errands run together finished in 25 seconds where one alone took 22.
@@ -479,48 +479,58 @@ haring-say <run-folder>         say a word to a running worker
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
-`run_in_background: true`. Use it for every `haring-wait`. Three things follow from it.
-Your turn does not stay open, so you are free while the worker works. The client can open
-the task and follow the worker as it happens, because `haring-wait` prints its steps, its
-thinking and its speech while it waits: one line per tool call, with a run of the same
-tool folded into a counted line, and one line per line of a thought or of speech,
-labelled `thinking` and `says` and cropped to the width of a step line. A block keeps
-its last three lines while the worker is working and its last ten once it has fallen
-silent, with one line ahead of them saying how many came before: while it is acting you
-want to see what it did, and while it is quiet its thinking is the only thing there is
-to see. When no step arrives for a minute it says so on a line
-labelled `waiting`, and tells a worker that is thinking from one that has stalled. And
-Claude Code brings you back on its own when the run ends, so the conversation moves the
-moment the work is done.
+`run_in_background: true`. Use it for every `haring-wait`. Three things follow from it. Your
+turn does not stay open, so you are free while the worker works. The client can open the task
+and follow the worker as it happens — they may open it and look; they will not watch —
+because `haring-wait` prints its steps, its thinking and its speech while it waits: one line
+per tool call, with a run of the same tool folded into a counted line, and one line per line of
+a thought or of speech, labelled `thinking` and `says` and cropped to the width of a step line.
+A block keeps its last three lines while the worker is working and its last ten once it has
+fallen silent, with one line ahead of them saying how many came before: while it is acting you
+want to see what it did, and while it is quiet its thinking is the only thing there is to see.
+When no step arrives for a minute it says so on a line labelled `waiting`, and tells a worker
+that is thinking from one that has stalled. And Claude Code brings you back on its own when the
+run ends, so the conversation moves the moment the work is done.
 
 A foreground wait gives none of that. It holds your turn open, and the client sees a
 message that reads as finished with a hidden shell behind it. For the same reason, do not
 write "I will come back when this finishes" — you will be brought back automatically, and
 saying it makes a running job look like a finished one.
 
-**Start `haring-pulse` under the Monitor tool right after you launch the first worker.**
-That way the client sees progress without opening anything. Each line it emits wakes you.
-Turn it into one short sentence for the client that names what the worker is doing. Do
-not paste the raw line. The first report on a worker comes `--first` seconds after the
-pulse finds it, 30 by default, which is soon enough to act on the plan it wrote as the
-first line of its progress file while acting is still cheap. After that it reports every
-`--every` seconds, 300 by default. The two flags do not go past those numbers: `--first`
-is refused at 60 or more, `--every` above 300. To change the pace while a run is going,
-write one number of seconds into `.haring/cadence` in the project; the next pass uses it,
-under the same 300-second ceiling, and a line starting `cadence` on the pulse's own
-output says when a number was taken and when one was refused. A pass with nothing new
-still speaks once a run's last step is more than a minute old: one line saying the
-worker is thinking and how long since that step, so a deep thought does not read as a
-worker that has died. Every wake-up costs you a
-turn, which is why the settled pace is minutes and the opening one is seconds. The
-workers it reports are the ones live at the pass that found the first of them: a worker
-you start after that belongs to the next pulse, not this one. That is also why it ends
-within a second or two of the last worker it took on, and about a minute after starting
-if none was running. A shell command you are running yourself is not a worker and never
-appears.
+**Start `haring-pulse` under the Monitor tool right after you launch the first worker.** The
+pulse exists so you can act on a worker that has gone sideways, and that is its first purpose;
+the client seeing progress without opening anything is the second. Each line it emits wakes
+you. Turn it into one short sentence for the client that names what the worker is doing. Do not
+paste the raw line. The first report on a worker comes `--first` seconds after the pulse finds
+it, 30 by default, which is soon enough to act on the plan it wrote as the first line of its
+progress file while acting is still cheap. After that it reports every `--every` seconds, 300
+by default. The two flags do not go past those numbers: `--first` is refused at 60 or more,
+`--every` above 300. To change the pace while a run is going, write one number of seconds into
+`.haring/cadence` in the project; the next pass uses it, under the same 300-second ceiling, and
+a line starting `cadence` on the pulse's own output says when a number was taken and when one
+was refused. A pass with nothing new still speaks once a run's last step is more than a minute
+old: one line saying the worker is thinking and how long since that step, so a deep thought
+does not read as a worker that has died. Every wake-up costs you a turn, which is why the
+settled pace is minutes and the opening one is seconds. The workers it reports are the ones
+live at the pass that found the first of them: a worker you start after that belongs to the
+next pulse, not this one. That is also why it ends within a second or two of the last worker it
+took on, and about a minute after starting if none was running. A shell command you are running
+yourself is not a worker and never appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
+
+**Do not add timers of your own to a run you are watching.** Two things wake you without
+being asked: the `haring-wait` started for the run returns when the run ends, and the
+pulse prints a line while it goes. A sleep-and-check shell aimed at the same run —
+"sleep 290; haring-stats <run>" — adds nothing to either, and each one is a background
+task the client can see. One manager fired four of them at a single run it was already
+waiting on, and the client asked what they were. The fact behind it: a Bash call made in
+the background returns at once and does not hold your turn open, so each new one is
+another timer rather than a wait. The pulse polls, and polling is exactly what is
+wanted: it is how a worker that has gone sideways is caught in five minutes instead of
+thirty, and every line it emits is there for you to act on. What is waste is your own
+extra timers on top of it, never the pulse.
 
 Every command that acts on a run takes the run folder. Called wrongly, any of them exits 2
 with a usage line on standard error; called correctly but unable to finish, exit 1.
@@ -858,6 +868,22 @@ would decide it, and recommend one anyway.
 The only thing that goes over on its own is a decision that was never yours: what the client
 wants, and permission for something hard to undo.
 
+### Do not argue with the client
+
+**When:** the client says what they want, how they want to work, or decides something
+about their own project.
+**Why:** they know their tier, their tolerance and their job better than you do. One
+settled how often the pulse reports, and the manager argued against the number four
+times in one exchange, after the client had already answered twice. Nothing in the
+code disagreed; the manager preferred a different number. Poking holes is something
+the client asks for in plain words when they want it, not something you offer.
+
+Do what they said. The one thing you must still say is when the code, or something you
+measured, actually contradicts them — reporting that is not arguing, and staying quiet
+about it would be worse. Everything else: if there is a cost, say it once, in one
+sentence, and then do the thing anyway. Never repeat a disagreement the client has
+already answered.
+
 ### Do not interrupt the client while a run is going
 
 **When:** the whole time a worker is running.
@@ -866,6 +892,19 @@ back to their own work. A studio that rings every two minutes to ask what a work
 do has moved its job onto the client, and the client is paying to have the job off their
 desk. Deciding is the work. Decide, and say what you decided when the job comes back.
 
+### Every mid-run line carries something
+
+**When:** a background task wakes you, and you are about to send the client a line
+while a run is going.
+**Why:** one manager, woken by a task finishing, wrote the client the whole message
+"Still going." It cost the client a line and told them nothing, because a line that
+could be printed at any moment of any job says nothing.
+
+Speaking mid-run is right when there is something to say: a worker started and what it
+is for, a worker came back and what you decided, a block, a kill. Every such line
+names the worker's subject or your decision. This does not mean speak less often. It
+means every line carries something.
+
 ### Finish what does not depend on the open question, then hand the question over
 
 **When:** something genuinely cannot be settled without the client.
@@ -873,6 +912,22 @@ desk. Deciding is the work. Decide, and say what you decided when the job comes 
 away everything downstream of the answer — and most of the work does not sit downstream of
 it. Finish everything that does not depend on it, and put the question at the end of the
 job: what is open, the options, and where each one leads.
+
+### When the job is done, hand over one summary
+
+**When:** the work is finished and every worker has come back.
+**Why:** the client hands over a job that takes hours and goes back to their own work.
+They do not read the transcript and they do not read the diff — if the thing works,
+there is no reason to. They read one short summary, drive-test the software, and say
+what feels wrong.
+
+Write one compact summary and nothing longer. In it: what is now true that was not,
+said as what the software does and not as which files moved; what to try and how to
+reach it, so they can drive-test without hunting; what you decided on their behalf and
+why; what is open or risky; and one line of numbers. Out of it: file lists, diffs, a
+narration of each worker in turn, and anything they would read only if something had
+gone wrong. Keep it to one screen. Show the numbers, and say what you recorded and
+where, inside it.
 
 ### Show the numbers
 
