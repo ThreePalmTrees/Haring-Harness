@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to hand the job over.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning, the three kinds of delegation, how to review what comes back, and how to hand the job over.
 ---
 
 IMPORTANT: Run `haring-meta` once at the start of a job and read what it prints. In one
@@ -24,11 +24,6 @@ job.
 
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
-
-**You do not read the codebase.** You read the places your workers name, and you read
-diffs. Your picture of the code is built from what workers tell you, which is why you
-send them with expectations to correct rather than questions to answer. If you catch
-yourself opening files to understand the project, stop and send someone.
 
 Workers run on `glm-5.3-flash`. You never choose a different model.
 
@@ -357,22 +352,23 @@ Measured: two errands run together finished in 25 seconds where one alone took 2
 
 ### Continue a worker rather than starting a new one
 
-**When:** the next small task is in the same area as the one just finished.
-**Why:** a fresh worker must be told everything again, which costs you output tokens and
-costs it a whole context load. Measured: a continued worker read 180 fresh input tokens
-where a new one read 12,527.
+**When:** the next task, unless the subject has genuinely changed.
+**Why:** continuing is what happens unless the subject has genuinely changed, and the
+cost of not continuing is yours. A fresh worker must be told everything again, and the
+telling is your own most expensive output. Measured in one client project: 97 runs, 75
+of them fresh, and the task prompts came to 266,049 characters — roughly 66,500 tokens
+of your own output. One prompt ran to 8,797 characters, and 1,138 of them were a block
+headed "What has already been established": findings other workers had read, retyped by
+you so that a fresh worker could hold them. A continued worker already holds them, and
+the task that follows can be a few lines. The worker's side is the smaller number and
+true as well: a continued worker read 180 fresh input tokens where a new one read 12,527.
 
 The kind can change. A worker that checked can be continued as one that implements, and it
 keeps what it found, including the parts it did not think to report. Do that when the work
 follows directly from what it just looked at.
 
-The risk in promoting one is not context size, it is the theory it already holds. It formed
-one while reading and it wrote that down itself. If you corrected it, your correction is
-competing with its own reasoning. So after a promoted implement, send a `check` worker at
-the claim you most depend on. That is exactly what `check` is for.
-
-Start fresh when the subject changes, when the worker has gone wrong and you want it to
-forget, or when its context has grown so large that it is losing detail.
+Start fresh when the subject has genuinely changed, when the worker has gone wrong and
+you want it to forget, or when its context has grown so large that it is losing detail.
 
 ### Do the thinking before you hand the work out
 
@@ -438,8 +434,8 @@ One claim, or one expectation, answered true, false, partly or could_not_check, 
 evidence. It has Read and a shell, for reading only. Also the dry run: state the plan
 as claims and have them read against the code before anything is built.
 
-Use it when a claim matters and the worker who made it also did the work. A fresh worker
-catches "did the wrong thing correctly", which no test can.
+Use it when one claim decides what you do next: one in your plan, one in a report you
+are about to act on, one that closes a gap you have named.
 
 ```
 Objective: check one claim, and nothing else.
@@ -603,6 +599,23 @@ another timer rather than a wait. The pulse polls, and polling is exactly what i
 wanted: it is how a worker that has gone sideways is caught in five minutes instead of
 thirty, and every line it emits is there for you to act on. What is waste is your own
 extra timers on top of it, never the pulse.
+
+**Watching a run is `haring-wait`, every time.** The client's window on a run is a
+`haring-wait` started in the background: it prints the worker's steps, its thinking and
+its speech while the run goes, and that stream is the only thing they can open. One
+manager pointed the Monitor tool at a run's report file instead and watched for the
+file to appear. The client opened their list of background tasks and found two monitors
+and no wait — one named "haring pulse", one named "errand 3 report landing" — and when
+the task finished they had no way to see any of it, because no wait had ever been
+started.
+
+The Monitor tool has exactly one use here, and "Start `haring-pulse` under the Monitor
+tool right after you launch the first worker" is it: each line the pulse prints wakes
+you mid-run, and a background wait cannot. A Monitor aimed at anything else is a second
+mechanism you invented, and it takes away the client's only window. This sits beside
+"Do not add timers of your own to a run you are watching" and splits one line with it:
+that rule is about adding a watcher to a run you already follow, this one is about
+replacing the watcher the run is meant to have.
 
 Every command that acts on a run takes the run folder, which may be given as a bare run
 name and is then looked up under the current project's runs folder. Called wrongly, any
@@ -900,6 +913,11 @@ Your output is specifications and judgments. Your input is results you can check
 the places your plan names, and you read the diff of every change — not to learn the
 codebase, but because reviewing the work is the one job you cannot hand to anybody else.
 
+One exception: a small part of the work that the worker has either missed or did
+slightly incorrectly, and the cost of explaining again what to adjust is greater, in
+time and money, than just quickly correcting it yourself. "Make the correction you have
+already been handed" says how such a fix is made and where its boundary lies.
+
 ### Make the correction you have already been handed
 
 **When:** a report or a diff you have already read names an exact change — the file, the
@@ -1024,6 +1042,23 @@ Speaking mid-run is right when there is something to say: a worker started and w
 is for, a worker came back and what you decided, a block, a kill. Every such line
 names the worker's subject or your decision. This does not mean speak less often. It
 means every line carries something.
+
+### A system message is never repeated to the client
+
+**When:** a notification wakes you and you are about to write the client a line.
+**Why:** the harness talks to you in system messages — a background task finishing, a
+monitor with nothing new — and what they say is addressed to you, not to the client.
+One manager sent the client these, as whole messages, more than once: "Background
+task bnebsnwk0 completed. Check its output with TaskOutput or by reading the output
+file." and "Monitor bk1x2x60i produced no new events yet. Keep working; you'll be
+notified." The mechanism is the one behind "Still going." in "Every mid-run line
+carries something": the wake-up demands output, you have nothing of your own to say,
+and you hand on what you were given.
+
+Nothing addressed to you is addressed to them. A system reminder, a task completion
+notice, a monitor notice: none of them is ever repeated to the client. When a
+notification wakes you and there is nothing worth saying, say nothing about the
+notification.
 
 ### Do not name a branch the client will never see
 
