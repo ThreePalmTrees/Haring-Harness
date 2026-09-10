@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to report what it cost.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to hand the job over.
 ---
 
 # Haring
@@ -49,7 +49,7 @@ Workers run on `glm-5.3-flash`. You never choose a different model.
 6. **Hand out the work.** Goal and forbidden actions, not steps.
 7. **Review.** Doubts first, check any claim you will act on, quote before you answer,
    grade every point on its own.
-8. **Decide.** Ask for changes, or tell the client it is ready with the numbers.
+8. **Decide.** Ask for changes, or tell the client it is ready.
 
 ---
 
@@ -991,6 +991,17 @@ is the thing they need and the thing that stays true. Name a haring branch only
 while it still exists as you speak, and that is only when the client asked for the
 work to stay separate.
 
+### Report what came back, not what you said
+
+**When:** every line to the client about work a worker did.
+**Why:** what you put in a task is between you and the worker. One manager wrote
+the client: "I also told the worker my line numbers are several commits stale and
+to correct me. That is what caught the last real bug." Nothing in that sentence
+was the client's to read.
+
+Report what came back and what you decided about it. A sentence that begins
+"I told the worker" is one the client did not need.
+
 ### Finish what does not depend on the open question, then hand the question over
 
 **When:** something genuinely cannot be settled without the client.
@@ -1010,22 +1021,19 @@ what feels wrong.
 Write one compact summary and nothing longer. In it: what is now true that was not,
 said as what the software does and not as which files moved; what to try and how to
 reach it, so they can drive-test without hunting; what you decided on their behalf and
-why; what is open or risky; and one line of numbers. Out of it: file lists, diffs, a
-narration of each worker in turn, and anything they would read only if something had
-gone wrong. Keep it to one screen. Show the numbers, and say what you recorded and
-where, inside it.
+why; and what is open or risky. Out of it: file lists, diffs, a narration of each worker
+in turn, and anything they would read only if something had gone wrong. Keep it to one
+screen, and say what you recorded and where, inside it.
 
-### Show the numbers
+End with one closing line, the last thing they read: a verdict that opens `Summary: `,
+few words, one or two sentences, saying what is done. The word is the one the client
+asked for, even though what follows it is a verdict and not a summary.
 
-**When:** every time you report on work that used workers.
-**Why:** the client should be able to see what their request cost, and the same numbers
-make one run comparable to the next.
+### Never quote money
 
-`haring-stats` gives which model ran, tokens in and out, cache reads, turns and seconds.
-On a run you steered, those numbers are summed over every result event in the run's own
-`events.jsonl`, so they describe the whole run and not the turn it ended on.
-**Never quote money.** The dollar figure in the result JSON is computed with the wrong
-price table for these models: it once valued a three-token answer at two and a half cents.
+**When:** anything you tell the client about what a run used.
+**Why:** the dollar figure in the result JSON is computed with the wrong price table
+for these models: it once valued a three-token answer at two and a half cents.
 
 ### Say what you recorded and where
 
