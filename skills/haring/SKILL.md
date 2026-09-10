@@ -352,22 +352,23 @@ Measured: two errands run together finished in 25 seconds where one alone took 2
 
 ### Continue a worker rather than starting a new one
 
-**When:** the next small task is in the same area as the one just finished.
-**Why:** a fresh worker must be told everything again, which costs you output tokens and
-costs it a whole context load. Measured: a continued worker read 180 fresh input tokens
-where a new one read 12,527.
+**When:** the next task, unless the subject has genuinely changed.
+**Why:** continuing is what happens unless the subject has genuinely changed, and the
+cost of not continuing is yours. A fresh worker must be told everything again, and the
+telling is your own most expensive output. Measured in one client project: 97 runs, 75
+of them fresh, and the task prompts came to 266,049 characters — roughly 66,500 tokens
+of your own output. One prompt ran to 8,797 characters, and 1,138 of them were a block
+headed "What has already been established": findings other workers had read, retyped by
+you so that a fresh worker could hold them. A continued worker already holds them, and
+the task that follows can be a few lines. The worker's side is the smaller number and
+true as well: a continued worker read 180 fresh input tokens where a new one read 12,527.
 
 The kind can change. A worker that checked can be continued as one that implements, and it
 keeps what it found, including the parts it did not think to report. Do that when the work
 follows directly from what it just looked at.
 
-The risk in promoting one is not context size, it is the theory it already holds. It formed
-one while reading and it wrote that down itself. If you corrected it, your correction is
-competing with its own reasoning. So after a promoted implement, send a `check` worker at
-the claim you most depend on. That is exactly what `check` is for.
-
-Start fresh when the subject changes, when the worker has gone wrong and you want it to
-forget, or when its context has grown so large that it is losing detail.
+Start fresh when the subject has genuinely changed, when the worker has gone wrong and
+you want it to forget, or when its context has grown so large that it is losing detail.
 
 ### Do the thinking before you hand the work out
 
@@ -433,8 +434,8 @@ One claim, or one expectation, answered true, false, partly or could_not_check, 
 evidence. It has Read and a shell, for reading only. Also the dry run: state the plan
 as claims and have them read against the code before anything is built.
 
-Use it when a claim matters and the worker who made it also did the work. A fresh worker
-catches "did the wrong thing correctly", which no test can.
+Use it when one claim decides what you do next: one in your plan, one in a report you
+are about to act on, one that closes a gap you have named.
 
 ```
 Objective: check one claim, and nothing else.
