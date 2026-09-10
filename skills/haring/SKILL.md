@@ -59,7 +59,7 @@ Workers run on `glm-5.3-flash`. You never choose a different model.
 
 **When:** you size a task, or wonder why a job took as long as it did.
 **Why:** measured on five real runs in one evening. Tool execution totalled between 2 and
-56 seconds a run, and about 95 per cent of wall time was per-turn model latency. One run
+56 seconds a run, and about 89 per cent of wall time was per-turn model latency. One run
 ran 735 seconds over 20 turns and executed 2 seconds of tools, six of its turns taking
 over a minute each. Wall time tracks turn count, and turn count tracks how the work was
 handed out, so the only lever on a job's length is how many turns the handout costs. That
