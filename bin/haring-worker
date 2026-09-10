@@ -37,18 +37,28 @@ MODEL_DEFAULT=glm-5.3-flash
 # it is a rate-limit failure in every worker already going. Raising it is one edit here.
 MAX_PARALLEL_WORKERS=2
 
+# The most workers one worker may start. It is 0, and 0 means a worker starts none: the
+# guard below refuses a caller marked as a worker. Raising it is how the idea of a worker
+# starting its own helpers gets tested — one edit here, and nothing else.
+MAX_NESTED_WORKERS=0
+
 # A worker holds a shell, and every haring command is on PATH, so this script is one a
-# worker can call exactly as the manager does. It is refused. Only the manager decides to
-# spend money on another run: spending on a nested run never appears in the parent run's
-# own numbers, every worker competes for the same request limit, and a worker is the same
-# kind of thing as the one that started it, so without this there is nothing to stop a
-# worker starting workers starting workers.
+# worker can call exactly as the manager does. The guard below holds while
+# MAX_NESTED_WORKERS is 0. Only the manager decides to spend money on another run:
+# spending on a nested run never appears in the parent run's own numbers, every worker
+# competes for the same request limit, and a worker is the same kind of thing as the one
+# that started it, so at 0 there is nothing to stop a worker starting workers starting
+# workers.
 #
 # The check is the marker HARING_NESTED, which the haring-worker that started this worker
 # put in its environment, below. It travels from there through run.sh into claude and into
 # every shell command the worker runs, so there is no route round it: calling the script
 # through sh, or by its full path, ends here all the same.
-if [ -n "$HARING_NESTED" ]; then
+#
+# Above 0 the guard lets a marked caller through, and what it does not have yet is the
+# count the number then needs: the live runs whose meta records this run under started_by,
+# refused when they reach MAX_NESTED_WORKERS. None of that is built while the number is 0.
+if [ -n "$HARING_NESTED" ] && [ "$MAX_NESTED_WORKERS" -eq 0 ]; then
   echo "haring-worker: refused — you are inside a worker ($HARING_NESTED), and workers do" >&2
   echo "  not start workers. Only the manager decides to spend on another run." >&2
   echo "  Instead: say in your report that verification needs one, name the exact command" >&2
@@ -262,6 +272,9 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
   echo "session_id=$session"
 } > "$run/meta"
 [ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "resumed_session='$resume_id'" >> "$run/meta"; }
+# The run that started this one, when the caller was a worker. It is what counts children
+# against MAX_NESTED_WORKERS; a run the manager started records nothing, having no parent.
+[ -n "$HARING_NESTED" ] && echo "started_by='$HARING_NESTED'" >> "$run/meta"
 
 # The prompt the worker actually receives: the task, and — for every kind but errand —
 # where to write progress and what the first line of it must be. The method line is what
