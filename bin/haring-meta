@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""haring-meta — print a <meta> block describing a project, and nothing else.
+
+    haring-meta [project-dir]
+
+project-dir defaults to the current directory, resolved to its git top level the
+same way haring-worker resolves a workdir. The block hands a worker what it would
+otherwise spend turns finding out: the project's own name, the date and time with
+timezone, the operating system, whether the project is in git, and a listing of the
+files and directories under the limits the block itself names — four levels deep,
+fifty entries per directory, names cut at fifty characters. Two kinds of directory
+are named and never walked, each with the reason beside its name: anything
+`git check-ignore` calls ignored, and anything on a fixed list of dependency and
+tooling directories. Nothing else is special-cased.
+
+Standard output carries the block alone, so what a caller pastes into a prompt is
+the block and nothing but the block.
+
+Exits 0 with the block. Exits 2 when called wrongly — an unknown option, more than
+one project directory, or a project directory that does not exist — with the reason
+and the usage line on standard error. There is no way to be called rightly and still
+fail, so exit 1 is not used: a directory that cannot be read simply lists as
+nothing, and a project outside git says Git-tracked: No.
+"""
+import sys, os, subprocess, platform, datetime
+
+USAGE = "usage: haring-meta [project-dir]"
+
+# Directories every language ships and nobody writes by hand. Named, never walked.
+STANDARD = {
+    "node_modules", "bower_components",          # javascript
+    ".venv", "venv", "__pycache__", ".tox", ".eggs",   # python
+    "vendor",                                    # go, php
+    "target",                                    # rust, java
+    ".gradle", ".m2",                            # java
+    "Pods", "DerivedData",                       # swift
+    ".terraform",                                # terraform
+    ".git", ".hg", ".svn",                       # version control internals
+}
+MAXD = 4       # how deep the listing goes
+PERDIR = 50    # how many entries of one directory are listed
+NAMEMAX = 50   # a longer file or directory name is cut, with the count of what was cut
+
+
+def die(message, code):
+    # A wrongly-called command gets the reason and the usage line.
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+argv = sys.argv[1:]
+project_arg = None
+for a in argv:
+    if a.startswith("-") and a != "-":
+        die(f"unknown option: {a}", 2)
+    elif project_arg is None:
+        project_arg = a
+    else:
+        die("haring-meta takes at most one project directory", 2)
+
+project_arg = project_arg or os.getcwd()
+if not os.path.isdir(project_arg):
+    die(f"not a directory: {project_arg}", 2)
+
+# The project is the git top level of the given directory when there is one, else the
+# directory itself — the same resolution haring-worker uses, so a meta block asked for
+# from any subdirectory of a project describes the same project the worker works in.
+top = subprocess.run(["git", "-C", os.path.abspath(project_arg), "rev-parse", "--show-toplevel"],
+                     capture_output=True, text=True).stdout.strip()
+project = top or os.path.abspath(project_arg)
+
+
+def os_name():
+    s = platform.system()
+    return {"Darwin": "macOS", "Windows": "Windows", "Linux": "Linux"}.get(s, s) + " " + platform.release()
+
+
+def is_git(root):
+    try:
+        subprocess.run(["git", "-C", root, "rev-parse", "--git-dir"],
+                       capture_output=True, check=True)
+        return True
+    except Exception:
+        return False
+
+
+def ignored(root, path, git):
+    if not git:
+        return False
+    r = subprocess.run(["git", "-C", root, "check-ignore", "-q", path],
+                       capture_output=True)
+    return r.returncode == 0
+
+
+def count(p):
+    n = 0
+    for _, dirs, files in os.walk(p):
+        dirs[:] = [d for d in dirs if d not in STANDARD]
+        n += len(files)
+    return n
+
+
+def tree(root, git):
+    out = []
+    def walk(d, depth, prefix):
+        try:
+            entries = sorted(e for e in os.listdir(d) if e != ".DS_Store")
+        except OSError:
+            return
+        shown, extra = entries[:PERDIR], len(entries) - PERDIR
+        for e in shown:
+            p = os.path.join(d, e)
+            name = e if len(e) <= NAMEMAX else e[:NAMEMAX - 3] + f"...(+{len(e) - NAMEMAX + 3})"
+            if os.path.isdir(p):
+                if e in STANDARD:
+                    out.append(f"{prefix}{name}/  (not listed: standard build or dependency directory)")
+                elif ignored(root, p, git):
+                    out.append(f"{prefix}{name}/  ({count(p)} files, not listed: in .gitignore)")
+                elif depth >= MAXD:
+                    out.append(f"{prefix}{name}/  ({count(p)} files, not listed: past level {MAXD})")
+                else:
+                    out.append(f"{prefix}{name}/")
+                    walk(p, depth + 1, prefix + "  ")
+            else:
+                out.append(f"{prefix}{name}")
+        if extra > 0:
+            out.append(f"{prefix}... and {extra} more here, not listed: {PERDIR} entries per directory is the limit")
+    walk(root, 1, "")
+    return out
+
+
+def build(root):
+    root = os.path.abspath(root)
+    git = is_git(root)
+    L = ["<meta>"]
+    L.append(f"Project: {os.path.basename(root)}   (every path below is relative to it)")
+    L.append(f"Now: {datetime.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}")
+    L.append(f"Operating system: {os_name()}")
+    L.append(f"Git-tracked: {'Yes' if git else 'No'}")
+    L.append("")
+    L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
+    L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")
+    L.append("")
+    L.extend("  " + line for line in tree(root, git))
+    L.append("")
+    L.append("These were passed to you programmatically. You don't have to re-obtain info you already have")
+    L.append("</meta>")
+    return "\n".join(L) + "\n"
+
+
+sys.stdout.write(build(project))
