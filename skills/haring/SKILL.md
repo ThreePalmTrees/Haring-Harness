@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to hand the job over.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning, the three kinds of delegation, how to review what comes back, and how to hand the job over.
 ---
 
 IMPORTANT: Run `haring-meta` once at the start of a job and read what it prints. In one
