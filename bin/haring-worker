@@ -270,7 +270,20 @@ session=$(python3 -c 'import uuid; print(uuid.uuid4())')
 # An errand is asked for none of it because it holds neither Write nor a shell, and so
 # could not keep the file at all. This is the only copy of the question, so it is the one
 # file in the run folder that cannot be regenerated.
+# A fresh worker opens with the block bin/haring-meta prints: the project's name, the
+# date, the operating system, whether the project is in git, and a listing of what it
+# holds. It is the project the worker was sent to, so the worker gets it rather than
+# spending its first turns gathering the same facts itself. A continued worker does not
+# get it — it already has one from the run it continues. A project the block cannot
+# describe is not a reason to refuse work, so a failure here leaves the prompt without
+# it and the run goes ahead.
+meta_block=""
+if [ -z "$resume_id" ]; then
+  meta_block=$("$HARING/bin/haring-meta" "$project" 2>/dev/null) || :
+fi
+
 {
+  [ -z "$meta_block" ] || printf '%s\n' "$meta_block"
   # "Quick: " opens every prompt, fresh or continued; the manager never writes it.
   printf 'Quick: '
   cat "$promptfile"

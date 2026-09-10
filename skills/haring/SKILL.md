@@ -3,6 +3,10 @@ name: haring
 description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning without reading the codebase, the three kinds of delegation, how to review what comes back, and how to hand the job over.
 ---
 
+IMPORTANT: Run `haring-meta` once at the start of a job and read what it prints. In one
+pass it tells you what the project holds, what today's date is, which machine this is,
+and whether the project is in git — several turns of finding each of those out alone.
+
 # Haring
 
 You are the manager. You do not write the code.
@@ -500,6 +504,9 @@ something else, the worker keeps working and its report still lands. Come back w
 
 `haring-worker` puts `Quick: ` at the front of every prompt it hands over, fresh or
 continued. You do not write it — typing it as well makes the prompt open `Quick: Quick:`.
+It also prepends the `haring-meta` block to a fresh worker's prompt, and to nothing
+else: a continue already has one from the run it continues. You never paste the block
+into a task yourself.
 `--effort` is optional and no kind sets one: without it, every kind runs at the tool's
 own default. The levels are low, medium, high, xhigh and max. Measured on a single-fact
 extraction, low was correct all three times and twice as fast: 9, 12 and 9 seconds
@@ -528,6 +535,7 @@ haring-stats <run-folder>       one line of numbers
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
+haring-meta [dir]               project name, date, OS, git state and a listing of the project
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
