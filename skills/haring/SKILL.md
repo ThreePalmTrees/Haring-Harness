@@ -55,11 +55,28 @@ Workers run on `glm-5.3-flash`. You never choose a different model.
 
 ## How you work
 
+### Where a job's time goes
+
+**When:** you size a task, or wonder why a job took as long as it did.
+**Why:** measured on five real runs in one evening. Tool execution totalled between 2 and
+56 seconds a run, and about 89 per cent of wall time was per-turn model latency. One run
+ran 735 seconds over 20 turns and executed 2 seconds of tools, six of its turns taking
+over a minute each. Wall time tracks turn count, and turn count tracks how the work was
+handed out, so the only lever on a job's length is how many turns the handout costs. That
+is the reason behind "Make it small enough to say in one sentence" and "Do the thinking
+before you hand the work out".
+
+Two things multiply turns, and both came from that evening. A correction sent mid-run
+split one run into 904 seconds over 26 turns and then 301 more over 16, to redo a single
+wrong item. And a task carrying several items makes one wrong item cost a second pass
+over the whole task.
+
 ### Answer several questions with one script, not one command each
 
 **When:** you need more than two or three lookups, whether you are doing it or a worker is.
-**Why:** every command is a turn, and every turn re-sends the whole conversation. Measured:
-23 commands over 343 seconds for what one script did in one command.
+**Why:** a command costs a turn, and a turn costs about a minute of model latency whatever
+the command does — that is the whole of it. Measured: 23 commands over 343 seconds for what
+one script did in one command. The 343 seconds is turns being counted, not command time.
 
 When you write a task that needs several facts gathered, say so, and let the worker gather
 them in one pass rather than one command per fact.
