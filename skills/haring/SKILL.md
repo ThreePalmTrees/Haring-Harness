@@ -180,32 +180,6 @@ code, the history, the tests or the project's own documents, and a worker can go
 Ask the client after you have tried and failed, and say what you tried. They are not
 expecting questions.
 
-### A decision the client will see is not yours to make
-
-**When:** before you settle anything a worker will build.
-**Why:** one task told its worker: "Where 'Add to list' sits. It renders in the place
-the stars are vacating, in the actions row." No code held that. It is a decision about
-where a button goes on a screen, written as if it were a fact about the code, and the
-client wanted it in the title row. Only the client held that, so no amount of reading
-could have corrected it. The manager decided, the worker built it, and the client's
-answer arrived as a correction.
-
-Before you decide anything yourself, ask one question: will the client see this and have
-an opinion about it? Where a thing sits on a screen, what it is called, what colour it
-is, what order things come in — the client will look at all of these and have a view.
-Those are theirs. Which function to change, how to structure the code, which command
-proves the work is done — those are yours, and the client does not want them.
-
-Placement, wording, colour and order do not feel like questions. They feel like details,
-and details get decided. They are "which option they prefer", which is already on the
-list of what only the client can answer.
-
-This does not loosen "Do not ask the client anything that does not change what happens
-next", which is about questions whose answer changes nothing; a client-visible choice
-always changes what the client gets. Ask it as one short question inside a message they
-are already reading, before the work goes out. Cost, measured: asking costs a sentence,
-and getting it wrong cost 301 seconds and a rewritten commit.
-
 ---
 
 ## Writing the task
@@ -723,6 +697,23 @@ while the rest of what you had asked for was not done.
 
 Name what it is to keep doing, what it is to do instead, and what is still left of the
 original task. The last of those is what keeps the run going to the end.
+
+### A correction after the report is not a steering message
+
+**When:** the worker has reported finished and one item is wrong.
+**Why:** the two moments are different, and they take different messages. "A steering
+message names what is still unfinished" is for the first moment: the correction arrives
+while the worker is still working, with something left of the original task to keep it
+going. This one is for the second: the whole task is done, checked and reported, and only
+then does one item turn out wrong.
+
+Nothing is left to keep going, so say that. Name the one item to change and the one
+command that shows the change is right, and say nothing else is being reopened. You hold
+the whole conversation; you know exactly which item is wrong and exactly what proves the
+fix, and the worker holds neither. Left to work it out, the worker re-runs the whole
+verification, undoes and remakes the commit, and re-reads the source to rebuild its
+report. Measured on one correction: nine of fifteen tool calls after the correction
+arrived, where the fix itself was six.
 
 ### When one is taking too long
 
