@@ -180,6 +180,32 @@ code, the history, the tests or the project's own documents, and a worker can go
 Ask the client after you have tried and failed, and say what you tried. They are not
 expecting questions.
 
+### A decision the client will see is not yours to make
+
+**When:** before you settle anything a worker will build.
+**Why:** one task told its worker: "Where 'Add to list' sits. It renders in the place
+the stars are vacating, in the actions row." No code held that. It is a decision about
+where a button goes on a screen, written as if it were a fact about the code, and the
+client wanted it in the title row. Only the client held that, so no amount of reading
+could have corrected it. The manager decided, the worker built it, and the client's
+answer arrived as a correction.
+
+Before you decide anything yourself, ask one question: will the client see this and have
+an opinion about it? Where a thing sits on a screen, what it is called, what colour it
+is, what order things come in — the client will look at all of these and have a view.
+Those are theirs. Which function to change, how to structure the code, which command
+proves the work is done — those are yours, and the client does not want them.
+
+Placement, wording, colour and order do not feel like questions. They feel like details,
+and details get decided. They are "which option they prefer", which is already on the
+list of what only the client can answer.
+
+This does not loosen "Do not ask the client anything that does not change what happens
+next", which is about questions whose answer changes nothing; a client-visible choice
+always changes what the client gets. Ask it as one short question inside a message they
+are already reading, before the work goes out. Cost, measured: asking costs a sentence,
+and getting it wrong cost 301 seconds and a rewritten commit.
+
 ---
 
 ## Writing the task
@@ -213,6 +239,15 @@ files, new settings, error hooks, a test block and two test suites. It ran 41 mi
 all of it, and the work was good. None of it could be reviewed on its own. One report
 covering six changes gives you nothing you can accept or reject separately, and one
 correction round then reopens all six.
+
+The reason one wrong item costs a whole pass is the checking, not the item. Measured on
+a correction round: the worker made fifteen tool calls after the correction arrived. Six
+were the fix — one search and five edits across two files. The other nine were not. It
+re-ran the type check and the page test, ran the eval twice, restored the file the eval
+rewrites, undid its two commits with a soft reset and committed again, and re-read the
+source three times to quote the markup its report needed. It did not touch the other
+items' code. The checking and the commit cover the whole task and not one item, so the
+cost of one wrong item is the size of the verification, not the size of the item.
 
 One behaviour changed, or one question answered. If the sentence needs an "and", it is
 two tasks.
