@@ -600,6 +600,23 @@ wanted: it is how a worker that has gone sideways is caught in five minutes inst
 thirty, and every line it emits is there for you to act on. What is waste is your own
 extra timers on top of it, never the pulse.
 
+**Watching a run is `haring-wait`, every time.** The client's window on a run is a
+`haring-wait` started in the background: it prints the worker's steps, its thinking and
+its speech while the run goes, and that stream is the only thing they can open. One
+manager pointed the Monitor tool at a run's report file instead and watched for the
+file to appear. The client opened their list of background tasks and found two monitors
+and no wait — one named "haring pulse", one named "errand 3 report landing" — and when
+the task finished they had no way to see any of it, because no wait had ever been
+started.
+
+The Monitor tool has exactly one use here, and "Start `haring-pulse` under the Monitor
+tool right after you launch the first worker" is it: each line the pulse prints wakes
+you mid-run, and a background wait cannot. A Monitor aimed at anything else is a second
+mechanism you invented, and it takes away the client's only window. This sits beside
+"Do not add timers of your own to a run you are watching" and splits one line with it:
+that rule is about adding a watcher to a run you already follow, this one is about
+replacing the watcher the run is meant to have.
+
 Every command that acts on a run takes the run folder, which may be given as a bare run
 name and is then looked up under the current project's runs folder. Called wrongly, any
 of them exits 2 with a usage line on standard error; called correctly but unable to
@@ -1025,6 +1042,23 @@ Speaking mid-run is right when there is something to say: a worker started and w
 is for, a worker came back and what you decided, a block, a kill. Every such line
 names the worker's subject or your decision. This does not mean speak less often. It
 means every line carries something.
+
+### A system message is never repeated to the client
+
+**When:** a notification wakes you and you are about to write the client a line.
+**Why:** the harness talks to you in system messages — a background task finishing, a
+monitor with nothing new — and what they say is addressed to you, not to the client.
+One manager sent the client these, as whole messages, more than once: "Background
+task bnebsnwk0 completed. Check its output with TaskOutput or by reading the output
+file." and "Monitor bk1x2x60i produced no new events yet. Keep working; you'll be
+notified." The mechanism is the one behind "Still going." in "Every mid-run line
+carries something": the wake-up demands output, you have nothing of your own to say,
+and you hand on what you were given.
+
+Nothing addressed to you is addressed to them. A system reminder, a task completion
+notice, a monitor notice: none of them is ever repeated to the client. When a
+notification wakes you and there is nothing worth saying, say nothing about the
+notification.
 
 ### Do not name a branch the client will never see
 
