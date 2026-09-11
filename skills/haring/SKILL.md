@@ -564,9 +564,9 @@ pulse exists so you can act on a worker that has gone sideways, and that is its 
 the client seeing progress without opening anything is the second. Each line it emits wakes
 you. Turn it into one short sentence for the client that names what the worker is doing. Do not
 paste the raw line. The first report on a worker comes `--first` seconds after the pulse finds
-it, 30 by default, which is soon enough to act on the plan it wrote as the first line of its
+it, 80 by default, which is soon enough to act on the plan it wrote as the first line of its
 progress file while acting is still cheap. After that it reports every `--every` seconds, 300
-by default. The two flags do not go past those numbers: `--first` is refused at 60 or more,
+by default. The two flags do not go past those numbers: `--first` is refused at 120 or more,
 `--every` above 300. To change the pace while a run is going, write one number of seconds into
 `.haring/cadence` in the project; the next pass uses it, under the same 300-second ceiling, and
 a line starting `cadence` on the pulse's own output says when a number was taken and when one
@@ -576,7 +576,7 @@ does not read as a worker that has died. Every wake-up costs you a turn, which i
 settled pace is minutes and the opening one is seconds. The workers it reports are the ones
 live at the pass that found the first of them: a worker you start after that belongs to the
 next pulse, not this one. That is also why it ends within a second or two of the last worker it
-took on, and about a minute after starting if none was running. A shell command you are running
+took on, and about two minutes after starting if none was running. A shell command you are running
 yourself is not a worker and never appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
