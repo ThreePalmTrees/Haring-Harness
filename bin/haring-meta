@@ -13,6 +13,13 @@ are named and never walked, each with the reason beside its name: anything
 `git check-ignore` calls ignored, and anything on a fixed list of dependency and
 tooling directories. Nothing else is special-cased.
 
+Between the listing and the closing line the block carries a <facts> section
+holding `<project>/.haring/FACTS.md` verbatim — no cap, no cut, no reflow. A file
+that is missing, unreadable or holds nothing but whitespace still prints the tags,
+with one line saying the list is empty and naming the path where it would live: a
+reader that sees no tags at all cannot tell an empty list from a feature that is
+not there.
+
 Standard output carries the block alone, so what a caller pastes into a prompt is
 the block and nothing but the block.
 
@@ -131,6 +138,20 @@ def tree(root, git):
     return out
 
 
+def facts(root):
+    # The project's durable truths, carried whole. A missing, unreadable or empty
+    # file still prints the tags, with one line saying the list is empty.
+    path = os.path.join(root, ".haring", "FACTS.md")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            body = f.read()
+    except OSError:
+        body = ""
+    if not body.strip():
+        return ["The facts list is empty — nothing written to .haring/FACTS.md yet."]
+    return body.rstrip("\n").split("\n")
+
+
 def build(root):
     root = os.path.abspath(root)
     git = is_git(root)
@@ -144,6 +165,10 @@ def build(root):
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")
     L.append("")
     L.extend("  " + line for line in tree(root, git))
+    L.append("")
+    L.append("<facts>")
+    L.extend(facts(root))
+    L.append("</facts>")
     L.append("")
     L.append("These were passed to you programmatically. You don't have to re-obtain info you already have")
     L.append("</meta>")

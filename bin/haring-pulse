@@ -7,12 +7,14 @@ manager can retune while it runs.
 project-dir defaults to the current directory, resolved to its git top level the same
 way haring-worker resolves a workdir. --every is the gap between passes once something
 has been reported, and defaults to 300. --first is the gap before that first report,
-counted from the pass that first saw the worker, and defaults to 30: a worker writes
+counted from the pass that first saw the worker, and defaults to 80: a worker writes
 its plan as the first line of its progress file, and the plan is only worth stopping a
-route over while that route is still cheap, so it is read within half a minute rather
-than after a whole long gap. Both take a positive integer; --every is refused above 300
-and --first at 60 or more, because an opening look that long could never land before
-the deadline below ends the command.
+route over while that route is still cheap, so the opening look is worth having — but
+30 seconds was too early for it, the worker still repeating the task back to itself
+and the line carrying nothing the manager could act on, so the look waits long enough
+for something worth reporting. Both take a positive integer; --every is refused above
+300 and --first at 120 or more, because an opening look that long could never land
+before the deadline below ends the command.
 
 The pace can also be retuned mid-run, without stopping and restarting this, by writing
 one number of seconds into <project>/.haring/cadence. The file is read between passes,
@@ -58,7 +60,7 @@ a job that runs its independent work two at a time is covered from the first wor
 the last. It looks for them between passes rather than only when one is due, so it ends
 within a second or two of the last one instead of at the next report.
 
-Exits 0 once no worker it took on is live any more, or after about 60 seconds if it never
+Exits 0 once no worker it took on is live any more, or after about 120 seconds if it never
 saw one to begin with, so a caller that starts it before anything is running does not
 wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
@@ -69,10 +71,10 @@ from datetime import datetime
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 LINE_LIMIT = 160
-FIRST_LIVE_DEADLINE = 60
+FIRST_LIVE_DEADLINE = 120
 QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says so
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
-FIRST_CEILING = 60   # an opening look must fit inside the deadline above
+FIRST_CEILING = 120  # an opening look must fit inside the deadline above
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
 PULSE_FILE = "pulse"       # <project>/.haring/pulse, this process's own pid
 
@@ -91,7 +93,7 @@ def whole_seconds(flag, val):
 
 
 argv = sys.argv[1:]
-project_arg, every, first = None, 300, 30
+project_arg, every, first = None, 300, 80
 i = 0
 while i < len(argv):
     a = argv[i]
