@@ -285,8 +285,13 @@ try:
                           flush=True)
                     reported = True
                 for label, text, _ in lines[-MAX_LINES:]:
-                    print(f"{prefix}{label} {text}", flush=True)
-                    reported = True
+                    # A block arrives as one entry carrying the whole block, its lines
+                    # joined with newlines; the pass prints one line per line of it. An
+                    # entry with no text at all — a report handover names its tool and
+                    # nothing else — still prints its one line.
+                    for row in (text.splitlines() or [""]):
+                        print(f"{prefix}{label} {row}", flush=True)
+                        reported = True
                 if not lines and time.time() - reader.when >= QUIET_AFTER:
                     # Nothing new is not the same as nothing to say: a worker deep in a
                     # long thought looks, from here, like a dead one, and this is what

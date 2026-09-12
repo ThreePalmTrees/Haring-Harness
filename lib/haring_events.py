@@ -1,10 +1,20 @@
-"""Turn a run's events.jsonl into the lines haring's readers show.
+"""Turn a run's events.jsonl into the entries haring's readers show.
 
 A run's event stream is the one record haring owns, and more than one command reads
 it: haring-wait renders the whole stream live, and anything that wants a single
 detail out of a run reads the same file. This module holds what they share — how one
 tool call's arguments become a line of text, and how the stream becomes labelled
-lines, thought tails, folded runs of one tool and retry counts.
+entries: one per tool call, one per thinking or speech block carrying the whole
+block, and counted endpoint retries.
+
+The counting stays here and the throwing-away does not, because the two are not the
+same kind of compression. Every retry is the same event, so one line saying how many
+there were carries the whole fact. Folding a run of one tool drops the calls it
+counts, and keeping the tail of a thought drops the rest of the thought; those lose
+evidence, and the only reader that wants them is the display with a row budget. So
+haring-wait applies both after read() returns, and every other reader gets the stream
+whole. BLOCK_LINES and BLOCK_LINES_WORKING stay here, because haring-wait needs both
+numbers and this module is where the shared numbers live.
 """
 import json, time
 from datetime import datetime
@@ -69,20 +79,24 @@ def ts_value(ts):
 
 
 class RunReader:
-    """Reads one run's events.jsonl and returns the lines added since the last read.
+    """Reads one run's events.jsonl and returns the entries added since the last read.
 
-    Each line is a triple: the label that goes in the tool-name column — the tool's
+    Each entry is a triple: the label that goes in the tool-name column — the tool's
     own name for a call, "thinking" or "says" for the worker's blocks, "api_retry"
     for a run of endpoint retries — the text that follows it, and the event's
-    timestamp. A reader keeps reading the same path and gets only what it has not
-    seen; it is the caller that prints, formats and clips.
+    timestamp. A tool call is one entry with its arguments rendered. A thinking or
+    speech block is one entry whose text is the whole block, its lines joined with
+    newlines, so a caller that prints line by line splits it and one that wants the
+    block whole has it. A reader keeps reading the same path and gets only what it
+    has not seen; it is the caller that prints, formats, clips and trims.
 
     Four attributes a caller reads to know how the worker is doing:
       when     the last time a step or a retry was seen, on the caller's own clock,
                which is what "the worker has done nothing" is measured from
-      when_ts  the same moment on the events' own clock, which is what the block
-               tails are measured on; starts at the caller's `when_ts`, the moment
-               the worker began, so an early block is judged against real time
+      when_ts  the same moment on the events' own clock. It advances with every tool
+               call and every retry, in the order the entries come back, so a caller
+               walking the list rebuilds it in step — which is how haring-wait
+               judges a block's length against the silence before it
       seen_at  the last time the stream produced anything at all, thinking included,
                which separates a worker that is generating from one that is silent
       last     whether the latest of those was a "step" or a "retry"
@@ -91,13 +105,6 @@ class RunReader:
     def __init__(self, when_ts=0.0):
         self.pos = 0        # where this reader stopped in the file last time
         self.seen = set()   # tool-call ids already reported
-        # The fold state for a run of the same tool: its name, how many calls it has
-        # folded, when the next fold line prints, and the distinct argument texts the
-        # fold has held.
-        self.tool = None
-        self.n = 0
-        self.next = 2
-        self.args = set()
         self.retries = 0
         self.retry_next = 1
         self.when = time.time()
@@ -106,7 +113,7 @@ class RunReader:
         self.last = None
 
     def read(self, path):
-        """Every line the stream has added since the last read, oldest first."""
+        """Every entry the stream has added since the last read, oldest first."""
         out = []
         with open(path) as f:
             f.seek(self.pos)
@@ -118,7 +125,8 @@ class RunReader:
                 self.seen_at = time.time()
                 # The endpoint refusing the worker shows up here and nowhere else, so
                 # it is announced like a step: it is the answer to "why has nothing
-                # happened".
+                # happened". Counting is the one compression kept here, because every
+                # retry is the same event and the count carries the whole fact.
                 if d.get("type") == "system" and d.get("subtype") == "api_retry":
                     self.retries += 1
                     self.last = "retry"
@@ -141,38 +149,21 @@ class RunReader:
                 for b in content:
                     if not isinstance(b, dict):
                         continue
-                    # A thought or a line of speech prints in the layout a step uses,
-                    # with its kind where the tool name sits, so the three are told
-                    # apart at a glance. These feed only seen_at, not when: a worker
-                    # can think for minutes without a step and is not stalled.
+                    # A thought or a line of speech arrives as one entry in the layout
+                    # a step uses, with its kind where the tool name sits, so the three
+                    # are told apart at a glance. These feed only seen_at, not when: a
+                    # worker can think for minutes without a step and is not stalled.
                     kind = b.get("type")
                     if kind in ("thinking", "text"):
-                        ts = d.get("timestamp")
                         label = "thinking" if kind == "thinking" else "says"
+                        # The block goes out whole: its lines with the blank ones gone
+                        # and runs of whitespace collapsed, joined with newlines. The
+                        # caller splits it to print line by line, and the display that
+                        # keeps only a tail trims it there, where the row budget lives.
                         rows = [l for l in (" ".join(x.split())
                                             for x in (b.get(kind) or "").splitlines())
                                 if l]
-                        # A single thought has filled 485 rows here and pushed every
-                        # tool call out of the panel, and the ending of a thought is
-                        # the part that says whether the route is wrong. The count
-                        # line ahead of the kept rows keeps a reader from taking them
-                        # for the whole thought. While the worker is acting,
-                        # BLOCK_LINES_WORKING of them are enough of the ending and the
-                        # steps keep the rest of the panel; once it has been quiet
-                        # since its last step for as long as the waiting line needs,
-                        # the thought is all there is to read and it keeps
-                        # BLOCK_LINES. Measured on the events' own moments, not this
-                        # reader's clock, so a replay sees the silences a live watch
-                        # saw.
-                        kept = (BLOCK_LINES if ts_value(ts) - self.when_ts >= IDLE_AFTER
-                                else BLOCK_LINES_WORKING)
-                        if len(rows) > kept:
-                            out.append((label,
-                                        f"{len(rows) - kept} earlier lines of this "
-                                        f"block not shown", ts))
-                            rows = rows[-kept:]
-                        for l in rows:
-                            out.append((label, l, ts))
+                        out.append((label, "\n".join(rows), d.get("timestamp")))
                         continue
                     if kind != "tool_use":
                         continue
@@ -185,25 +176,9 @@ class RunReader:
                     self.when = time.time()
                     self.when_ts = ts_value(ts)
                     self.last = "step"
-                    # A run of one tool — a scan, a string of edits — would spend the
-                    # whole display on near-identical rows. It gets one line at the
-                    # second call and one at each doubling, and the line that does
-                    # print carries the most recent argument. The same call repeating
-                    # is a worker stuck in a loop and keeps this plain form; calls
-                    # that differed say how many distinct ones the fold has held.
-                    if name == self.tool:
-                        self.n += 1
-                        self.args.add(arg)
-                        if self.n >= self.next:
-                            if len(self.args) == 1:
-                                out.append((name, f"x{self.n} {arg}", ts))
-                            else:
-                                out.append((name,
-                                            f"x{self.n} {len(self.args)} different, "
-                                            f"last: {arg}", ts))
-                            self.next = self.n * 2
-                    else:
-                        self.tool, self.n, self.next, self.args = name, 1, 2, {arg}
-                        out.append((name, arg, ts))
+                    # One entry per call: a run of one tool is the caller's to fold,
+                    # since the fold throws calls away and only a display with a row
+                    # budget wants that.
+                    out.append((name, arg, ts))
             self.pos = f.tell()
         return out

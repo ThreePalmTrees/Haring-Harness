@@ -9,7 +9,10 @@ them, naming how many distinct arguments the fold has held when they were not al
 same. Its thinking and its speech reach the same stream as they happen, one line per
 line of the block, a block of more lines than are being kept showing its last few —
 three while the worker is working, ten once this wait has had to say there is no step —
-named in the column the tool name sits in. Every line names the run it belongs to, so
+named in the column the tool name sits in. The stream arrives whole from
+lib/haring_events.py — one entry per tool call, one whole block per thought — and the
+folding and the keeping are done here, because this panel is the only reader with a
+row budget. Every line names the run it belongs to, so
 the kept lines are self-labelling wherever they are read, and a worker that produces
 nothing for a minute says so — one that is waiting on the endpoint says that instead.
 The report goes to standard output when it lands, so a caller redirecting stdout gets
@@ -43,8 +46,10 @@ HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # file rather than the panel.
 WIDTH = 500
 
-# Turning the event stream into lines lives in lib/, shared with the other commands
-# that read a run.
+# Turning the event stream into entries lives in lib/, shared with the other commands
+# that read a run. The reader hands the stream whole — one entry per tool call, one
+# whole block per thought — and the compressions this panel needs are applied here,
+# in shown(), so the other readers keep every call and every line.
 sys.path.insert(0, os.path.join(HARING, "lib"))
 import haring_events
 
@@ -156,6 +161,55 @@ def say(tool, arg, ts):
     print((head + arg)[:WIDTH].rstrip(), file=sys.stderr, flush=True)
 
 
+# The panel this feeds has a row budget, so the two compressions that lose evidence
+# live here, applied to the entries the reader returns. The fold turns a run of one
+# tool into counted lines — one at the second call and one at each doubling — and the
+# line that prints carries the most recent argument; calls that differed say how many
+# distinct ones the fold has held. The same call repeating is a worker stuck in a loop
+# and keeps the plain form. A thought longer than the rows being kept prints a count
+# line ahead of its last few: the ending of a thought is the part that says whether
+# the route is wrong, and the count keeps the kept rows from being taken for the
+# whole thought. The kept count is chosen on the events' own moments, not this
+# reader's clock, so a replay sees the silences a live watch saw: while the worker is
+# acting, BLOCK_LINES_WORKING are enough of the ending and the steps keep the rest of
+# the panel; once it has been quiet since its last step for as long as the waiting
+# line needs, the thought is all there is to read and it keeps BLOCK_LINES. The
+# reader's when_ts advances exactly as the entries are produced — on every tool call
+# and every retry line — so stepping through them with a last-step moment of our own,
+# starting at the moment the worker began, reproduces its choice.
+def shown(entries):
+    tool, n, nxt, args = None, 0, 2, set()
+    step_ts = started
+    for label, text, ts in entries:
+        if label == "api_retry":
+            step_ts = haring_events.ts_value(ts)
+            yield label, text, ts
+        elif label in ("thinking", "says"):
+            rows = text.splitlines()
+            kept = (haring_events.BLOCK_LINES
+                    if haring_events.ts_value(ts) - step_ts >= haring_events.IDLE_AFTER
+                    else haring_events.BLOCK_LINES_WORKING)
+            if len(rows) > kept:
+                yield label, f"{len(rows) - kept} earlier lines of this block not shown", ts
+                rows = rows[-kept:]
+            for l in rows:
+                yield label, l, ts
+        else:
+            step_ts = haring_events.ts_value(ts)
+            if label == tool:
+                n += 1
+                args.add(text)
+                if n >= nxt:
+                    if len(args) == 1:
+                        yield label, f"x{n} {text}", ts
+                    else:
+                        yield label, f"x{n} {len(args)} different, last: {text}", ts
+                    nxt = n * 2
+            else:
+                tool, n, nxt, args = label, 1, 2, {text}
+                yield label, text, ts
+
+
 # The gap between two steps is the number worth reading: a step that sits for minutes
 # is how a stuck worker shows itself, and when nothing at all arrives the loop below
 # says so on its own.
@@ -163,7 +217,7 @@ reader = haring_events.RunReader(when_ts=started)
 waited, last_idle = 0, 0.0
 while not landed():
     if os.path.exists(events):
-        for label, text, ts in reader.read(events):
+        for label, text, ts in shown(reader.read(events)):
             say(label, text, ts)
     now = time.time()
     quiet = now - reader.when
@@ -220,7 +274,7 @@ if not landed():
 # A wait that joined after the run finished has read nothing live; this replay is what it
 # shows instead, with the time each call was made taken from the events themselves.
 if os.path.exists(events):
-    for label, text, ts in reader.read(events):
+    for label, text, ts in shown(reader.read(events)):
         say(label, text, ts)
 
 stats = os.path.join(run, "stats.txt")
