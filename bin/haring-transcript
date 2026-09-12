@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""haring-transcript — what a run did, in the order it did it.
+
+    haring-transcript <run-folder>
+
+Prints the run's event stream as lines: one per tool call with its arguments
+rendered, one per line of the worker's thinking and its speech, labelled in the
+column the tool name sits in — the layout haring-wait prints live, so a
+transcript line and a wait line for the same moment read alike. There is no
+transcript file in the run folder: everything here is read from the one record
+haring owns, events.jsonl, at the moment you ask, so it cannot go stale and
+cannot disagree with the stream. Tool results are not in it — a result can be a
+whole file — and a StructuredOutput call prints as its name alone, since the
+report it carried is what haring-report prints.
+
+Exits 0 when it printed the transcript. Exits 2 when called wrongly: no
+argument, more than one, or a path that is not a run folder. Exits 1 when the
+run folder is real but its events.jsonl is missing or cannot be read, saying
+which.
+"""
+import sys, os, subprocess
+
+USAGE = "usage: haring-transcript <run-folder>"
+HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+# The same clip haring-wait applies, set for the same reason: a line that wraps
+# costs a second row to itself.
+WIDTH = 500
+
+# Turning the event stream into entries lives in lib/, shared with every command
+# that reads a run. The reader hands the stream whole and compresses nothing —
+# one entry per tool call, one whole block per thought — which is what a
+# transcript is: every entry, in the order it happened.
+sys.path.insert(0, os.path.join(HARING, "lib"))
+import haring_events
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+def resolve_run(arg):
+    """The run folder named by the argument: a path as given, or a bare run name.
+
+    A path is used as it stands, relative ones included, and is known by its meta file.
+    A name with no slash is looked up under the current project's runs folder, the
+    project being the git top level of the working directory, as haring-pulse resolves
+    it. Each way of failing says which way it was.
+    """
+    run = arg.rstrip("/")
+    if os.path.isdir(run) and os.path.isfile(os.path.join(run, "meta")):
+        return run
+    if "/" in run:
+        die(f"not a haring run folder: {run}", 2)
+    top = subprocess.run(["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True).stdout.strip()
+    runs = os.path.join(top or os.getcwd(), ".haring", "runs")
+    found = os.path.join(runs, run)
+    if not os.path.isdir(found) or not os.path.isfile(os.path.join(found, "meta")):
+        die(f"no run named {run} under {runs}", 2)
+    return found
+
+
+if len(sys.argv) != 2:
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
+
+run = resolve_run(sys.argv[1])
+meta_path = os.path.join(run, "meta")
+# Time is measured from the worker, not from this reading, the way haring-wait
+# measures it: the meta file is last written when the worker's runner records its
+# own pid, so its modification time is the moment the worker began.
+started = os.path.getmtime(meta_path)
+
+events = os.path.join(run, "events.jsonl")
+try:
+    with open(events) as f:
+        entries = haring_events.RunReader(when_ts=started).read(events)
+except OSError as e:
+    die(f"unreadable events stream at {events}: {e}", 1)
+
+# Every line carries the run's identity, built the way haring-wait builds it, so
+# the kept lines are self-labelling wherever they are read:
+# 2026-09-06-150947-implement-10407 becomes implement-10407.
+parts = os.path.basename(run).split("-")
+rid = "-".join(parts[4:]) if len(parts) > 5 else os.path.basename(run)
+
+
+def event_elapsed(ts):
+    s = max(0, int(haring_events.ts_value(ts) - started))
+    return f"{s // 60}m{s % 60:02d}s"
+
+
+for label, text, ts in entries:
+    # A thinking or speech block arrives as one entry holding the whole block,
+    # its lines joined with newlines; a transcript prints one line per line of
+    # it, each with the prefix the tool calls use. A call whose arguments are
+    # never printed still names itself, so its line is the label alone.
+    for line in text.splitlines() or [""]:
+        head = f"{rid} {event_elapsed(ts)} {label:<12s} "
+        # Clipped here rather than left to the terminal, as haring-wait clips.
+        print((head + line)[:WIDTH].rstrip())

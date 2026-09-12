@@ -78,6 +78,9 @@ document.
                                     and answered at the worker's next turn
                     haring-report    print a report, with the empty parts removed, and warn
                                     when the worker made no Read, Glob, Grep or Bash call
+                    haring-transcript print what a run did, in the order it did it:
+                                      every tool call, thought and line of speech,
+                                      read from events.jsonl
                     haring-stats     one line of numbers from a run
                     haring-session   what this manager session has cost
                     haring-prompt    build a worker's system prompt
