@@ -76,8 +76,9 @@ document.
                     haring-say       say a word to a running worker
                     haring-ask       a worker's question to its manager, asked at once
                                     and answered at the worker's next turn
-                    haring-report    print a report, with the empty parts removed, and warn
-                                    when the worker made no Read, Glob, Grep or Bash call
+                    haring-report    print a report, with the empty parts removed, the
+                                    run's Read, Glob, Grep and Bash calls listed above
+                                    it, and a warning when it made no such call
                     haring-transcript print what a run did, in the order it did it:
                                       every tool call, thought and line of speech,
                                       read from events.jsonl
