@@ -426,9 +426,10 @@ them for a tool it did not hold, and ran over half an hour without finishing; th
 six as a check, with the commands written out, took a hundred and seventy seconds.
 
 An errand answers what Read, Glob and Grep can answer about a tree: which files exist,
-which of them mention a thing, where the lines matching it are. The moment a question
-needs a pipe, a count, a length, a sort, or a comparison between two lines, it is a check,
-and you write the command out rather than describing it.
+which of them mention a thing, where the lines matching it are. A count is an errand
+answer when one Grep prints it, and a check when it needs a pipe to arrive at. The moment
+a question needs a pipe, a length, a sort, or a comparison between two lines, it is a
+check, and you write the command out rather than describing it.
 
 The choice also sets how long the job takes, and whether an answer comes back at all.
 Measured on one task — list the files under two directories, give each markdown file's
