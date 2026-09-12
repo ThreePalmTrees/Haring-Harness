@@ -3,9 +3,15 @@
 
     haring-report <run-folder>
 
-Prints the structured output only, dropping nulls, empty lists and empty strings,
-and trimming long verbatim output. The whole report.json is roughly twice this size
-and most of the difference is fields the worker had nothing to put in.
+Prints the structured output only, dropping nulls, empty lists and empty strings.
+The whole report.json is roughly twice this size and most of the difference is
+fields the worker had nothing to put in.
+
+Every field is printed whole. A report's long fields are the ones the manager came
+for — a pasted block, a command's output, a diff — and a field cut short sends the
+manager to report.json with a hand-written script, which costs two turns and prints
+the same thing. A report too long to read is a task that asked a worker to transcribe,
+and that is fixed in the task.
 
 A run that reported without making a single call to a tool that gathers evidence —
 Read, Glob, Grep or Bash — says so beside its report: nothing in it was read from
@@ -34,8 +40,6 @@ def prune(x, depth=0):
         return out
     if isinstance(x, list):
         return [prune(v, depth + 1) for v in x if prune(v, depth + 1) not in (None, "", [], {})]
-    if isinstance(x, str) and len(x) > 900:
-        return x[:900] + f"\n… [{len(x) - 900} more characters, see report.json]"
     return x
 
 USAGE = "usage: haring-report <run-folder>"
