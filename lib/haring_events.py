@@ -17,6 +17,11 @@ SKIP_ARGS = ("content", "old_string", "new_string")
 # The argument printed first and bare: the first of these the call carries. It is the
 # one that says what the call was, and the rest follow it as name=value.
 MAIN_ARGS = ("command", "file_path", "pattern")
+# Tools whose arguments are never printed: the call itself is the news, and its
+# arguments are the report the worker is handing over, which haring-report prints in
+# full a moment later. Rendering them here spends a thousand characters of every
+# reader's display saying again what the next command says better.
+SKIP_TOOLS = ("StructuredOutput",)
 
 BLOCK_LINES = 10  # how much of a finished thought is worth reading
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
@@ -174,8 +179,8 @@ class RunReader:
                     if b.get("id") in self.seen:
                         continue
                     self.seen.add(b.get("id"))
-                    arg = render_args(b.get("input") or {})
                     name = b.get("name", "?")
+                    arg = "" if name in SKIP_TOOLS else render_args(b.get("input") or {})
                     ts = d.get("timestamp")
                     self.when = time.time()
                     self.when_ts = ts_value(ts)
