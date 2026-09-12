@@ -74,6 +74,8 @@ document.
                                     at a pace you can retune
                     haring-kill      stop a running worker on purpose
                     haring-say       say a word to a running worker
+                    haring-ask       a worker's question to its manager, asked at once
+                                    and answered at the worker's next turn
                     haring-report    print a report, with the empty parts removed, and warn
                                     when the worker made no Read, Glob, Grep or Bash call
                     haring-stats     one line of numbers from a run

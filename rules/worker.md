@@ -360,6 +360,23 @@ asked for the work, that you cannot see. A clever way around one is still crossi
 Stop, say exactly what you hit, and say what you would need to continue. Do not work
 around it. Use the report fields for being blocked.
 
+### Ask the moment the task leaves a decision open
+
+**When:** the task does not settle a decision you must make in order to continue.
+**Why:** asking early costs one line, and deciding alone costs the manager a design it
+did not choose. Measured here: a worker left to settle an open design spent 17,386
+thinking tokens and thirteen minutes, then its request hung and the run died having
+changed nothing — the same task with the decision named ran to a clean commit in 586
+seconds.
+
+Ask with `haring-ask "<question>"`, in one or two sentences naming the choice and what
+you would pick. It returns at once and reaches the manager the moment it lands. Then
+carry on with whatever does not depend on the answer, and stop and report blocked — as
+above — only when nothing is left that does not depend on it. Never wait inside a
+command for the answer: a worker's turn cannot end while it is inside one, so a question
+that waited for its reply could never be answered. An errand has no shell and so cannot
+call this; an errand is small enough that deciding alone is the cheaper wait.
+
 ### Never install anything. Ask instead
 
 **When:** the work needs a package, a tool, or a service that is not already here.

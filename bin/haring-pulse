@@ -45,9 +45,11 @@ arrived since the one before, which is what makes the gap between passes cost no
 
     <kind> <run-basename> <elapsed> <label> <text>
 
-label is the tool's own name for a call, thinking or says for the worker's blocks, or
-api_retry when the endpoint is refusing it, which is therefore announced without
-anything extra. A pass that has nothing new for a run still says so once the run's
+label is the tool's own name for a call, thinking or says for the worker's blocks, ask
+when the worker has asked its manager a question, or api_retry when the endpoint is
+refusing it, which is therefore announced without anything extra. A question does not
+wait for a pass: it is surfaced the moment it lands, from the same one-second looking
+that ends this when the workers end. A pass that has nothing new for a run still says so once the run's
 last step is more than QUIET_AFTER seconds old: one line naming the run as ever,
 saying the worker is thinking and how long since that step. The elapsed time in it
 grows, so no two of these lines are the same — which is the point, because a worker
@@ -68,7 +70,7 @@ forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
 There is no way to be called rightly and still fail, so exit 1 is not used.
 """
-import sys, os, time, glob, subprocess, signal
+import sys, os, time, json, glob, subprocess, signal
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -176,6 +178,45 @@ def live_runs():
 # before. The first pass on a run reads its stream from where the run began, with the
 # same moment the worker began, taken from the meta file, as the zero of its clock.
 readers = {}
+
+
+# How far into each live run's ask.jsonl this pulse has read. A question is surfaced
+# from the one-second looking between passes, not held for the next one, and the offset
+# is what keeps a question that lands while a pass is being printed from being printed
+# twice: it is consumed once, wherever the look that catches it falls.
+ask_pos = {}
+
+
+def surface_asks(runs):
+    """Print each question these live runs have asked since the last look, at once.
+
+    True when something was printed, so the caller counts the pace as reported. A line
+    still being written is left for the next look, whole.
+    """
+    said = False
+    for run, meta, meta_path in runs:
+        try:
+            with open(os.path.join(run, "ask.jsonl"), "rb") as f:
+                f.seek(ask_pos.get(run, 0))
+                fresh = f.read()
+        except OSError:
+            continue
+        if not fresh.endswith(b"\n"):
+            fresh = fresh[:fresh.rfind(b"\n") + 1]
+        if not fresh:
+            continue
+        ask_pos[run] = ask_pos.get(run, 0) + len(fresh)
+        prefix = (f"{meta.get('kind', '?')} {os.path.basename(run)} "
+                  f"{elapsed(os.path.getmtime(meta_path))} ")
+        for line in fresh.decode(errors="replace").splitlines():
+            try:
+                question = json.loads(line).get("content", "")
+            except ValueError:
+                question = line
+            for row in (question.splitlines() or [""]):
+                print(f"{prefix}ask {row}", flush=True)
+        said = True
+    return said
 
 
 # The pace in force between passes, and the file content last refused. Refused content
@@ -300,6 +341,10 @@ try:
                     print(f"{prefix}thinking, no step for {elapsed(reader.when)}",
                           flush=True)
                     reported = True
+            # The pass above took a moment to print; anything asked while it printed is
+            # caught here rather than held until the next look a whole gap later.
+            if surface_asks(runs):
+                reported = True
         if ever_live:
             if not runs:
                 sys.exit(0)
@@ -322,7 +367,10 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
-            if not live_runs():
+            now_live = live_runs()
+            if surface_asks(now_live):
+                reported = True
+            if not now_live:
                 sys.exit(0)
 finally:
     take_pulse_down()

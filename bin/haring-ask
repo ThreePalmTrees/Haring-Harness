@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""haring-ask — a worker asks its manager the question its task left open.
+
+    haring-ask "<question>"
+
+The question is appended to ask.jsonl in this run's folder, and haring-pulse prints it
+to the manager the moment it lands. The answer comes back the way every word reaches a
+worker already: haring-say writes it to say.jsonl, and the keeper holding the input pipe
+hands it over when this worker's turn ends. So this waits for nothing — a worker's turn
+cannot end while it is inside a command, so a question that waited for its reply could
+never be answered. It returns at once, and the worker carries on with whatever does not
+depend on the answer.
+
+This is the worker's side of the channel and nothing else. It takes no run folder: the
+run it belongs to is the one this worker was started in, named by HARING_NESTED. A
+manager has nobody to ask — its questions belong in the task.
+
+An errand has no shell and so cannot call this at all.
+
+Exits 2 when called wrongly: no argument, more than one argument, or a question that is
+empty or longer than 2000 characters. Exits 1 when HARING_NESTED is unset or names no
+run folder — this command is for a worker, and the manager has no one to ask. Exits 0
+once the question is written.
+"""
+import sys, os, json, time
+
+USAGE = 'usage: haring-ask "<question>"'
+LIMIT = 2000   # a question that cannot be said in this is a report, not a question
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+if len(sys.argv) != 2:
+    die("exactly one argument is needed: the question", 2)
+question = sys.argv[1]
+if not question.strip():
+    die("an empty question asks nothing", 2)
+if len(question) > LIMIT:
+    die(f"a question is limited to {LIMIT} characters; say the choice and what you "
+        f"would pick, and put the rest in your report", 2)
+
+# The same marker haring-say refuses a caller on, read here rather than refused: a
+# worker asks from inside its own run, and that run is the only place the question
+# can go.
+run = os.environ.get("HARING_NESTED")
+if not run or not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "meta")):
+    die("there is no run to ask from. This command is for a worker, and the manager "
+        "has no one to ask.", 1)
+
+with open(os.path.join(run, "ask.jsonl"), "a") as f:
+    f.write(json.dumps({"content": question,
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
+sys.exit(0)
