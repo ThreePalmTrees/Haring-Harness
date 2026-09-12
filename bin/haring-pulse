@@ -49,14 +49,28 @@ label is the tool's own name for a call, thinking or says for the worker's block
 when the worker has asked its manager a question, or api_retry when the endpoint is
 refusing it, which is therefore announced without anything extra. A question does not
 wait for a pass: it is surfaced the moment it lands, from the same one-second looking
-that ends this when the workers end. A pass that has nothing new for a run still says so once the run's
-last step is more than QUIET_AFTER seconds old: one line naming the run as ever,
-saying the worker is thinking and how long since that step. The elapsed time in it
-grows, so no two of these lines are the same — which is the point, because a worker
-deep in a long thought must not read as one that has died. A pass holding more than
-MAX_LINES lines for one run prints the most recent MAX_LINES of them, behind one line
-saying how many were dropped. A run with nothing new for less than QUIET_AFTER is
-silent on that pass, which is correct output here, not a fault.
+that ends this when the workers end. A pass that has nothing new for a run still says
+so once the run's last step is more than QUIET_AFTER seconds old: one line naming the
+run as ever, saying the worker is thinking, how long since that step, how many thinking
+tokens the run has accumulated, and how long since anything at all was written to
+events.jsonl. That last age comes from the file's modification time, not from event
+timestamps: the stream's thinking_tokens events carry no timestamp, and a worker
+generating a long thought writes many of them without moving one, so a gap between
+timestamped events says nothing about whether the worker is alive, and whether the file
+is being written says everything. The elapsed times in the line grow, so no two of
+these lines are the same — which is the point, because a worker deep in a long thought
+must not read as one that has died. If the file has gone unwritten for longer
+than SILENT_AFTER seconds, the line changes its words instead: the stream itself has
+stopped, which a worker in a long thought never lets happen, and the worker may have
+died. A run with nothing new for less than QUIET_AFTER is silent on that pass, which is
+correct output here, not a fault.
+
+A pass carrying more than MAX_CHARS characters of one run's stream prints the most
+recent MAX_CHARS of them, behind one line saying how many characters were dropped. The
+cap is a safety valve for a run that has gone wrong and never a way of trimming what a
+worker did. The largest whole-run stream measured across 91 runs in this project is
+286,081 characters, and MAX_CHARS sits well above it, while a pass normally carries
+only the seconds since the pass before.
 
 The workers it takes on are every worker live while it watches, whenever it started, so
 a job that runs its independent work two at a time is covered from the first worker to
@@ -76,9 +90,21 @@ USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 FIRST_LIVE_DEADLINE = 120  # a first worker appearing within this keeps the pulse alive
 QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says so
+# A first guess from two live observations, nothing firmer: a run whose events.jsonl
+# has not been written for this long has stopped generating rather than thinking — a
+# worker generating a thought writes to the file as it goes — though a worker running a
+# long command also generates nothing while it waits, and one verification command
+# alone ran 120 seconds tonight. The run's own stall guard in bin/haring-worker stops
+# it after 900 seconds of silence, so this line exists to give the manager about
+# twelve minutes of warning before the run stops itself.
+SILENT_AFTER = 180
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
 FIRST_CEILING = 300  # an opening look is held to the same five minutes
-MAX_LINES = 200      # most of one run's stream a pass prints; the rest is dropped
+# A safety valve for a run that has gone wrong and never a way of trimming what a
+# worker did. The largest whole-run stream measured across 91 runs in this project is
+# 286,081 characters, and MAX_CHARS sits well above it, so the next slightly larger
+# run does not fire it.
+MAX_CHARS = 500000
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
 PULSE_FILE = "pulse"       # <project>/.haring/pulse, this process's own pid
 
@@ -321,11 +347,24 @@ try:
                 lines = reader.read(events) if os.path.exists(events) else []
                 prefix = (f"{meta.get('kind', '?')} {os.path.basename(run)} "
                           f"{elapsed(os.path.getmtime(meta_path))} ")
-                if len(lines) > MAX_LINES:
-                    print(f"{prefix}{len(lines) - MAX_LINES} earlier lines dropped",
+                # The characters counted are the stream's own, not the prefixed rows
+                # printed around them — the same measure the largest whole run was
+                # taken with.
+                total = sum(len(text) for _, text, _ in lines)
+                if total > MAX_CHARS:
+                    kept, held = [], 0
+                    for entry in reversed(lines):
+                        if held + len(entry[1]) > MAX_CHARS:
+                            break
+                        kept.append(entry)
+                        held += len(entry[1])
+                    kept.reverse()
+                    print(f"{prefix}{total - held} earlier characters dropped",
                           flush=True)
                     reported = True
-                for label, text, _ in lines[-MAX_LINES:]:
+                else:
+                    kept = lines
+                for label, text, _ in kept:
                     # A block arrives as one entry carrying the whole block, its lines
                     # joined with newlines; the pass prints one line per line of it. An
                     # entry with no text at all — a report handover names its tool and
@@ -336,10 +375,21 @@ try:
                 if not lines and time.time() - reader.when >= QUIET_AFTER:
                     # Nothing new is not the same as nothing to say: a worker deep in a
                     # long thought looks, from here, like a dead one, and this is what
-                    # keeps the two apart. The elapsed time in the line grows, so each
-                    # pass's line is new under the rule every line here answers to.
-                    print(f"{prefix}thinking, no step for {elapsed(reader.when)}",
-                          flush=True)
+                    # keeps the two apart. The elapsed times in each line grow, so each
+                    # pass's line is new under the rule every line here answers to. The
+                    # age of the file comes from its modification time, because the
+                    # thinking_tokens a generating worker writes carry no timestamp.
+                    written = (os.path.getmtime(events) if os.path.exists(events)
+                               else os.path.getmtime(meta_path))
+                    if time.time() - written >= SILENT_AFTER:
+                        print(f"{prefix}nothing written to events.jsonl for "
+                              f"{elapsed(written)}, the worker may have died",
+                              flush=True)
+                    else:
+                        print(f"{prefix}thinking, no step for {elapsed(reader.when)}, "
+                              f"{reader.thinking_tokens:,} thinking tokens, "
+                              f"events.jsonl written {elapsed(written)} ago",
+                              flush=True)
                     reported = True
             # The pass above took a moment to print; anything asked while it printed is
             # caught here rather than held until the next look a whole gap later.

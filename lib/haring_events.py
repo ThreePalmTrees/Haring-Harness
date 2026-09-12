@@ -100,6 +100,9 @@ class RunReader:
       seen_at  the last time the stream produced anything at all, thinking included,
                which separates a worker that is generating from one that is silent
       last     whether the latest of those was a "step" or a "retry"
+      thinking_tokens  the thinking tokens the stream has accumulated, summed from the
+                       thinking_tokens events, which carry no message and so produce
+                       no entries — the cost of a long thought that no entry shows
     """
 
     def __init__(self, when_ts=0.0):
@@ -107,6 +110,7 @@ class RunReader:
         self.seen = set()   # tool-call ids already reported
         self.retries = 0
         self.retry_next = 1
+        self.thinking_tokens = 0
         self.when = time.time()
         self.when_ts = when_ts
         self.seen_at = 0.0
@@ -127,6 +131,13 @@ class RunReader:
                 # it is announced like a step: it is the answer to "why has nothing
                 # happened". Counting is the one compression kept here, because every
                 # retry is the same event and the count carries the whole fact.
+                if d.get("type") == "system" and d.get("subtype") == "thinking_tokens":
+                    # A thought being generated announces its cost here and nowhere
+                    # else: these events carry no message content and so produce no
+                    # entries. estimated_tokens restarts with every request, so the
+                    # accumulated count is the sum of the deltas, not the last value.
+                    self.thinking_tokens += d.get("estimated_tokens_delta", 0)
+                    continue
                 if d.get("type") == "system" and d.get("subtype") == "api_retry":
                     self.retries += 1
                     self.last = "retry"
