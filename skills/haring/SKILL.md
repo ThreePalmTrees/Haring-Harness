@@ -552,12 +552,14 @@ even under the lift.
 ```
 haring-wait <run-folder>        follow the run, then print its report
 haring-pulse [dir] [--first S] [--every S]
-                                one line per live worker, opening fast then
+                                each live worker's stream since the last
+                                pass, in one wake-up, opening fast then
                                 settling at a pace you can retune mid-run
-haring-report <run-folder>      print the report, compacted, and warn when the
-                                worker read nothing — no Read, Glob, Grep or
-                                Bash call in its events, so every claim in it
-                                needs checking against the project
+haring-report <run-folder>      the run's Read, Glob, Grep and Bash calls
+                                above the report, then the report
+                                compacted, and a warning when that list is
+                                empty, so every claim in it needs checking
+                                against the project
 haring-transcript <run-folder>  print what the run did, in the order it did
                                 it: every tool call, thought and line of
                                 speech, whole
@@ -595,23 +597,29 @@ for the short form, the commands take it, and the manager still typed the path.
 
 **Start `haring-pulse` under the Monitor tool right after you launch the first worker.** The
 pulse exists so you can act on a worker that has gone sideways, and that is its first purpose;
-the client seeing progress without opening anything is the second. Each line it emits wakes
-you. Turn it into one short sentence for the client that names what the worker is doing. Do not
-paste the raw line. The first report on a worker comes `--first` seconds after the pulse finds
-it, 80 by default, which is soon enough to act on the plan it wrote as the first line of its
-progress file while acting is still cheap. After that it reports every `--every` seconds, 300
-by default. The two flags do not go past those numbers: `--first` is refused at 120 or more,
-`--every` above 300. To change the pace while a run is going, write one number of seconds into
-`.haring/cadence` in the project; the next pass uses it, under the same 300-second ceiling, and
-a line starting `cadence` on the pulse's own output says when a number was taken and when one
-was refused. A pass with nothing new still speaks once a run's last step is more than a minute
-old: one line saying the worker is thinking and how long since that step, so a deep thought
-does not read as a worker that has died. Every wake-up costs you a turn, which is why the
-settled pace is minutes and the opening one is seconds. The workers it reports are the ones
-live at the pass that found the first of them: a worker you start after that belongs to the
-next pulse, not this one. That is also why it ends within a second or two of the last worker it
-took on, and about two minutes after starting if none was running. A shell command you are running
-yourself is not a worker and never appears.
+the client seeing progress without opening anything is the second. Each pass prints everything
+each live worker's stream has added since the pass before — its thinking, its speech and
+its tool calls with their arguments, in the order they happened, without the output of the
+calls — and on a run's first pass, everything since the run began. Lines printed within 200
+milliseconds of each other arrive as one notification, so one pass is one wake-up, however
+many lines it holds. Turn what arrives into one short sentence for the client that names what
+the worker is doing. Do not paste the raw stream. The first pass on a worker comes `--first`
+seconds after the pulse finds it, defaulting to 180, long enough that a worker implementing a
+plan you have already written has something worth the wake-up; after that it reports every
+`--every` seconds, defaulting to 300. Neither look waits longer than five minutes: `--first` is
+refused at 300 or more, `--every` above 300. To change the pace while a run is going, write
+one number of seconds into `.haring/cadence` in the project; the next pass uses it, under the
+same 300-second ceiling, and a line starting `cadence` on the pulse's own output says when a
+number was taken and when one was refused. A pass with nothing new still speaks once a run's
+last step is more than a minute old: one line naming the run, saying the worker is thinking,
+how long since that step, how many thinking tokens the run has accumulated, and how long since
+anything at all was written to its events stream. When that file has gone three minutes
+unwritten, the words change instead to say the worker may have died, which a worker deep in a
+long thought never lets happen. Every wake-up costs you a turn, which is why both numbers are
+minutes. The workers it reports are the ones live at the pass that found the first of them: a
+worker you start after that belongs to the next pulse, not this one. That is also why it ends
+within a second or two of the last worker it took on, and about two minutes after starting if
+none was running. A shell command you are running yourself is not a worker and never appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
@@ -719,7 +727,9 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
 `settings.json` with the denied paths that run was held to, `events.jsonl` with the
 run's events written by haring itself as they happen, and for every kind but `errand` a
-`PROGRESS.md` the worker appends to as it goes. The prompt names that file and says its
+`PROGRESS.md` the worker appends to as it goes. A run whose worker asked you a question also
+leaves `ask.jsonl`, one line per question with the moment it was asked. The prompt names that
+file and says its
 first line must be the method the worker means to use, so the plan is on disk before
 anything else happens; an `errand` gets neither the file nor the instruction, because it
 has no way to write one. A killed worker still leaves the question, the progress, and the
@@ -820,6 +830,19 @@ Finding it in the finished work costs the work.
 Read what it found at the place it names. Then do one of three things and say which: read
 further yourself, change the task, or tell it to go ahead as written and say why.
 
+### An ask from a worker is the arrangement working
+
+**When:** the pulse prints a line labelled `ask` — a worker has asked you a question, and the
+pulse shows it the moment it lands, not at the next pass.
+**Why:** the task left a decision open that the worker cannot settle alone. A worker that asks
+is the arrangement working, not a worker failing to cope, the way a worker that stops on a
+contradiction has done the right thing.
+
+Answer with `haring-say`, promptly. The worker has gone on with whatever did not depend on the
+answer, and stops and reports blocked when that runs out. An unanswered ask costs the run:
+once nothing is left that does not depend on the answer, the run sits blocked until yours
+lands.
+
 ### Read the doubts before the findings
 
 **When:** every report.
@@ -838,6 +861,24 @@ and said two directories did not exist when both do.
 
 It is a warning and not a failure, because a task that genuinely needs no reading is
 possible.
+
+The list of calls is printed above every report, so the first thing to do with a doubtful
+claim is look in it for the file or the command that would support the claim. Its absence is
+the finding: a claim about a file the list never names rests on nothing.
+
+### Read the transcript when the evidence list does not settle it
+
+**When:** a report's claim matters and the list above it does not settle it.
+**Why:** `haring-transcript <run-folder>` prints what the run did in the order it did it —
+every tool call with its arguments, every thought and every line of speech, read from
+`events.jsonl` at the moment you ask — so a claim that rests on nothing is visible in it: the
+file or the command that would support the claim is named nowhere. It is not for reading
+every run.
+
+An errand was asked whether a file mentioned five identifiers and answered that a grep over
+the file returned nothing. It ran no grep, and neither it nor the run it continued had ever
+opened the file. The answer happened to be right, and only running the grep itself showed
+even that.
 
 ### Match what you asked against what you got
 
