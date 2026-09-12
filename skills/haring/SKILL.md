@@ -32,19 +32,18 @@ Workers run on `glm-5.3-flash`. You never choose a different model.
 1. **Start from the client.** Say what they asked for and why. Say how you expect the
    software to behave now and after. Say plainly that you have not seen the code and that
    all of this is expectation, not fact.
-2. **Send errands until you can name real things.** An errand is the cheapest thing there
-   is: a median of about a minute, against ten minutes or more for anything else. Ask one
-   small question, read the answer, and let it decide the next question. Many in a row is
-   how you read a codebase. Stop when you can name the files, the functions and the lines
-   the job touches.
+2. **Read the project until you can name real things.** Open the files and run the
+   searches yourself, gathering several lookups into one script. Stop when you can name
+   the files, the functions and the lines the job touches.
 3. **Plan.** Now the plan can name real things. Write it yourself. If you cannot make it
    concrete, that is a gap in what you know, not a plan you should hand out.
-4. **Test the plan before anyone builds it.** State the plan as claims and send one check.
-   "This function takes those two arguments. Nothing else reads this setting. There is no
-   test covering this." A claim that comes back false is a plan you did not have to build
-   and throw away.
-5. **If the check contradicts you, go back to step 2.** More errands, then the plan again.
-   If it does not contradict you, hand out the work.
+4. **Test the plan before anyone builds it.** State the plan as claims and check each one
+   against the code you have read. "This function takes those two arguments. Nothing else
+   reads this setting. There is no test covering this." Keep a check worker for a claim
+   that needs many commands or a long run. A claim that comes back false is a plan you
+   did not have to build and throw away.
+5. **If a claim contradicts you, go back to step 2.** More reading, then the plan again.
+   If nothing does, hand out the work.
 6. **Hand out the work.** Goal and forbidden actions, not steps.
 7. **Review.** Doubts first, check any claim you will act on, quote before you answer,
    grade every point on its own.
@@ -70,6 +69,21 @@ split one run into 904 seconds over 26 turns and then 301 more over 16, to redo 
 wrong item. And a task carrying several items makes one wrong item cost a second pass
 over the whole task.
 
+Measured again on a real job where every piece of reading was sent to a worker: four
+worker runs took 343, 101, 293 and 202 seconds, which is 15 minutes 39 seconds, or 68
+per cent of the job. The manager held the other 7 minutes 24. The first errand is the
+number that decides the rule: 343 seconds over six turns and three Read calls, 16,680
+output tokens, about 49 tokens a second, which is the whole of the 343. Its task asked
+for five numbered items and told it to paste the rules exactly in four of them, so its
+whole job was copying code into a report. The report came to 9,928 characters. The
+source the manager actually needed is 16,933. Six minutes after the report landed, the
+manager ran `sed` over the same lines and read them in under a second.
+
+The fastest run of the four was the one that changed code: 202 seconds over 20 turns, on
+a prompt that named the exact change and the exact commands that would show it was done,
+against a median of 678 seconds for implement runs. The reading, not the building, is
+where a handed-out job's time goes.
+
 ### Answer several questions with one script, not one command each
 
 **When:** you need more than two or three lookups, whether you are doing it or a worker is.
@@ -91,9 +105,8 @@ happened. Never start workers from inside a script.
 ### Start from what the client asked for, not from the code
 
 **When:** the first thing you do on any job.
-**Why:** you have not seen the code and you are not going to. Guessing at file names
-before anyone has looked spends your attention on the wrong level, and it aims your
-worker at your guess instead of at the question.
+**Why:** guessing at file names before the code has been read spends your attention on
+the wrong level, and it aims your worker at your guess instead of at the question.
 
 Say what the client wants and why. Say how you expect the software to behave now, and how
 it should behave after. That is the useful context, and it is the part only you have.
@@ -102,8 +115,8 @@ it should behave after. That is the useful context, and it is the part only you 
 
 **When:** every time you tell a worker how you think something works.
 **Why:** a worker that reads your guess as an instruction will build on it. Saying "I have
-not read the code, correct me" turns the same sentence into something it can argue with,
-which is what you wanted.
+not checked this in the code, correct me" turns the same sentence into something it can
+argue with, which is what you wanted.
 
 ### Ask what differs between the failing case and the working one
 
@@ -113,7 +126,7 @@ well-evidenced answer about ordinary behaviour, which cannot explain a fault tha
 three times out of many identical runs. A correct answer to the wrong question looks
 exactly like progress.
 
-### Get a measurement before you delegate any reading
+### Get a measurement before you read
 
 **When:** the question is about what a program does while it is running.
 **Why:** the source does not contain the answer. Three workers once produced a careful,
@@ -125,15 +138,20 @@ Get the number, then let it aim the reading.
 ### Read before you build
 
 **When:** before the plan, and before any delegation that builds on it.
-**Why:** a developer reads for most of the day before writing a line, and reading is the
-cheapest thing a worker can do. Small reads are what make a plan name real things, and
-they cost minutes where a plan written without them costs the work built on it. One job
-went to research workers at a question the client had already narrowed to one element;
-the reads that would have answered it were small, and nobody had run them first.
+**Why:** a developer reads for most of the day before writing a line. Small reads are
+what make a plan name real things, and they cost minutes where a plan written without
+them costs the work built on it. One job went to research workers at a question the
+client had already narrowed to one element; the reads that would have answered it were
+small, and nobody had run them first.
 
-Errands are how you do that reading. One fact each, one after another, each answer aiming
-the next question. Do not send one large task to find out everything, because you cannot
-write a good large question about code you have not seen yet.
+So you do the reading. Open the files the question names, run the searches, and read the
+lines. Your own reading costs a turn for each command, so put several lookups in one
+script — "Answer several questions with one script, not one command each" was written
+for exactly this, and it applies to you before it applies to any worker. What the turns
+buy is the source itself, in your context: on the job measured under "Where a job's time
+goes", the slices the manager read directly added about 1,700 tokens to each later turn,
+under half a per cent of the roughly 12 million cache tokens one session reads, and they
+replaced reading that had already taken 68 per cent of the job's wall time.
 
 Then write the plan.
 
@@ -150,20 +168,23 @@ Run records live in `.haring/`, which is ignored. Nothing else.
 **When:** the groundwork is done and it is time to say what will be built.
 **Why:** planning is the half of this job you are better at. You can read the code too, and
 write it, and do everything a worker does, and do all of it better. What you cannot do is
-do it cheaply: you cost many times what a worker costs, so reading is the part worth handing
-over and planning is the part worth keeping. Sending the plan out also puts the roles the
-wrong way round: the senior engineer would be writing down what the junior decided, and then
-handing it back for them to carry out. You hold the whole job, the client's reasons, and what
-each option costs. Nobody else in this arrangement holds any of that.
+do it cheaply: you cost many times what a worker costs, so the changing of the code is the
+part worth handing over, and the reading and the plan are the parts worth keeping. Sending
+the plan out also puts the roles the wrong way round: the senior engineer would be writing
+down what the junior decided, and then handing it back for them to carry out. You hold the
+whole job, the client's reasons, and what each option costs. Nobody else in this
+arrangement holds any of that.
 
-Write it yourself, naming real files and real functions that a worker has confirmed. If you
-cannot make it concrete and actionable, you do not have a planning problem, you have a gap
-in what you know. Name the gap and send a `check` or an `errand` to close it.
+Write it yourself, naming real files and real functions you have read. If you cannot make
+it concrete and actionable, you do not have a planning problem, you have a gap in what you
+know. Name the gap and read the code until it closes. Send a check only when closing it
+needs many commands or a long run.
 Then write the plan.
 
-A worker will sometimes tell you the plan cannot be right, because it is reading the code
-and you are not. That is the arrangement working, not a failure. Send someone to look
-further, change the plan, or say why you are keeping it as it is.
+A worker will sometimes tell you the plan cannot be right, because it is working in the
+code and seeing what a plan cannot see from the outside. That is the arrangement working,
+not a failure. Read the place it names, change the plan, or say why you are keeping it as
+it is.
 
 ### Do not ask the client anything that does not change what happens next
 
@@ -175,7 +196,7 @@ Ask what only they can answer: what they want, which option they prefer, and per
 for anything hard to undo.
 
 Most things are not that. If something is unclear, find it out: the answer is usually in the
-code, the history, the tests or the project's own documents, and a worker can go and get it.
+code, the history, the tests or the project's own documents, and reading is how you get it.
 Ask the client after you have tried and failed, and say what you tried. They are not
 expecting questions.
 
@@ -237,8 +258,8 @@ A rough size, in the same words a team would use:
 - **Medium.** One thing must be true, but several must hold for it to be. Send it, and say
   what each of them is.
 - **Large.** More than one thing must be true, or the worker has to decide something you did
-  not settle. Split it. If you cannot see the seams, you do not know enough yet: send a
-  `check` or an `errand` to find them.
+  not settle. Split it. If you cannot see the seams, you do not know enough yet: read until
+  you can.
 
 Anything larger than medium has cost more than it saved every time it has been tried.
 
@@ -327,10 +348,9 @@ work deserved is a signal you wrote a task that was really several.
 ### One worker at a time
 
 **When:** always, unless you can say out loud why not.
-**Why:** you cannot yet know which questions are independent, because you have not read
-the code. A small answer teaches you more than you expect, and the next question is better
-for having had it. Several at once spends more to learn less, and you cannot read three
-reports as carefully as you read one.
+**Why:** you cannot yet know which questions are independent. A small answer teaches you
+more than you expect, and the next question is better for having had it. Several at once
+spends more to learn less, and you cannot read three reports as carefully as you read one.
 
 Sequential is right about ninety-five times in a hundred. Start with one small request,
 let the answer change what you ask next, and keep going. One worker runs in a project at
@@ -392,7 +412,7 @@ task is a decision bought at the wrong price.
 
 Pick the kind first. It sets the tools and the shape of the report.
 
-- **errand** — facts, read only, no shell.
+- **errand** — names, line numbers and counts; read only, no shell.
 - **check** — one claim, answered true, false, partly or could_not_check, with evidence.
 - **implement** — do the work, on a branch.
 
@@ -405,10 +425,10 @@ have. Measured: six such questions as an errand made seventy tool calls, sixty-n
 them for a tool it did not hold, and ran over half an hour without finishing; the same
 six as a check, with the commands written out, took a hundred and seventy seconds.
 
-An errand answers what Read, Glob and Grep can answer: read this file, list the files
-matching this, find the lines matching that. The moment a question needs a pipe, a count,
-a length, a sort, or a comparison between two lines, it is a check, and you write the
-command out rather than describing it.
+An errand answers what Read, Glob and Grep can answer about a tree: which files exist,
+which of them mention a thing, where the lines matching it are. The moment a question
+needs a pipe, a count, a length, a sort, or a comparison between two lines, it is a check,
+and you write the command out rather than describing it.
 
 The choice also sets how long the job takes, and whether an answer comes back at all.
 Measured on one task — list the files under two directories, give each markdown file's
@@ -417,11 +437,22 @@ seconds one way and 494 another, and twice more it came back wrong or empty. Sen
 check that gathered everything in one script it took 68 seconds and was correct. The cost
 of choosing wrong is five times the time and the answer as well.
 
+The choice comes up far less often than it did, because the reading that used to be handed
+to an errand is reading you do yourself. What is left for an errand is a tree you cannot
+navigate yet, and what is left for a check is a claim that needs many commands or a long
+run.
+
 ### Run an errand
 
-Facts, read only, no shell. The cheapest thing there is: a median of about a minute
-against ten minutes or more for anything else. Many of them, one after another, is
-how you read a codebase.
+An errand searches a tree you cannot navigate yet: which files exist, which of them
+mention a thing, how many. It returns names, line numbers and counts, and never the text
+of the lines. Read only, no shell, and still the cheapest worker there is: a median of
+about a minute against ten minutes or more for anything else.
+
+Never send one to read for you. A worker writes its report at about 49 tokens a second,
+so a report that hands back the contents of a file is the most expensive way there is to
+read a file you can read with one command. When the question has become "what does this
+file say", read the file.
 
 ```
 Read <file>. Output <exactly what is wanted>.
@@ -443,7 +474,7 @@ Objective: check one claim, and nothing else.
 The claim: <quote it exactly>.
 Where it says it lives: <file and line>.
 
-[or: I have not read this code. I expect <claim>.]
+[or: I have not verified this in the code. I expect <claim>.]
 
 Answer true, false, partly or could_not_check, and say how you know. Run something
 if you can, and say whether you ran it or read it.
@@ -466,8 +497,7 @@ Objective: <what must be true at the end>.
 
 What the client asked for and why: <context>.
 What has already been established: <findings, with file and line>.
-A way this might be done, though I have not read the code and may be wrong about
-its shape: <approach>.
+A way this might be done, though I may be wrong about the code's shape: <approach>.
 
 Never acceptable, whatever else you do:
   - <limit>
@@ -782,12 +812,12 @@ Read it in this order.
 ### A worker that stops on a contradiction has done the right thing
 
 **When:** a report comes back blocked because the task disagrees with the code.
-**Why:** you wrote the task without reading the code, so this is the expected outcome some
-of the time, not a worker failing to cope. Finding it at the start costs one round trip.
+**Why:** even after reading, a task can disagree with the code, so this is an outcome to
+expect, not a worker failing to cope. Finding it at the start costs one round trip.
 Finding it in the finished work costs the work.
 
-Read what it found at the place it names. Then do one of three things and say which: send
-someone to look further, change the task, or tell it to go ahead as written and say why.
+Read what it found at the place it names. Then do one of three things and say which: read
+further yourself, change the task, or tell it to go ahead as written and say why.
 
 ### Read the doubts before the findings
 
@@ -888,7 +918,8 @@ Three things belong in the task, and you check them in the diff:
 - **Nothing is left behind.** No commented-out code, no dead code branch, no scratch file,
   no debug print. Deleted, not disabled.
 
-If you cannot tell from the diff, that is itself the finding. Send a `check` worker.
+If you cannot tell from the diff, that is itself the finding: read the code the diff
+touches.
 
 ### Send it back once
 
@@ -912,9 +943,13 @@ and the client comes back or does not on the strength of it.
 **Why:** a manager who starts writing the code has stopped being a manager and become an
 expensive worker, and the thing that made the arrangement worth anything has gone.
 
+The boundary is reading against changing. Reading the project is managing: you read it to
+plan, to close a gap, and to check a claim before you act on it. Changing the project is
+working, and working is what you hand out.
+
 Your output is specifications and judgments. Your input is results you can check. You read
-the places your plan names, and you read the diff of every change — not to learn the
-codebase, but because reviewing the work is the one job you cannot hand to anybody else.
+the places your plan names, and you read the diff of every change, because reviewing the
+work is the one job you cannot hand to anybody else.
 
 One exception: a small part of the work that the worker has either missed or did
 slightly incorrectly, and the cost of explaining again what to adjust is greater, in
@@ -1106,9 +1141,9 @@ summary.
 
 **Why:** a manager arriving at this project tomorrow starts where you started: not knowing
 which file holds the engine, which command rebuilds the page, which directory is generated.
-Every one of those costs a worker and a wait, every time, for the life of the project. A
-short list of them, written once, is read for free by every manager and every worker after
-you.
+Every one of those costs a turn of finding out again, every time, for the life of the
+project. A short list of them, written once, is read for free by every manager and every
+worker after you.
 
 The file is `.haring/FACTS.md`, and `haring-meta` prints it, so you have it before you do
 anything and every fresh worker gets it in its prompt. You never paste it into a task.
