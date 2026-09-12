@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""haring-pulse — one line per live worker, opening fast and then at a pace the
-manager can retune while it runs.
+"""haring-pulse — each live worker's stream since the last pass, opening fast and
+then at a pace the manager can retune while it runs.
 
     haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]
 
 project-dir defaults to the current directory, resolved to its git top level the same
 way haring-worker resolves a workdir. --every is the gap between passes once something
 has been reported, and defaults to 300. --first is the gap before that first report,
-counted from the pass that first saw the worker, and defaults to 80: a worker writes
-its plan as the first line of its progress file, and the plan is only worth stopping a
-route over while that route is still cheap, so the opening look is worth having — but
-30 seconds was too early for it, the worker still repeating the task back to itself
-and the line carrying nothing the manager could act on, so the look waits long enough
-for something worth reporting. Both take a positive integer; --every is refused above
-300 and --first at 120 or more, because an opening look that long could never land
-before the deadline below ends the command.
+counted from the pass that first saw the worker, and defaults to 180: a worker that is
+implementing a spec the manager has already written needs longer than that before what
+it has to show is worth waking anyone for. Both take a positive integer; --every is
+refused above 300 and --first at 300 or more, because one rule covers both — no look,
+opening or settled, waits longer than five minutes.
 
 The pace can also be retuned mid-run, without stopping and restarting this, by writing
 one number of seconds into <project>/.haring/cadence. The file is read between passes,
@@ -37,46 +34,56 @@ into something that answers back. A pulse killed with SIGKILL leaves the file be
 because SIGKILL is the one death nothing can be done on the way out of; the check on the
 other side reads the pid and not just the file, so what it names being dead is no pulse.
 
-Meant to run under a tool that turns each stdout line into an event, so a caller gets
-progress without opening a transcript. Each pass prints one line per live worker:
+Meant to run under a tool that turns each stdout line into an event, where lines
+printed within 200 milliseconds of each other arrive as one notification — so a whole
+pass costs the manager one wake-up, however many lines it holds. Each pass prints, in
+one burst, everything each live worker's event stream has added since the pass before:
+the worker's thinking, its speech and its tool calls with their arguments, in the order
+they happened, oldest first. The output of a call is never printed. The first pass on a
+run reads its stream from where the run began; every pass after that reads only what
+arrived since the one before, which is what makes the gap between passes cost nothing.
 
-    <kind> <run-basename> <elapsed> <detail>
+    <kind> <run-basename> <elapsed> <label> <text>
 
-detail is the worker's own last line of PROGRESS.md when that line is new since this
-pulse last spoke about the run, else its most recent tool call, else, when the endpoint
-has been refusing it since that call, the retries it has waited through. A detail shown
-on an earlier pass is not shown again: the progress line is written once, as a plan, and
-can sit unchanged for the rest of the run, so repeating it would make a busy worker read
-like a stuck one. A pass that finds nothing new still says so once the run's last step
-is more than QUIET_AFTER seconds old: one line naming the run as ever, with a detail
+label is the tool's own name for a call, thinking or says for the worker's blocks, or
+api_retry when the endpoint is refusing it, which is therefore announced without
+anything extra. A pass that has nothing new for a run still says so once the run's
+last step is more than QUIET_AFTER seconds old: one line naming the run as ever,
 saying the worker is thinking and how long since that step. The elapsed time in it
 grows, so no two of these lines are the same — which is the point, because a worker
-deep in a long thought must not read as one that has died. Silence on a pass still
-means a run younger than that with nothing to say yet, which is correct output here,
-not a fault, and it covers a worker that has written no line and made no call yet.
+deep in a long thought must not read as one that has died. A pass holding more than
+MAX_LINES lines for one run prints the most recent MAX_LINES of them, behind one line
+saying how many were dropped. A run with nothing new for less than QUIET_AFTER is
+silent on that pass, which is correct output here, not a fault.
 
 The workers it takes on are every worker live while it watches, whenever it started, so
 a job that runs its independent work two at a time is covered from the first worker to
 the last. It looks for them between passes rather than only when one is due, so it ends
 within a second or two of the last one instead of at the next report.
 
-Exits 0 once no worker it took on is live any more, or after about 120 seconds if it never
-saw one to begin with, so a caller that starts it before anything is running does not
-wait forever. Exits 2 when called wrongly: an unknown flag, a project directory
+Exits 0 once no worker it took on is live any more, or after about 120 seconds if no
+worker ever appears at all — how long this waits for a first worker is what keeps a
+pulse started against a project where nothing is ever launched from sitting there
+forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
 There is no way to be called rightly and still fail, so exit 1 is not used.
 """
-import sys, os, json, time, glob, subprocess, signal
-from datetime import datetime
+import sys, os, time, glob, subprocess, signal
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
-LINE_LIMIT = 160
-FIRST_LIVE_DEADLINE = 120
+HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+FIRST_LIVE_DEADLINE = 120  # a first worker appearing within this keeps the pulse alive
 QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says so
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
-FIRST_CEILING = 120  # an opening look must fit inside the deadline above
+FIRST_CEILING = 300  # an opening look is held to the same five minutes
+MAX_LINES = 200      # most of one run's stream a pass prints; the rest is dropped
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
 PULSE_FILE = "pulse"       # <project>/.haring/pulse, this process's own pid
+
+# Turning the event stream into lines lives in lib/, shared with the other commands
+# that read a run.
+sys.path.insert(0, os.path.join(HARING, "lib"))
+import haring_events
 
 
 def die(message, code):
@@ -93,7 +100,7 @@ def whole_seconds(flag, val):
 
 
 argv = sys.argv[1:]
-project_arg, every, first = None, 300, 80
+project_arg, every, first = None, 300, 180
 i = 0
 while i < len(argv):
     a = argv[i]
@@ -136,72 +143,6 @@ def elapsed(since):
     return f"{s // 60}m{s % 60:02d}s"
 
 
-def last_progress_line(run):
-    path = os.path.join(run, "PROGRESS.md")
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
-        return None
-    try:
-        lines = [l.strip() for l in open(path, errors="replace") if l.strip()]
-    except OSError:
-        return None
-    return lines[-1] if lines else None
-
-
-# The worker's own last word on what it is doing beats a guess made from its tool
-# calls, so a new progress line is preferred over this. Scans the whole
-# event stream because what is wanted is the most recent call, not what changed since
-# some earlier position — there is no earlier position, each pass stands alone. The
-# stream is the run's own events.jsonl, the one record haring owns. Retries counted
-# after the last tool call mean the endpoint is refusing the worker, which is the
-# answer to "why has it not moved". The moment of that call comes back with the
-# detail, on the event's own timestamp: it is what tells a run that has gone quiet
-# from one that is only between steps.
-def step_time(ts):
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return None
-
-
-def last_step(run):
-    path = os.path.join(run, "events.jsonl")
-    if not os.path.exists(path):
-        return None, None
-    name, arg, retries, at = None, "", 0, None
-    try:
-        with open(path, errors="replace") as f:
-            for line in f:
-                try:
-                    d = json.loads(line)
-                except ValueError:
-                    continue
-                if d.get("type") == "system" and d.get("subtype") == "api_retry":
-                    retries += 1
-                    continue
-                message = d.get("message")
-                content = message.get("content") if isinstance(message, dict) else None
-                if not isinstance(content, list):
-                    continue
-                for b in content:
-                    if not isinstance(b, dict) or b.get("type") != "tool_use":
-                        continue
-                    i = b.get("input") or {}
-                    a = i.get("command") or i.get("file_path") or i.get("pattern") or ""
-                    name = b.get("name", "?")
-                    arg = " ".join(str(a).split())[:92]
-                    retries = 0
-                    at = step_time(d.get("timestamp"))
-    except OSError:
-        return None, None
-    if retries:
-        return f"waiting on the endpoint ({retries} retries)", at
-    if not name:
-        return None, None
-    return f"{name} {arg}".strip(), at
-
-
 def alive(pid):
     try:
         os.kill(pid, 0)
@@ -230,41 +171,11 @@ def live_runs():
     return found
 
 
-# What each pass said, by run folder: the progress line last seen, the step detail last
-# printed and the detail of the last line sent at all. Only a change against this is
-# worth a line — the progress file holds the plan
-# the worker wrote when it started and is often never appended to again, so without it a
-# pulse says the same sentence every five minutes while the worker moves on.
-shown = {}
-
-
-def report_line(run, meta, meta_path):
-    kind = meta.get("kind", "?")
-    prev = shown.get(run, {})
-    progress = last_progress_line(run)
-    step, step_at = last_step(run)
-    if progress and progress != prev.get("progress"):
-        detail = progress
-    elif step and step != prev.get("step"):
-        detail = step
-    else:
-        detail = None
-    if detail is None:
-        # Nothing new is not the same as nothing to say: a worker deep in a long thought
-        # looks, from here, like a dead one, and this is what keeps the two apart. The
-        # elapsed time in the line grows, so each pass's line is new under the rule every
-        # line here answers to.
-        if step_at is None or time.time() - step_at < QUIET_AFTER:
-            return None
-        detail = f"thinking, no step for {elapsed(step_at)}"
-        if detail == prev.get("detail"):
-            return None
-    shown[run] = {"progress": progress, "step": step, "detail": detail}
-    prefix = f"{kind} {os.path.basename(run)} {elapsed(os.path.getmtime(meta_path))} "
-    # The fields before the detail say which run this is and are not negotiable; the
-    # detail is the part that can run long, so it is the part that gives way.
-    room = max(0, LINE_LIMIT - len(prefix))
-    return prefix + detail[:room]
+# One reader per run, kept for the life of this pulse: the reader remembers where it
+# stopped in the run's stream, so each pass reads only what arrived since the pass
+# before. The first pass on a run reads its stream from where the run began, with the
+# same moment the worker began, taken from the meta file, as the zero of its clock.
+readers = {}
 
 
 # The pace in force between passes, and the file content last refused. Refused content
@@ -348,9 +259,9 @@ try:
     start = time.time()
     ever_live = False
     # Nothing has been reported yet, so the opening interval still governs: a worker found
-    # here may not have written its plan yet, and waiting a whole long gap to read it is
-    # what makes the plan arrive after the expensive route it names has already been paid
-    # for. The file may shorten the opening look but never lengthen it.
+    # here has a stream already going, and waiting a whole long gap to read it is what
+    # makes the first words arrive after the route they name has already been paid for.
+    # The file may shorten the opening look but never lengthen it.
     reported = False
     while True:
         runs = live_runs()
@@ -361,9 +272,28 @@ try:
             # The exit checks against the live set below follow from that: this ends
             # when nothing it would have taken on is left.
             for run, meta, meta_path in runs:
-                line = report_line(run, meta, meta_path)
-                if line:
-                    print(line, flush=True)
+                reader = readers.get(run)
+                if reader is None:
+                    reader = haring_events.RunReader(when_ts=os.path.getmtime(meta_path))
+                    readers[run] = reader
+                events = os.path.join(run, "events.jsonl")
+                lines = reader.read(events) if os.path.exists(events) else []
+                prefix = (f"{meta.get('kind', '?')} {os.path.basename(run)} "
+                          f"{elapsed(os.path.getmtime(meta_path))} ")
+                if len(lines) > MAX_LINES:
+                    print(f"{prefix}{len(lines) - MAX_LINES} earlier lines dropped",
+                          flush=True)
+                    reported = True
+                for label, text, _ in lines[-MAX_LINES:]:
+                    print(f"{prefix}{label} {text}", flush=True)
+                    reported = True
+                if not lines and time.time() - reader.when >= QUIET_AFTER:
+                    # Nothing new is not the same as nothing to say: a worker deep in a
+                    # long thought looks, from here, like a dead one, and this is what
+                    # keeps the two apart. The elapsed time in the line grows, so each
+                    # pass's line is new under the rule every line here answers to.
+                    print(f"{prefix}thinking, no step for {elapsed(reader.when)}",
+                          flush=True)
                     reported = True
         if ever_live:
             if not runs:

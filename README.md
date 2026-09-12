@@ -70,7 +70,8 @@ document.
 
     bin/            haring-worker    start a worker, or continue one
                     haring-wait      follow a run, then print its report
-                    haring-pulse     one line per live worker, fast then at a pace you can retune
+                    haring-pulse     the workers' stream since the last pass, fast then
+                                    at a pace you can retune
                     haring-kill      stop a running worker on purpose
                     haring-say       say a word to a running worker
                     haring-report    print a report, with the empty parts removed, and warn
