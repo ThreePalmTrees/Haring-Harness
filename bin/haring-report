@@ -3,6 +3,13 @@
 
     haring-report <run-folder>
 
+Before the report it prints the run's evidence: every call to a tool that can put a
+fact in a report — Read, Glob, Grep or Bash — in the order it was made, one numbered
+line per call naming the tool and its arguments. A claim in the report can then be
+checked against the list, because a claim about a file the list never names rests on
+nothing. A list longer than 120 lines stops at 120 and says how many calls were left
+out.
+
 Prints the structured output only, dropping nulls, empty lists and empty strings.
 The whole report.json is roughly twice this size and most of the difference is
 fields the worker had nothing to put in.
@@ -13,17 +20,22 @@ manager to report.json with a hand-written script, which costs two turns and pri
 the same thing. A report too long to read is a task that asked a worker to transcribe,
 and that is fixed in the task.
 
-A run that reported without making a single call to a tool that gathers evidence —
-Read, Glob, Grep or Bash — says so beside its report: nothing in it was read from
-anything, so every claim in it needs checking against the project. This is a warning
-on standard error, not a failure, since a task that genuinely needs no reading is
-possible, and no exit code changes for it. A missing or unreadable events.jsonl is
-not an error either: no stream, no warning.
+A run that reported without making a single one of those calls says so beside its
+report: nothing in it was read from anything, so every claim in it needs checking
+against the project. This is a warning on standard error, not a failure, since a task
+that genuinely needs no reading is possible, and no exit code changes for it. A
+missing or unreadable events.jsonl is not an error either: no stream, no list and
+no warning.
 
 Exits 2 when called wrongly — no argument, a path that is not a run folder — and 1
 when it was called rightly but the run has no report worth reading yet.
 """
 import sys, json, os, subprocess
+
+USAGE = "usage: haring-report <run-folder>"
+HAIRING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+sys.path.insert(0, HAIRING_LIB)
+import haring_events
 
 # The tools whose calls can put a fact in a report. Everything else — Edit, Write,
 # Task — spends work without gathering any.
@@ -42,40 +54,40 @@ def prune(x, depth=0):
         return [prune(v, depth + 1) for v in x if prune(v, depth + 1) not in (None, "", [], {})]
     return x
 
-USAGE = "usage: haring-report <run-folder>"
 
+def evidence_calls(run):
+    """This run's calls to the tools that can put a fact in its report, in order.
 
-def evidence_counts(run):
-    """Count this run's calls to the tools that can put a fact in its report.
-
-    The events stream records every tool call as a tool_use block, walked the same
-    way haring-wait walks it: a message event whose content is a list of blocks. A
-    line that does not parse is skipped. A stream that cannot be read at all is no
-    evidence either way, so this returns None rather than a count of zero — a run
-    whose stream is missing must not be accused on numbers nobody counted.
+    The stream is read whole through the shared reader in lib/haring_events.py, which
+    hands one entry per tool call with its arguments rendered the way haring-wait
+    shows them; the entries kept are the ones labelled with an evidence tool. A stream
+    that cannot be read at all is no evidence either way, so this returns None rather
+    than an empty list — a run whose stream is missing must not be accused on numbers
+    nobody counted.
     """
-    counts = dict.fromkeys(EVIDENCE, 0)
+    reader = haring_events.RunReader()
     try:
-        f = open(os.path.join(run, "events.jsonl"))
+        entries = reader.read(os.path.join(run, "events.jsonl"))
     except OSError:
         return None
-    with f:
-        for line in f:
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            message = d.get("message")
-            content = message.get("content") if isinstance(message, dict) else None
-            if not isinstance(content, list):
-                continue
-            for b in content:
-                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in counts:
-                    counts[b["name"]] += 1
-    return counts
+    return [(label, text) for label, text, _ in entries if label in EVIDENCE]
 
 
-def warn_unread(run):
+def print_evidence(calls):
+    """Print the evidence list the report is about to be read against.
+
+    One numbered line per call: the tool, then its arguments as the reader rendered
+    them — a Read's file and line range, a Grep's pattern and the file it searched,
+    a Bash call's command. The 120 is a guard against an implement run that made
+    hundreds of calls, and nothing more.
+    """
+    for i, (tool, arg) in enumerate(calls[:120], 1):
+        print(f"{i}. {tool} {arg}".rstrip())
+    if len(calls) > 120:
+        print(f"... {len(calls) - 120} more calls")
+
+
+def warn_unread(calls):
     """Say out loud when a report carries nothing that was read from anything.
 
     The run reported without making one call that gathers evidence, so the whole
@@ -84,10 +96,9 @@ def warn_unread(run):
     the reader can see the zeros themselves. No stream, no accusation: without
     one there is nothing counted and nothing said.
     """
-    counts = evidence_counts(run)
-    if counts is None or any(counts.values()):
+    if calls is None or calls:
         return
-    tally = ", ".join(f"{tool} {counts[tool]}" for tool in EVIDENCE)
+    tally = ", ".join(f"{tool} 0" for tool in EVIDENCE)
     print(f"!! WARNING: nothing in this report was read from anything. The run made "
           f"no call to a tool that gathers evidence before it reported ({tally}). "
           f"Check every claim before you believe it.", file=sys.stderr)
@@ -142,16 +153,24 @@ try:
 except Exception as e:
     die(f"unreadable report: {e}", 1)
 
+# One walk of the stream serves both the list and the warning. The list goes to
+# standard output ahead of the report, so a caller redirecting stdout gets the two
+# together and stderr stays the warning's alone.
+calls = evidence_calls(run)
+if calls:
+    print("evidence — the Read, Glob, Grep and Bash calls this run made, in order:")
+    print_evidence(calls)
+
 so = d.get("structured_output")
 if so is None:
     # The raw result is what the caller came for when there is nothing structured
     # to give it; the banner explaining why is for a person, so it goes to stderr.
     print("NO STRUCTURED OUTPUT.", file=sys.stderr)
     print((d.get("result") or "")[:4000])
-    warn_unread(run)
+    warn_unread(calls)
     sys.exit(0)
 print(json.dumps(prune(so), indent=1, ensure_ascii=False))
 if d.get("is_error"):
     print(f"!! the run reported an error. ended={d.get('terminal_reason') or d.get('stop_reason')}",
           file=sys.stderr)
-warn_unread(run)
+warn_unread(calls)
