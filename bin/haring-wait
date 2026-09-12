@@ -32,8 +32,7 @@ Waits while the worker process is alive. A clock alone is the wrong test: real w
 run for twenty-seven minutes, and a fixed time limit only makes the manager restart the
 wait, which costs a round trip and tells it nothing.
 """
-import sys, os, json, time, subprocess
-from datetime import datetime
+import sys, os, time, subprocess
 
 USAGE = "usage: haring-wait <run-folder> [max-seconds]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -43,9 +42,11 @@ HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # 500 sits under it with room, and holds a long command whole for anyone reading the
 # file rather than the panel.
 WIDTH = 500
-BLOCK_LINES = 10  # how much of a finished thought is worth reading
-BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
-IDLE_AFTER = 60   # seconds without a printed step before this wait speaks up
+
+# Turning the event stream into lines lives in lib/, shared with the other commands
+# that read a run.
+sys.path.insert(0, os.path.join(HARING, "lib"))
+import haring_events
 
 
 def die(message, code):
@@ -144,21 +145,8 @@ def elapsed():
     return fmt_elapsed(time.time() - started)
 
 
-# assistant and user events carry the UTC moment they happened; system events carry none
-# and take the moment this wait read them, which for a live tail is the same second.
-# Stamping from the event rather than from the clock is what lets a wait that joined late
-# replay a run with the real time each call was made.
-def ts_value(ts):
-    if ts:
-        try:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            pass
-    return time.time()
-
-
 def event_elapsed(ts):
-    return fmt_elapsed(ts_value(ts) - started)
+    return fmt_elapsed(haring_events.ts_value(ts) - started)
 
 
 def say(tool, arg, ts):
@@ -168,126 +156,25 @@ def say(tool, arg, ts):
     print((head + arg)[:WIDTH].rstrip(), file=sys.stderr, flush=True)
 
 
-def steps(path, pos, seen, state):
-    """Print every step, thought and line of speech added since the last read.
-
-    Each line carries the run, how long the worker had been running when it made the
-    call, the tool, and the tool's main argument. The gap between two steps is the
-    number worth reading: a step that sits for minutes is how a stuck worker shows
-    itself, and when nothing at all arrives the loop below says so on its own.
-    """
-    with open(path) as f:
-        f.seek(pos)
-        for line in f:
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            state["seen_at"] = time.time()
-            # The endpoint refusing the worker shows up here and nowhere else, so it is
-            # announced like a step: it is the answer to "why has nothing happened".
-            if d.get("type") == "system" and d.get("subtype") == "api_retry":
-                state["retries"] += 1
-                state["last"] = "retry"
-                state["when"] = time.time()
-                state["when_ts"] = ts_value(d.get("timestamp"))
-                if state["retries"] >= state["retry_next"]:
-                    say("api_retry", f"x{state['retries']} waiting on the endpoint",
-                        d.get("timestamp"))
-                    state["retry_next"] = state["retries"] * 2
-                continue
-            # A system event of subtype permission_denied carries a plain string here,
-            # not an object, so every run where the deny list fires reaches this line with
-            # a str. Anything without a content list has no tool call in it either way.
-            message = d.get("message")
-            content = message.get("content") if isinstance(message, dict) else None
-            if not isinstance(content, list):
-                continue
-            for b in content:
-                if not isinstance(b, dict):
-                    continue
-                # A thought or a line of speech prints in the layout a step uses, with its
-                # kind where the tool name sits, so the three are told apart at a glance.
-                # These feed only seen_at, not when: a worker can think for minutes
-                # without a step and is not stalled.
-                kind = b.get("type")
-                if kind in ("thinking", "text"):
-                    ts = d.get("timestamp")
-                    label = "thinking" if kind == "thinking" else "says"
-                    rows = [l for l in (" ".join(x.split()) for x in (b.get(kind) or "").splitlines()) if l]
-                    # A single thought has filled 485 rows here and pushed every tool call
-                    # out of the panel, and the ending of a thought is the part that says
-                    # whether the route is wrong. The count line ahead of the kept rows
-                    # keeps a reader from taking them for the whole thought. While the
-                    # worker is acting, BLOCK_LINES_WORKING of them are enough of the
-                    # ending and the steps keep the rest of the panel; once it has been
-                    # quiet since its last step for as long as the waiting line needs, the
-                    # thought is all there is to read and it keeps BLOCK_LINES. Measured on
-                    # the events' own moments, not this reader's clock, so a replay sees
-                    # the silences a live watch saw.
-                    kept = BLOCK_LINES if ts_value(ts) - state["when_ts"] >= IDLE_AFTER else BLOCK_LINES_WORKING
-                    if len(rows) > kept:
-                        say(label, f"{len(rows) - kept} earlier lines of this block not shown", ts)
-                        rows = rows[-kept:]
-                    for l in rows:
-                        say(label, l, ts)
-                    continue
-                if kind != "tool_use":
-                    continue
-                if b.get("id") in seen:
-                    continue
-                seen.add(b.get("id"))
-                i = b.get("input") or {}
-                arg = i.get("command") or i.get("file_path") or i.get("pattern") or ""
-                arg = " ".join(str(arg).split())
-                name = b.get("name", "?")
-                ts = d.get("timestamp")
-                state["when"] = time.time()
-                state["when_ts"] = ts_value(ts)
-                state["last"] = "step"
-                if name == state["tool"]:
-                    state["n"] += 1
-                    state["args"].add(arg)
-                    # A run of one tool — a scan, a string of edits — would spend the
-                    # whole display on near-identical rows. It gets one line at the
-                    # second call and one at each doubling, and the line that does print
-                    # carries the most recent argument. The same call repeating is a
-                    # worker stuck in a loop and keeps this plain form; calls that
-                    # differed say how many distinct ones the fold has held.
-                    if state["n"] >= state["next"]:
-                        if len(state["args"]) == 1:
-                            say(name, f"x{state['n']} {arg}", ts)
-                        else:
-                            say(name,
-                                f"x{state['n']} {len(state['args'])} different, last: {arg}", ts)
-                        state["next"] = state["n"] * 2
-                else:
-                    state["tool"], state["n"], state["next"], state["args"] = name, 1, 2, {arg}
-                    say(name, arg, ts)
-        return f.tell()
-
-
-# when: the last time a step or a retry was printed, which is what "the worker has done
-# nothing" is measured from. when_ts: the same thing on the events' own moments, which is
-# what the block tails are measured on. seen_at: the last time the stream produced anything
-# at all, thinking included, which separates a worker that is generating from one that is
-# silent.
-state = {"tool": None, "n": 0, "next": 2, "retries": 0, "retry_next": 1,
-         "when": time.time(), "when_ts": started, "seen_at": 0.0, "last": None,
-         "args": set()}
-pos, seen, waited, last_idle = 0, set(), 0, 0.0
+# The gap between two steps is the number worth reading: a step that sits for minutes
+# is how a stuck worker shows itself, and when nothing at all arrives the loop below
+# says so on its own.
+reader = haring_events.RunReader(when_ts=started)
+waited, last_idle = 0, 0.0
 while not landed():
     if os.path.exists(events):
-        pos = steps(events, pos, seen, state)
+        for label, text, ts in reader.read(events):
+            say(label, text, ts)
     now = time.time()
-    quiet = now - state["when"]
-    if alive() and quiet >= IDLE_AFTER and now - last_idle >= IDLE_AFTER:
+    quiet = now - reader.when
+    if alive() and quiet >= haring_events.IDLE_AFTER \
+            and now - last_idle >= haring_events.IDLE_AFTER:
         last_idle = now
         # Once a minute, in the tool column the steps use, so the display keeps its shape
         # and a stalled worker looks different from a busy one.
-        if state["last"] == "retry":
-            say("waiting", f"on the endpoint, {state['retries']} retries so far", None)
-        elif now - state["seen_at"] < IDLE_AFTER / 2:
+        if reader.last == "retry":
+            say("waiting", f"on the endpoint, {reader.retries} retries so far", None)
+        elif now - reader.seen_at < haring_events.IDLE_AFTER / 2:
             # Not the word used for a thinking block: that label carries the worker's own
             # words, and this line carries none. A reader must be able to tell a thought
             # from a report that there is no thought yet.
@@ -333,7 +220,8 @@ if not landed():
 # A wait that joined after the run finished has read nothing live; this replay is what it
 # shows instead, with the time each call was made taken from the events themselves.
 if os.path.exists(events):
-    steps(events, pos, seen, state)
+    for label, text, ts in reader.read(events):
+        say(label, text, ts)
 
 stats = os.path.join(run, "stats.txt")
 if os.path.exists(stats) and os.path.getsize(stats):
