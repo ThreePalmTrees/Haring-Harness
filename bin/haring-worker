@@ -8,8 +8,10 @@
 #
 # kind is one of: check implement errand
 #
-# The model is glm-5.3-flash for every kind. The manager never chooses another one.
-# --model exists only for when the person who asked for the work asks for it.
+# The model is one of four — claude-opus-5 and claude-sonnet-5 answered by Anthropic,
+# glm-5.3 and glm-5.3-flash by Z.ai — with claude-sonnet-5 the default, and the endpoint
+# follows the model. The manager never chooses a model on its own: --model exists only
+# for when the person who asked for the work asks for it.
 # --effort lowers or raises how hard the worker thinks, and exists only for when the
 # person who asked for the work asks for it. No kind sets it: see the comment above
 # the kind table.
@@ -29,7 +31,23 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
-MODEL_DEFAULT=glm-5.3-flash
+MODEL_DEFAULT=claude-sonnet-5
+
+# The model a worker runs on decides the endpoint that answers it. This table decides:
+# a model it does not hold is refused once the model settles, and the endpoint is read
+# out of the same table then — never guessed from the shape of the name.
+#
+#   claude-opus-5     Anthropic
+#   claude-sonnet-5   Anthropic
+#   glm-5.3           Z.ai
+#   glm-5.3-flash     Z.ai
+model_endpoint() {
+  case "$1" in
+    claude-opus-5 | claude-sonnet-5) echo anthropic ;;
+    glm-5.3 | glm-5.3-flash) echo zai ;;
+    *) echo none ;;
+  esac
+}
 
 # The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
 # is set. The number is the plan's concurrency limit — the most requests the model provider
@@ -132,6 +150,21 @@ while [ $# -gt 0 ]; do
 done
 
 : "${model:=$MODEL_DEFAULT}"
+
+# A model the table above does not hold is refused here and now, before anything is
+# created: Claude Code's own refusal to an unknown name arrives only after it has
+# started, which here means after the run folder exists and the worker is launched —
+# a dead run for a mistyped model. Like a bad kind, it is a wrongly written command,
+# so it is answered before the environment is examined at all: above the pulse check
+# and the one-worker check, which would each refuse first for its own reason and say
+# nothing about the model.
+endpoint=$(model_endpoint "$model")
+if [ "$endpoint" = none ]; then
+  echo "haring-worker: unknown model: $model" >&2
+  echo "  haring-worker takes one of: claude-opus-5, claude-sonnet-5," >&2
+  echo "  glm-5.3, glm-5.3-flash." >&2
+  exit 2
+fi
 
 # The tools each kind may use, and the tools it is denied. A read-only kind gets a shell
 # because reading needs one, and has the writing tools denied rather than being talked
@@ -364,11 +397,18 @@ $deny_entries
 }
 DENIED
 
-# The endpoint and token, unless the caller has already chosen them. An override
-# is what lets workers run through a local gateway when the plan quota is spent.
-ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
-ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
-export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+# The endpoint follows the model, from the same table that admitted it above. A Z.ai
+# model gets the Z.ai token and base url, unless the caller has already chosen them —
+# an override is what lets workers run through a local gateway when the plan quota is
+# spent. An Anthropic model gets neither: claude answers from its own configuration,
+# and the Keychain is never read — on a machine without the haring-zai key that read
+# fails or prompts, and an Anthropic worker has no use for it.
+case "$endpoint" in
+  zai)
+    ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
+    ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
+    export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ;;
+esac
 
 # Every worker this script starts is marked, so that haring-worker and haring-kill refuse
 # if it tries to start or stop a run of its own. HARING_ALLOW_NESTING lifts that for one
