@@ -174,7 +174,13 @@ class RunReader:
                         rows = [l for l in (" ".join(x.split())
                                             for x in (b.get(kind) or "").splitlines())
                                 if l]
-                        out.append((label, "\n".join(rows), d.get("timestamp")))
+                        # A block that carries no words at all produces no line. An
+                        # Anthropic worker emits thinking blocks whose content it does
+                        # not hand over: measured on one Sonnet run, six thinking blocks
+                        # holding nothing between them. Without this every one of them
+                        # printed a bare label with nothing after it.
+                        if rows:
+                            out.append((label, "\n".join(rows), d.get("timestamp")))
                         continue
                     if kind != "tool_use":
                         continue
