@@ -6,9 +6,10 @@
 project-dir defaults to the current directory, resolved to its git top level the
 same way haring-worker resolves a workdir. The block hands a worker what it would
 otherwise spend turns finding out: the project's own name, the date and time with
-timezone, the operating system, whether the project is in git, and a listing of the
-files and directories under the limits the block itself names — four levels deep,
-fifty entries per directory, names cut at fifty characters. Two kinds of directory
+timezone, the operating system, whether the project is in git, the model its own
+workers run on, and a listing of the files and directories under the limits the
+block itself names — four levels deep, fifty entries per directory, names cut at
+fifty characters. Two kinds of directory
 are named and never walked, each with the reason beside its name: anything
 `git check-ignore` calls ignored, and anything on a fixed list of dependency and
 tooling directories. Nothing else is special-cased.
@@ -101,6 +102,23 @@ def ignored(root, path, git):
     return r.returncode == 0
 
 
+def worker_model(root):
+    # The same order bin/haring-worker settles a fresh run's model from, minus
+    # --model, which only a launch itself can give: the project's own choice, then
+    # haring's, then the default. A file that is missing, empty, or holds only
+    # whitespace names nothing and is passed over.
+    haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    for path in (os.path.join(root, ".haring", "model"), os.path.join(haring, "model")):
+        try:
+            with open(path) as f:
+                candidate = f.read().strip()
+        except OSError:
+            continue
+        if candidate:
+            return candidate
+    return "claude-sonnet-5"
+
+
 def count(p):
     n = 0
     for _, dirs, files in os.walk(p):
@@ -160,6 +178,7 @@ def build(root):
     L.append(f"Now: {datetime.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}")
     L.append(f"Operating system: {os_name()}")
     L.append(f"Git-tracked: {'Yes' if git else 'No'}")
+    L.append(f"Worker model: {worker_model(root)}")
     L.append("")
     L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")

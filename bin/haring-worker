@@ -9,9 +9,10 @@
 # kind is one of: check implement errand
 #
 # The model is one of four — claude-opus-5 and claude-sonnet-5 answered by Anthropic,
-# glm-5.3 and glm-5.3-flash by Z.ai — with claude-sonnet-5 the default, and the endpoint
-# follows the model. The manager never chooses a model on its own: --model exists only
-# for when the person who asked for the work asks for it.
+# glm-5.3 and glm-5.3-flash by Z.ai — and the endpoint follows the model. Absent
+# --model, it settles from <project>/.haring/model, then <haring-root>/model, then
+# claude-sonnet-5, read and written by haring-model. The manager never chooses a model
+# on its own: --model exists only for when the person who asked for the work asks for it.
 # --effort lowers or raises how hard the worker thinks, and exists only for when the
 # person who asked for the work asks for it. No kind sets it: see the comment above
 # the kind table.
@@ -149,6 +150,31 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Checked here, before the model settles, because the project's own file is one of the
+# places the model can come from: in continue mode the workdir comes out of the
+# previous run's meta, and in a fresh run it is the caller's own argument.
+[ -d "$workdir" ] || { echo "no such workdir: $workdir" >&2; usage; }
+
+# The project is the git top level of the workdir when there is one, else the workdir.
+project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
+
+# The model settles from four places, the first that names one winning: --model above,
+# then the project's own choice, then haring's, then the default. A continue never
+# reaches here with an empty model — it already has one from the run it continues,
+# sourced from "$prev/meta" above — so this is only for a fresh run without --model.
+# A file that is missing, empty, or holds only whitespace names nothing and is passed
+# over rather than treated as a choice or an error.
+model_source=""
+if [ -z "$model" ]; then
+  for model_file in "$project/.haring/model" "$HARING/model"; do
+    [ -f "$model_file" ] || continue
+    candidate=$(tr -d '[:space:]' < "$model_file")
+    [ -n "$candidate" ] || continue
+    model=$candidate
+    model_source=$model_file
+    break
+  done
+fi
 : "${model:=$MODEL_DEFAULT}"
 
 # A model the table above does not hold is refused here and now, before anything is
@@ -161,6 +187,7 @@ done
 endpoint=$(model_endpoint "$model")
 if [ "$endpoint" = none ]; then
   echo "haring-worker: unknown model: $model" >&2
+  [ -n "$model_source" ] && echo "  (from $model_source)" >&2
   echo "  haring-worker takes one of: claude-opus-5, claude-sonnet-5," >&2
   echo "  glm-5.3, glm-5.3-flash." >&2
   exit 2
@@ -193,13 +220,6 @@ case "$kind" in
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 [ -n "$effort" ] && extra="$extra --effort $effort"
-
-# Checked here, after the kind, so both modes are covered: in continue mode the
-# workdir comes out of the previous run's meta.
-[ -d "$workdir" ] || { echo "no such workdir: $workdir" >&2; usage; }
-
-# The project is the git top level of the workdir when there is one, else the workdir.
-project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
 
 # A run nobody is watching is a run the manager hears nothing about: haring-pulse prints
 # one line per live worker, and starting it is the rule the manager was told to follow

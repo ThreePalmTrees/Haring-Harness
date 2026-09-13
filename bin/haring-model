@@ -1,0 +1,98 @@
+#!/bin/sh
+# haring-model — the model a worker in this project runs on: read it, or set it.
+#
+#   haring-model
+#   haring-model <model>
+#   haring-model --project <model>
+#
+# With no argument, prints the model a worker started here would run on, and where
+# that came from — the same order bin/haring-worker settles a fresh run's model
+# from, minus --model, which only a launch itself can give: <project>/.haring/model,
+# then <haring-root>/model, then the default, claude-sonnet-5.
+#
+# With one argument, writes that name into <haring-root>/model — haring's own
+# choice, in force everywhere unless a project overrides it — and prints what it
+# wrote. --project writes <project>/.haring/model instead: the per-project
+# override, set the same way it is read.
+#
+# The model is one of four — claude-opus-5, claude-sonnet-5, glm-5.3, glm-5.3-flash,
+# the same four bin/haring-worker accepts — and a name outside that list is refused.
+#
+# project is the git top level of the current directory, resolved the same way
+# bin/haring-worker resolves a workdir.
+#
+# Exits 2 when called wrongly: an unknown option, more than one model name, or a
+# model name outside the four. Exits 1 when called rightly but unable to finish —
+# haring's own directory could not be found, or the file could not be written.
+set -e
+
+MODEL_DEFAULT=claude-sonnet-5
+
+usage() {
+  echo "usage: haring-model [<model>] | haring-model --project <model>" >&2
+  exit 2
+}
+
+is_model() {
+  case "$1" in
+    claude-opus-5 | claude-sonnet-5 | glm-5.3 | glm-5.3-flash) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Resolve our own real location, following symlinks, so this keeps working when
+# it is linked onto PATH by install.sh — the same resolution bin/haring-worker uses.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd) || { echo "haring-model: could not find haring's own directory" >&2; exit 1; }
+
+project_flag=""
+model=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project) project_flag=1; shift ;;
+    -*) echo "haring-model: unknown option: $1" >&2; usage ;;
+    *) [ -z "$model" ] || { echo "haring-model: takes at most one model name" >&2; usage; }
+       model=$1; shift ;;
+  esac
+done
+
+project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
+
+if [ -n "$model" ]; then
+  if ! is_model "$model"; then
+    echo "haring-model: unknown model: $model" >&2
+    echo "  haring-model takes one of: claude-opus-5, claude-sonnet-5," >&2
+    echo "  glm-5.3, glm-5.3-flash." >&2
+    exit 2
+  fi
+  if [ -n "$project_flag" ]; then
+    mkdir -p "$project/.haring" || { echo "haring-model: could not create $project/.haring" >&2; exit 1; }
+    dest="$project/.haring/model"
+  else
+    dest="$HARING/model"
+  fi
+  printf '%s\n' "$model" > "$dest" || { echo "haring-model: could not write $dest" >&2; exit 1; }
+  echo "$model -> $dest"
+  exit 0
+fi
+
+[ -z "$project_flag" ] || { echo "haring-model: --project needs a model name to write" >&2; usage; }
+
+# The same order bin/haring-worker settles a fresh run's model from, minus --model.
+# A file that is missing, empty, or holds only whitespace names nothing and is
+# passed over rather than treated as a choice.
+for model_file in "$project/.haring/model" "$HARING/model"; do
+  [ -f "$model_file" ] || continue
+  candidate=$(tr -d '[:space:]' < "$model_file")
+  [ -n "$candidate" ] || continue
+  echo "$candidate ($model_file)"
+  exit 0
+done
+echo "$MODEL_DEFAULT (default)"
