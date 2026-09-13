@@ -54,5 +54,5 @@ if not run or not os.path.isdir(run) or not os.path.isfile(os.path.join(run, "me
 
 with open(os.path.join(run, "ask.jsonl"), "a") as f:
     f.write(json.dumps({"content": question,
-                        "at": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}) + "\n")
 sys.exit(0)
