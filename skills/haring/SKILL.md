@@ -728,7 +728,9 @@ A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
 `settings.json` with the denied paths that run was held to, `events.jsonl` with the
 run's events written by haring itself as they happen, and for every kind but `errand` a
 `PROGRESS.md` the worker appends to as it goes. A run whose worker asked you a question also
-leaves `ask.jsonl`, one line per question with the moment it was asked. The prompt names that
+leaves `ask.jsonl`, one line per question with the moment it was asked. A run whose manager
+said something to its worker also leaves `said.jsonl`, one line per message with the moment
+the worker got it. The prompt names that
 file and says its
 first line must be the method the worker means to use, so the plan is on disk before
 anything else happens; an `errand` gets neither the file nor the instruction, because it
