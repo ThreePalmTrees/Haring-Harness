@@ -75,6 +75,33 @@ def live_pid(run):
     return pid
 
 
+# The pulse is the one watcher a still-running answer can name without guessing: it
+# leaves its pid in <project>/.haring/pulse, and .haring sits two levels above the run
+# folder, so the same call resolves the same project from any working directory. Every
+# clause is checked — the file read, the pid alive, the command a haring-pulse — and
+# anything that cannot be checked is omitted rather than said.
+def watching_pulse(run):
+    pulse_file = os.path.join(os.path.dirname(os.path.dirname(run)), "pulse")
+    try:
+        text = open(pulse_file).read().strip()
+    except OSError:
+        return None
+    if not text.isdigit():
+        return None
+    try:
+        os.kill(int(text), 0)
+    except OSError:
+        return None
+    try:
+        out = subprocess.run(["ps", "-p", text, "-o", "command="],
+                             capture_output=True, text=True)
+    except OSError:
+        return None
+    if out.returncode != 0 or "haring-pulse" not in out.stdout:
+        return None
+    return text
+
+
 path = os.path.join(run, "report.json")
 landed = os.path.exists(path) and os.path.getsize(path) > 0
 if not landed:
@@ -89,6 +116,15 @@ if not landed:
         # run still working would be indistinguishable from one that had reported.
         print(f"still running: pid {pid} alive, {secs // 60}m{secs % 60:02d}s in, "
               f"no report yet at {path}", file=sys.stderr)
+        print("Asking again can show you nothing but this line and the minutes going by; "
+              "the news, when it comes, is the report replacing this line or word that the "
+              "worker is gone without one. This command answers once and waits for nothing "
+              "— the waiting belongs to whatever you armed to wait.", file=sys.stderr)
+        watcher = watching_pulse(run)
+        if watcher:
+            print(f"haring-pulse pid {watcher} is watching this project's runs, "
+                  f"this one included from its next pass; what the pulse prints, "
+                  f"re-asking this command will not add.", file=sys.stderr)
         sys.exit(3)
     if not os.path.exists(path):
         die(f"no report yet at {path}", 1)
