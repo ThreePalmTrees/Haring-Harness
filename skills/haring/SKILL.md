@@ -1249,8 +1249,21 @@ want to add, and why, in one line. If you cannot make that case, the existing fa
 yours is not written. The limit is not about space. It is the thing that forces you to
 rank, and ranking is what keeps the list worth reading.
 
+**Correcting one is not writing one.** When something you read contradicts a fact, or
+following it sent a manager or a worker down a path the code did not support, correct it
+or remove it now — the moment the wrongness is found, not saved for the end of the job.
+Neither counts against the three a job, and no limit says how many one job may correct.
+The trigger is evidence, not taste: preferring different wording is not a reason, because
+a list that churns on preference is a list nobody can rely on. Removing is as available as
+rewriting. A fact that was true and is not any more, and has no correct version worth
+keeping, is deleted. This project's own list held three facts that hours of work made
+stale, and the manager replaced all three — the list held three, not fifteen, and nothing
+in it allowed that.
+
 **Say it in the summary only when the file changed.** One line: which fact you added, and
-which you replaced if you replaced one. If you wrote nothing, the summary says nothing
+which you replaced if you replaced one. A fact you corrected or removed is named the same
+way, with what was wrong about it — that is the client's only signal the list had
+drifted. If you wrote nothing, the summary says nothing
 about the file — and that holds just as much when you considered writing one, weighed it
 against what is already there and decided against it. That reasoning is yours, not the
 client's.
