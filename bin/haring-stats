@@ -126,7 +126,19 @@ except OSError:
     pass
 
 mu = d.get("modelUsage") or {}
-model = next(iter(mu), "?")
+# The run's own model, taken from its meta file, because modelUsage holds more than the
+# worker: Claude Code bills its own side work — naming a session, for one — to a small
+# model of its own choosing, and that entry can come first. Measured on one Sonnet run:
+# claude-haiku-4-5 at 12 output tokens sat ahead of claude-sonnet-5 at 28,185, so the
+# first key named the wrong model and its numbers. A run whose meta names a model that
+# never billed falls back to the busiest entry, which is the worker in every real run.
+try:
+    model = dict(l.strip().split("=", 1)
+                 for l in open(os.path.join(run, "meta")) if "=" in l).get("model") or ""
+except OSError:
+    model = ""
+if model not in mu and model not in totals:
+    model = max(mu, key=lambda k: (mu[k] or {}).get("outputTokens") or 0, default="?")
 m = totals[model] if model in totals else mu.get(model, {})
 if not found:
     ms = d.get("duration_ms", 0)
