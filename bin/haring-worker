@@ -456,6 +456,7 @@ limit = int(sys.argv[2])                 # seconds of no new event before the ru
 queue = os.path.join(run, "say.jsonl")   # haring-say appends one line per message
 state = os.path.join(run, "say.state")   # who is listening, and how much it has taken
 events = os.path.join(run, "events.jsonl")
+said = os.path.join(run, "said.jsonl")   # each message the manager said, and when it landed
 
 reader = select.poll()
 reader.register(sys.stdout.fileno(), select.POLLERR | select.POLLHUP | select.POLLNVAL)
@@ -544,7 +545,18 @@ try:
         # Idle means every message so far has its result, so the next one starts a turn
         # of its own. The task itself goes over by the same rule, before any result.
         if pending and results >= sent:
-            hand_over(pending.pop(0))
+            text = pending.pop(0)
+            if sent:
+                # The manager said this, and nothing in the event stream will say so —
+                # whether claude echoes a message into its own output is its choice. The
+                # moment is written the way the event stream writes its timestamps, so
+                # the two files order against each other. The first hand over is the
+                # task, which is not a message and gets no line.
+                secs, frac = divmod(time.time(), 1)
+                when = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
+                with open(said, "a") as f:
+                    f.write(json.dumps({"at": when, "content": text}) + "\n")
+            hand_over(text)
             sent += 1
         # Handed is what haring-say watches for: how many of the queue's messages have
         # actually reached claude, which is one behind sent until the task is in.
