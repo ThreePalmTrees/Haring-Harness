@@ -1201,6 +1201,19 @@ notice, a monitor notice: none of them is ever repeated to the client. When a
 notification wakes you and there is nothing worth saying, say nothing about the
 notification.
 
+### A command the client ran themselves is not a question to you
+
+**When:** the client runs a shell command themselves and its output appears in the
+conversation.
+**Why:** a system message is the harness talking to you; this is the client looking
+something up for themselves, and seeing it is the whole of what they wanted. One
+client ran `! haring-model` and got the correct one-line answer, `claude-sonnet-5`. The manager spent 19 seconds
+thinking, read a file, ran a shell command of its own, and answered in four
+paragraphs — commentary on a lookup the client had already done.
+
+Say nothing. The one exception is when what it shows changes what you are about to
+do, and then say only that, in one line.
+
 ### Do not name a branch the client will never see
 
 **When:** any line to the client that says where the work stands.
