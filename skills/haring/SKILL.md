@@ -634,6 +634,19 @@ none was running. A shell command you are running yourself is not a worker and n
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
 
+**An Anthropic worker hands over no reasoning, and that is not a fault.** Its thinking
+blocks hold nothing: the stream carries its tool calls and its speech, never its
+reasoning, and the count survives — the pulse's quiet line still says how many thinking
+tokens it has spent. A Z.ai worker gives all three. `--effort` does not change this: a
+`claude -p` run asked to think first, with no effort and with `--effort high`, both
+produced thinking blocks holding nothing. On one Sonnet run,
+2026-09-13-132851-implement-67982, the stream held six thinking blocks with zero
+characters between them, fifteen tool calls with their arguments, and six substantive
+lines of speech in 426 characters — while its thinking-token count still reached 14,575
+across 124 events. The same reading on a Z.ai run, 2026-09-13-131955-implement-67268,
+shows 9,739 thinking_tokens events and thinking blocks that carry words. This is the
+model, not the pulse, `haring-wait` or `haring-transcript`.
+
 **Name the watch for what it runs.** The description you give the Monitor call is what
 the client sees in the list of background tasks. One read "haring workers on gitforked" —
 it named the project the client is already working in, and not the thing that is running.
@@ -805,7 +818,9 @@ waiting for the API to answer.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it
   next time.
 - Few calls, no new events, process alive — a long thinking block, or an `api_retry`
-  burst. Wait. Next time hand it the design instead of making it derive one.
+  burst; read the thinking-token count on the pulse's quiet line instead, which rises
+  while a worker thinks on any model. Wait. Next time hand it the design instead of
+  making it derive one.
 - Process gone, no report — finished or crashed. Read the report. No report plus changed
   files is a failure.
 
