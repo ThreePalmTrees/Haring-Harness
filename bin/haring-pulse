@@ -24,15 +24,18 @@ means the --every interval again.
 
 While it lives, this process's own pid is written to <project>/.haring/pulse, and the
 file is removed on every way out — each exit above, a Ctrl-C, a kill — but only while it
-still names this process: a second pulse in the same project writes its own pid over
-this one's, and the first one out must leave the file standing for the pulse still
-holding it. A file that cannot be read, or holds nothing readable, is taken as this
-pulse's own and removed. The file being there means a pulse is alive. haring-worker
-refuses to start a run into a project
-without it, which is what turns starting a pulse from a rule the manager has to remember
-into something that answers back. A pulse killed with SIGKILL leaves the file behind,
-because SIGKILL is the one death nothing can be done on the way out of; the check on the
-other side reads the pid and not just the file, so what it names being dead is no pulse.
+still names this process. One pulse watches a project. A second one reads the file
+before writing its own, and when what it names is alive and is a haring-pulse it
+refuses: one line on standard error naming that pid, and the pass interval in force
+when <project>/.haring/cadence holds a number the first pulse would adopt, then exit 1
+with the file untouched. Every other case takes the file over and runs — the file
+missing, unreadable, empty, the pid dead, the pid alive without being a haring-pulse.
+A pulse killed with SIGKILL leaves the file behind, because SIGKILL is the one death
+nothing can be done on the way out of, which is why the reader checks the pid and the
+command and not just the file: what it names being dead, or being no pulse, is no pulse.
+The file naming a live haring-pulse is what a pulse watching means, and haring-worker
+refuses to start a run into a project without it, which is what turns starting a pulse
+from a rule the manager has to remember into something that answers back.
 
 Meant to run under a tool that turns each stdout line into an event, where lines
 printed within 200 milliseconds of each other arrive as one notification — so a whole
@@ -82,7 +85,9 @@ worker ever appears at all — how long this waits for a first worker is what ke
 pulse started against a project where nothing is ever launched from sitting there
 forever. Exits 2 when called wrongly: an unknown flag, a project directory
 that does not exist, or --every or --first given something the rules above refuse.
-There is no way to be called rightly and still fail, so exit 1 is not used.
+There is no way to be called rightly and still fail, except one: a haring-pulse
+already watches this project, and one pulse to a project is the design — that
+refusal exits 1.
 """
 import sys, os, time, json, glob, subprocess, signal
 
@@ -106,7 +111,7 @@ FIRST_CEILING = 300  # an opening look is held to the same five minutes
 # run does not fire it.
 MAX_CHARS = 500000
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
-PULSE_FILE = "pulse"       # <project>/.haring/pulse, this process's own pid
+PULSE_FILE = "pulse"       # <project>/.haring/pulse, the watching pulse's pid
 
 # Turning the event stream into lines lives in lib/, shared with the other commands
 # that read a run.
@@ -177,6 +182,28 @@ def alive(pid):
         return True
     except OSError:
         return False
+
+
+# Whether a pulse pid file names a pulse that is watching: the pid in it alive and its
+# command a haring-pulse. A missing, unreadable or empty file, a dead pid, a live pid
+# that is not a pulse — none of them is a pulse, and the caller takes the file over.
+# Liveness is checked because SIGKILL leaves the file standing, and the command because
+# the pid a dead pulse once held can be given to a different process.
+def live_pulse_pid(path):
+    try:
+        text = open(path).read().strip()
+    except OSError:
+        return None
+    if not text.isdigit() or not alive(int(text)):
+        return None
+    try:
+        out = subprocess.run(["ps", "-p", text, "-o", "command="],
+                             capture_output=True, text=True)
+    except OSError:
+        return None
+    if out.returncode != 0 or "haring-pulse" not in out.stdout:
+        return None
+    return text
 
 
 def landed(run):
@@ -288,15 +315,29 @@ def take_cadence():
 # The pid file is the other side of haring-worker's refusal to start a run nobody is
 # watching: while it names this process, a run may start, and once it does not, none may.
 # It goes down after every check above has passed, so a call refused for a bad flag or a
-# missing project leaves no file behind. The removal sits in a finally, so every exit in
-# the loop below lands there; the handler turns a kill into an exit so a killed pulse
-# reaches it as well, since the default action for SIGTERM stops the process without
-# unwinding. The removal reads the file first, because a second pulse in this project
-# writes its own pid over this one's, and taking the file down would leave a live pulse
-# with no file at all. SIGKILL is the one death nothing can be done on the way out of,
-# which is why the reader of this file is made to check the pid and not just the file.
+# missing project leaves no file behind. A second pulse refused here leaves it standing
+# too: the refusal happens before anything is written, so the first pulse's claim on the
+# file is exactly what the second one read. The refusal names the cadence number only
+# when the file holds one the first pulse would adopt — anything else, including a
+# number above the ceiling, is not the interval in force and is not claimed. The removal
+# sits in a finally, so every exit in the loop below lands there; the handler turns a
+# kill into an exit so a killed pulse reaches it as well, since the default action for
+# SIGTERM stops the process without unwinding. The removal reads the file first, so it
+# takes down only a file that names this process. SIGKILL is the one death nothing can
+# be done on the way out of, which is why the reader of this file is made to check the
+# pid and the command, not just the file.
 os.makedirs(os.path.join(project, ".haring"), exist_ok=True)
 pulse_file = os.path.join(project, ".haring", PULSE_FILE)
+holder = live_pulse_pid(pulse_file)
+if holder:
+    message = f"a haring-pulse (pid {holder}) is already watching this project"
+    try:
+        cadence = open(os.path.join(project, ".haring", CADENCE_FILE)).read().strip()
+    except OSError:
+        cadence = ""
+    if cadence.isdigit() and 1 <= int(cadence) <= CEILING:
+        message += f", at a pass interval of {cadence}s"
+    die(message, 1)
 with open(pulse_file, "w") as f:
     f.write(f"{os.getpid()}\n")
 
