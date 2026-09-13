@@ -626,10 +626,11 @@ how long since that step, how many thinking tokens the run has accumulated, and 
 anything at all was written to its events stream. When that file has gone three minutes
 unwritten, the words change instead to say the worker may have died, which a worker deep in a
 long thought never lets happen. Every wake-up costs you a turn, which is why both numbers are
-minutes. The workers it reports are the ones live at the pass that found the first of them: a
-worker you start after that belongs to the next pulse, not this one. That is also why it ends
-within a second or two of the last worker it took on, and about two minutes after starting if
-none was running. A shell command you are running yourself is not a worker and never appears.
+minutes. The workers it reports are every worker live while it watches, whenever it started: a
+worker you start after the pulse began is taken on too, not left for a next pulse. It looks
+for them between passes rather than only when one is due, so it ends within a second or two
+of the last worker it took on, and about two minutes after starting if none was running.
+A shell command you are running yourself is not a worker and never appears.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
@@ -673,6 +674,15 @@ file to appear. The client opened their list of background tasks and found two m
 and no wait — one named "haring pulse", one named "errand 3 report landing" — and when
 the task finished they had no way to see any of it, because no wait had ever been
 started.
+
+**Once `haring-wait` and `haring-pulse` are armed on a run, do not check the run again by hand.**
+A still-running answer is the clock moving, not news — nothing in it changes but the minutes
+going by — and the news comes from what is armed: the wait returning when the run ends, the
+pulse printing a line while it goes. One manager, both watchers already armed, called
+`haring-stats` 110 times inside a single turn it never handed back, one every five or six
+seconds, answering each one with a Waiting line to the client, until the client stopped it by
+hand. The tools answer back now too: a still-running answer names what asking again is worth,
+and a second `haring-pulse` refuses while the first lives.
 
 The Monitor tool has exactly one use here, and "Start `haring-pulse` under the Monitor
 tool right after you launch the first worker" is it: each line the pulse prints wakes
