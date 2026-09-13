@@ -25,7 +25,11 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-Workers run on `glm-5.3-flash`. You never choose a different model.
+A worker runs on one of four models: `claude-opus-5`, `claude-sonnet-5`, `glm-5.3`, or
+`glm-5.3-flash`. The choice is the client's. `haring-model` reads it and sets it;
+`--model` on `haring-worker` exists for the same reason, when the client asks for a
+different model on one run. You never choose a model on your own. `haring-meta` already
+prints the current one, so you have it before you ask.
 
 ## How a job runs
 
@@ -535,13 +539,14 @@ It also prepends the `haring-meta` block to a fresh worker's prompt, and to noth
 else: a continue already has one from the run it continues. You never paste the block
 into a task yourself.
 `--effort` is optional and no kind sets one: without it, every kind runs at the tool's
-own default. The levels are low, medium, high, xhigh and max. Measured on a single-fact
-extraction, low was correct all three times and twice as fast: 9, 12 and 9 seconds
-against 18, 14 and 26. Measured on a task with several numbered questions, low and medium
-each came back with a non-answer of about 180 characters where the default answered in
-full, and one real errand at low effort returned an empty report having made no tool call
-at all. Low is for one fact from one file, and for nothing with several numbered
-questions.
+own default. The levels are low, medium, high, xhigh and max. Every number below was
+measured on `glm-5.3-flash`, and describes that model, not necessarily another one.
+Measured on a single-fact extraction, low was correct all three times and twice as fast:
+9, 12 and 9 seconds against 18, 14 and 26. Measured on a task with several numbered
+questions, low and medium each came back with a non-answer of about 180 characters where
+the default answered in full, and one real errand at low effort returned an empty report
+having made no tool call at all. Low is for one fact from one file, and for nothing with
+several numbered questions.
 
 One worker runs in a project at a time. A second `haring-worker` in the same project is
 refused before anything is created, and names the run still going and the `haring-kill`
@@ -568,6 +573,11 @@ haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state and a listing of the project
+haring-model [<model>] [--project]
+                                the worker's model: prints it and where
+                                it came from with no argument, writes it
+                                with one — haring's own choice, or the
+                                project's override with --project
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes

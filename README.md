@@ -10,7 +10,8 @@
 A wrapper for using sub-agents, so you do not repeat the same setup every time.
 
 **Manager:** Any model. `Opus` is recommended.<br/>
-**Worker:** `GLM-5.3-Flash`. You can ask the manager to use a different model.
+**Worker:** One of `claude-opus-5`, `claude-sonnet-5`, `glm-5.3`, `glm-5.3-flash`. Your
+choice, set with `haring-model`.
 
 ## Why Haring
 
@@ -69,6 +70,9 @@ document.
 ### Structure
 
     bin/            haring-worker    start a worker, or continue one
+                    haring-model     read the worker's model, or write it —
+                                    haring's own choice, or the project's
+                                    with --project
                     haring-wait      follow a run, then print its report
                     haring-pulse     the workers' stream since the last pass, fast then
                                     at a pace you can retune
