@@ -98,7 +98,7 @@ if os.path.exists(said):
                 d = json.loads(line)
             except ValueError:
                 continue
-            manager.append(("manager", d.get("text") or "", d.get("at")))
+            manager.append(("manager", d.get("content") or "", d.get("at")))
     # sorted() is stable, so entries tied at the same moment keep the stream's own
     # order among themselves and the manager's lines cut in only where their moments
     # fall.

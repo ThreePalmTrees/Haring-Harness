@@ -555,7 +555,7 @@ try:
                 secs, frac = divmod(time.time(), 1)
                 when = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
                 with open(said, "a") as f:
-                    f.write(json.dumps({"at": when, "text": text}) + "\n")
+                    f.write(json.dumps({"at": when, "content": text}) + "\n")
             hand_over(text)
             sent += 1
         # Handed is what haring-say watches for: how many of the queue's messages have
