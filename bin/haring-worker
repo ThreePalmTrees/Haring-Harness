@@ -454,14 +454,22 @@ DENIED
 # The endpoint follows the model, from the same table that admitted it above. A Z.ai
 # model gets the Z.ai token and base url, unless the caller has already chosen them —
 # an override is what lets workers run through a local gateway when the plan quota is
-# spent. An Anthropic model gets neither: claude answers from its own configuration,
-# and the Keychain is never read — on a machine without the haring-zai key that read
-# fails or prompts, and an Anthropic worker has no use for it.
+# spent. An Anthropic model gets neither from here, and strips the three Anthropic
+# variables instead of exporting any: on this client's machine the redirect to Z.ai
+# lives in the user settings' env block, which the child re-applies even when the
+# process environment is clean, so the launch also excludes the user settings layer
+# with --setting-sources project,local — both routes in, cut. The Keychain is never
+# read on this path either — on a machine without the haring-zai key that read fails
+# or prompts, and an Anthropic worker has no use for it.
+sources_flag=''
 case "$endpoint" in
   zai)
     ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
     ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
     export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ;;
+  anthropic)
+    unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+    sources_flag='--setting-sources project,local' ;;
 esac
 
 # Every worker this script starts is marked, so that haring-worker and haring-kill refuse
@@ -710,7 +718,7 @@ python3 "$run/keeper.tmp" "$run" 900 | claude -p \
   --output-format stream-json --input-format stream-json --verbose \
   --json-schema "\$(cat "$schema")" \
   --settings "$run/settings.json" \
-  $extra $resume_flag \
+  $extra $sources_flag $resume_flag \
   2>&1 1> "$run/events.jsonl" \
   | grep -v "unrecognized_model" \
   | grep -v "claude.ai connectors are disabled" > "$run/stderr.txt"
