@@ -39,9 +39,10 @@
 #
 # Exits 2 when called wrongly: an unknown option, more than one model name, the two
 # QA surfaces in one call, a plain model name beside a QA surface, a model name
-# outside the four, or a mode outside the three. Exits 1 when called rightly but
-# unable to finish — haring's own directory could not be found, the file could not
-# be written, or the QA model is unset.
+# outside the four, a mode outside the three, or --project with nothing to write on
+# any surface. Exits 1 when called rightly but unable to finish — haring's own
+# directory could not be found, the file could not be written, or the QA model is
+# unset.
 set -e
 
 MODEL_DEFAULT=claude-sonnet-5
