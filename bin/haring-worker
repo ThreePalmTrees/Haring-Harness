@@ -461,6 +461,14 @@ DENIED
 # with --setting-sources project,local — both routes in, cut. The Keychain is never
 # read on this path either — on a machine without the haring-zai key that read fails
 # or prompts, and an Anthropic worker has no use for it.
+#
+# --bare cannot ride along on this path either, whatever kind set it: --bare reads no
+# OAuth and no Keychain, its own help text names ANTHROPIC_API_KEY or apiKeyHelper as
+# the only auth under it, and the first-party login on this machine is Keychain OAuth
+# — --bare and Anthropic auth here do not mix. The consequence is real and left for
+# the next reader rather than solved here: an Anthropic check, errand or qa worker
+# loads what --bare skips — the project's hooks and CLAUDE.md — that its glm twin
+# does not.
 sources_flag=''
 case "$endpoint" in
   zai)
@@ -469,7 +477,12 @@ case "$endpoint" in
     export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ;;
   anthropic)
     unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
-    sources_flag='--setting-sources project,local' ;;
+    sources_flag='--setting-sources project,local'
+    case "$extra" in
+      *--bare*)
+        extra=$(printf '%s' "$extra" | sed -e 's/--bare//' -e 's/  */ /g' -e 's/^ //' -e 's/ $//')
+        echo "haring: an anthropic worker runs without --bare — --bare reads no Keychain, and the first-party login on this machine lives there." >&2 ;;
+    esac ;;
 esac
 
 # Every worker this script starts is marked, so that haring-worker and haring-kill refuse
