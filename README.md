@@ -72,7 +72,9 @@ document.
     bin/            haring-worker    start a worker, or continue one
                     haring-model     read the worker's model, or write it —
                                     haring's own choice, or the project's
-                                    with --project
+                                    with --project; --qa reads or writes
+                                    the QA model the same way, --qa-mode
+                                    the QA mode, auto, ask or never
                     haring-wait      follow a run, then print its report
                     haring-pulse     the workers' stream since the last pass, fast then
                                     at a pace you can retune
@@ -97,6 +99,10 @@ document.
                     kinds/           one file per kind of task, added to worker.md
 
     schemas/        one JSON schema per kind, the shape of that kind's report
+
+A project, or haring itself, can hold a `qa-model` and a `qa-mode` file; the
+project's overrides haring's own. With no QA model set anywhere, haring refuses to
+start a QA. With no mode set, the mode is ask.
 
 Everything is linked, not copied, so editing a file here takes effect at once. Editing a
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh

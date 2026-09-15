@@ -1,0 +1,113 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "properties": {
+  "task_as_i_read_it": {
+   "type": "string",
+   "description": "the task as you read it, in your own words, one or two sentences, written before the work. The manager compares it with what was sent, so a misreading shows here."
+  },
+  "narrowest_reading": {
+   "type": "string",
+   "description": "only if the task was ambiguous: the narrowest reading you took, and what the other reading would have been. Empty if it was not ambiguous."
+  },
+  "followups": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "work you found that mattered and did not do, one line each. Empty if there is none."
+  },
+  "findings": {
+   "type": "array",
+   "description": "what is still wrong, one object per finding, only inside the range the task gave. Each carries four things: where, steps_to_reproduce, expected, actual — nothing you cannot point at. An empty list is the report for a clean pass.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "where": {
+      "type": "string",
+      "description": "a file and a line, or how to reach the behaviour."
+     },
+     "steps_to_reproduce": {
+      "type": "string",
+      "description": "the exact steps that trigger it."
+     },
+     "expected": {
+      "type": "string",
+      "description": "what should happen."
+     },
+     "actual": {
+      "type": "string",
+      "description": "what happens."
+     }
+    },
+    "required": [
+     "where",
+     "steps_to_reproduce",
+     "expected",
+     "actual"
+    ]
+   }
+  },
+  "one_true_thing": {
+   "type": "string",
+   "description": "one line: what would most change how the next task is planned. Say so if there is nothing."
+  },
+  "environment": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "what_failed": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "ok",
+    "what_failed"
+   ]
+  },
+  "redacted": {
+   "type": "boolean"
+  },
+  "doubts": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "needs_the_client": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "did_not_check": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "weak_evidence": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "needs_the_client",
+    "did_not_check",
+    "weak_evidence"
+   ]
+  }
+ },
+ "required": [
+  "task_as_i_read_it",
+  "findings",
+  "one_true_thing",
+  "environment",
+  "redacted",
+  "doubts"
+ ]
+}

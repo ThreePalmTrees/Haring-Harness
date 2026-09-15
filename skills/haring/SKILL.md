@@ -1,6 +1,6 @@
 ---
 name: haring
-description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning, the three kinds of delegation, how to review what comes back, and how to hand the job over.
+description: Run a job by managing a team of workers instead of doing the work yourself. Use when asked to build, fix, investigate or analyse something in a codebase and the work should be delegated. Also use when the user types /haring. Covers planning, the four kinds of delegation, how to review what comes back, and how to hand the job over.
 ---
 
 IMPORTANT: Run `haring-meta` once at the start of a job and read what it prints. In one
@@ -412,13 +412,15 @@ task is a decision bought at the wrong price.
 
 ---
 
-## The three kinds of delegation
+## The four kinds of delegation
 
 Pick the kind first. It sets the tools and the shape of the report.
 
 - **errand** — names, line numbers and counts; read only, no shell.
 - **check** — one claim, answered true, false, partly or could_not_check, with evidence.
 - **implement** — do the work, on a branch.
+- **qa** — break what the diff changed, after the manager is satisfied; report only
+  what is wrong.
 
 ### Pick the kind by whether the question needs a shell
 
@@ -519,6 +521,44 @@ Before you report finished, run these commands and paste what each printed:
 Any idea ?
 ```
 
+### Run the QA
+
+The QA is a worker of its own kind, and the gate fires at one moment: you have
+finished your own review, every correction is carried out and verified, and you are
+about to write the client that the task is done. Just before that message. The
+worker's report landing is not the signal, and neither is the end of the review loop.
+
+Resolve the range yourself — the task's commits as base..head — and state in the QA
+task what is deliberately outside it: uncommitted work, reverted commits. Client
+guidance is welcome, never required. A task that produced no commits has no range to
+diff, so the gate passes without a question.
+
+Read the QA model and mode when the gate fires — `haring-model --qa` and
+`haring-model --qa-mode` — never earlier: either can change between the first pass and
+the handover. The mode decides what happens at the gate.
+
+- **auto** — the QA starts. One line to the client that it started, and on what range.
+- **ask** — one question whether the client wants a QA pass on that range, then,
+  verbatim: You can run ! haring-model --qa-mode <auto|never> to set the QA mode.
+- **never** — no question, no start.
+
+A plain-language request from the client overrides every mode.
+
+When QA is due (mode ask or auto) and the QA model is unset, the client gets exactly
+two things and nothing starts. First: ! haring-model --qa <model>. Then, when the mode
+is missing or ask: You can run ! haring-model --qa-mode <auto|never> to set the QA
+mode.
+
+Findings come back through you. Each is checked at the place it names, and the agreed
+ones become worker task or tasks, whose fixes you verify were carried out faithfully.
+Verifying findings is manager work, not a QA second pass. No re-QA of the same work; a
+second QA pass happens only when the client asks. Only then is the client told the
+task is done.
+
+A QA run that ends with no report is one brief line to the client: the QA tried with
+<exact model name> and didn't work — the reason if the run's stderr names one, and if
+no reason is known, say that too.
+
 ---
 
 ## Starting and watching a worker
@@ -573,11 +613,15 @@ haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state and a listing of the project
-haring-model [<model>] [--project]
+haring-model [<model>] [--qa [<model>]] [--qa-mode <auto|ask|never>] [--project]
                                 the worker's model: prints it and where
                                 it came from with no argument, writes it
                                 with one — haring's own choice, or the
-                                project's override with --project
+                                project's override with --project.
+                                --qa reads or writes the QA model the
+                                same way, --qa-mode the QA mode, auto,
+                                ask or never; --project scopes the
+                                write to the current project
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
