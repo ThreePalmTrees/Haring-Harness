@@ -454,7 +454,7 @@ DENIED
 # The endpoint follows the model, from the same table that admitted it above. A Z.ai
 # model gets the Z.ai token and base url, unless the caller has already chosen them —
 # an override is what lets workers run through a local gateway when the plan quota is
-# spent. An Anthropic model gets neither from here, and strips the three Anthropic
+# spent. An Anthropic model gets neither from here, and strips the six Anthropic
 # variables instead of exporting any: on this client's machine the redirect to Z.ai
 # lives in the user settings' env block, which the child re-applies even when the
 # process environment is clean, so the launch also excludes the user settings layer
