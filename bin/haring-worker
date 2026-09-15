@@ -468,7 +468,10 @@ DENIED
 # — --bare and Anthropic auth here do not mix. The consequence is real and left for
 # the next reader rather than solved here: an Anthropic check, errand or qa worker
 # loads what --bare skips — the project's hooks and CLAUDE.md — that its glm twin
-# does not.
+# does not. Stripping --bare also turns auto-memory back on: measured on this path
+# by tonight's qa run, an Anthropic worker is handed the project's memory index in
+# its system prompt while the run's own deny list forbids reading under ~/.claude,
+# and an implement worker holds Write, so it can write there too.
 sources_flag=''
 case "$endpoint" in
   zai)
@@ -476,7 +479,8 @@ case "$endpoint" in
     ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
     export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ;;
   anthropic)
-    unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+    unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY \
+      ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL
     sources_flag='--setting-sources project,local'
     case "$extra" in
       *--bare*)
