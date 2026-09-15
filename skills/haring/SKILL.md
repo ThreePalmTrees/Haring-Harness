@@ -772,7 +772,9 @@ continued again.
 Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell as well
 — reading a codebase needs one — and `Write` and `Edit` are denied it, so a check cannot
 change a file by ignoring its rules. `errand` gets the same three without the shell, and
-`Bash`, `Write` and `Edit` are denied it outright. What the harness holds every kind to,
+`Bash`, `Write` and `Edit` are denied it outright. `qa` gets what `check` gets — the same
+three tools and the shell, with `Write` and `Edit` denied — since a QA that could write
+could fix what it should only report. What the harness holds every kind to,
 including the shell, is the deny list `haring-worker` writes into each run folder as
 `settings.json` and passes with `--settings`: the client's private paths outside the project
 — `~/.claude/**`, `~/.ssh/**`,

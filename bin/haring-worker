@@ -6,13 +6,18 @@
 #   haring-worker <kind> <workdir> <prompt-file> [--model M] [--effort L] [--no-pulse]
 #   haring-worker continue <kind> <previous-run-folder> <prompt-file>
 #
-# kind is one of: check implement errand
+# kind is one of: check implement errand qa
 #
 # The model is one of four — claude-opus-5 and claude-sonnet-5 answered by Anthropic,
 # glm-5.3 and glm-5.3-flash by Z.ai — and the endpoint follows the model. Absent
 # --model, it settles from <project>/.haring/model, then <haring-root>/model, then
 # claude-sonnet-5, read and written by haring-model. The manager never chooses a model
 # on its own: --model exists only for when the person who asked for the work asks for it.
+# A qa run settles differently: it has no default, because a QA pass runs on a model
+# the client chose — so a fresh qa run takes its model from <project>/.haring/qa-model,
+# then <haring-root>/qa-model, both read and written by haring-model --qa, and refuses
+# when neither names one. --model overrides with the same warning as any kind; a
+# continue keeps the run's own model.
 # --effort lowers or raises how hard the worker thinks, and exists only for when the
 # person who asked for the work asks for it. No kind sets it: see the comment above
 # the kind table.
@@ -165,7 +170,33 @@ project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$work
 # A file that is missing, empty, or holds only whitespace names nothing and is passed
 # over rather than treated as a choice or an error.
 model_source=""
-if [ -z "$model" ]; then
+if [ "$kind" = qa ]; then
+  # A qa run falls back to no default, and does not reach the plain settle below at
+  # all: a QA pass runs on a model the client chose, so the worker-model files are
+  # not its business. A fresh qa run without --model settles from the qa-model files
+  # — the project's, then haring's — under the same whitespace rule as the plain
+  # settle, and refuses when neither names one. The refusal is a missing setting
+  # rather than a wrongly written command, so it is exit 1 and names the command
+  # that sets it, and it sits here, before anything is created and above the pulse
+  # check and the one-worker check, so it fires whatever else is true about the
+  # project. A qa-model that names something, but something the table below does
+  # not hold, is not this refusal: it falls through to the unknown-model refusal,
+  # exit 2 — a garbage file is a wrongly written command, an absent one is a
+  # missing setting. A continue never reaches here with an empty model, so the
+  # settle and its refusal are fresh-launch behaviour; a continued qa keeps the
+  # model of the run it continues, like every kind.
+  if [ -z "$model" ]; then
+    for model_file in "$project/.haring/qa-model" "$HARING/qa-model"; do
+      [ -f "$model_file" ] || continue
+      candidate=$(tr -d '[:space:]' < "$model_file")
+      [ -n "$candidate" ] || continue
+      model=$candidate
+      model_source=$model_file
+      break
+    done
+    [ -n "$model" ] || { echo "haring-model --qa <model>" >&2; exit 1; }
+  fi
+elif [ -z "$model" ]; then
   for model_file in "$project/.haring/model" "$HARING/model"; do
     [ -f "$model_file" ] || continue
     candidate=$(tr -d '[:space:]' < "$model_file")
@@ -217,6 +248,9 @@ case "$kind" in
   implement)
       tools='Read,Write,Edit,Glob,Grep,Bash'; denied=''
       extra='--permission-mode acceptEdits' ;;
+  qa)
+      tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
+      extra='--bare' ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 [ -n "$effort" ] && extra="$extra --effort $effort"
@@ -354,7 +388,7 @@ fi
   printf 'Quick: '
   cat "$promptfile"
   case "$kind" in
-    implement|check)
+    implement|check|qa)
       : > "$run/PROGRESS.md"
       printf '\n\n---\nWrite your progress to this exact path, one line at a time: %s\n' "$run/PROGRESS.md"
       printf 'Your first line is the method — how you intend to answer this, in one\n'
