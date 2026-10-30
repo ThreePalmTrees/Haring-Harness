@@ -16,17 +16,65 @@ haring-wait applies both after read() returns, and every other reader gets the s
 whole. BLOCK_LINES and BLOCK_LINES_WORKING stay here, because haring-wait needs both
 numbers and this module is where the shared numbers live.
 """
-import json, time
+import json, os, subprocess, time
 from datetime import datetime
+
+
+def live_session(run):
+    """The OpenCode session a run is working in: the first session id its events.jsonl
+    names, else the one its meta names. A fresh run's meta already holds it; a continued
+    run forks under an id OpenCode picks, which only the stream knows."""
+    try:
+        with open(os.path.join(run, "events.jsonl")) as f:
+            for line in f:
+                try:
+                    sid = json.loads(line).get("sessionID")
+                except ValueError:
+                    continue
+                if sid:
+                    return sid
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(run, "meta")) as f:
+            for line in f:
+                if line.startswith("session_id="):
+                    return line.strip().split("=", 1)[1].strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def opencode_api(method, path, body=None):
+    """One request to the OpenCode server through `opencode api`, as (ok, text). The
+    server holds the session, so stopping or steering a worker goes through it."""
+    cmd = ["opencode", "api", method, path]
+    if body is not None:
+        cmd += ["-d", json.dumps(body)]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                             stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    text = (out.stdout + out.stderr).strip()
+    return out.returncode == 0 and "HTTP 4" not in text and "HTTP 5" not in text, text
 
 VALUE_LIMIT = 500  # most of one argument's value that is printed
 ARGS_LIMIT = 1000  # most of one call's whole argument text that is printed
 # Argument names never printed at all: each one holds a payload rather than context —
-# the body of a file being written, and the two halves of an edit.
-SKIP_ARGS = ("content", "old_string", "new_string")
+# the body of a file being written, and the two halves of an edit. OpenCode spells the
+# edit halves in camel case.
+SKIP_ARGS = ("content", "old_string", "new_string", "oldString", "newString", "patchText")
 # The argument printed first and bare: the first of these the call carries. It is the
-# one that says what the call was, and the rest follow it as name=value.
-MAIN_ARGS = ("command", "file_path", "pattern")
+# one that says what the call was, and the rest follow it as name=value. OpenCode names
+# the file `path` or `filePath` where Claude Code named it `file_path`.
+MAIN_ARGS = ("command", "file_path", "filePath", "path", "pattern")
+# OpenCode's tool names, under the labels every reader and the manager's skill already
+# use. haring-report's evidence list counts Read, Glob, Grep and Bash by these labels,
+# so a worker's shell call has to arrive as Bash to count as evidence at all.
+TOOL_LABELS = {"read": "Read", "glob": "Glob", "grep": "Grep", "shell": "Bash",
+               "edit": "Edit", "write": "Write", "patch": "Patch",
+               "todowrite": "TodoWrite"}
 # Tools whose arguments are never printed: the call itself is the news, and its
 # arguments are the report the worker is handing over, which haring-report prints in
 # full a moment later. Rendering them here spends a thousand characters of every
@@ -70,12 +118,21 @@ def ts_value(ts):
     second. Stamping from the event rather than from the clock is what lets a reader
     that joined late replay a run with the real time each call was made.
     """
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        return ts / 1000
     if ts:
         try:
             return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
         except ValueError:
             pass
     return time.time()
+
+
+def iso(ms):
+    """An OpenCode event's epoch milliseconds in the form Claude Code stamped its events,
+    which is the form every reader and said.jsonl already order by."""
+    secs, frac = divmod(ms / 1000, 1)
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
 
 
 class RunReader:
@@ -127,6 +184,12 @@ class RunReader:
                 except ValueError:
                     continue
                 self.seen_at = time.time()
+                # An OpenCode worker's stream: one event per finished part, the part
+                # under "part" and the moment in epoch milliseconds.
+                if isinstance(d.get("part"), dict) and d.get("type") in (
+                        "tool_use", "text", "reasoning", "step_start", "step_finish"):
+                    out.extend(self.opencode(d))
+                    continue
                 # The endpoint refusing the worker shows up here and nowhere else, so
                 # it is announced like a step: it is the answer to "why has nothing
                 # happened". Counting is the one compression kept here, because every
@@ -199,3 +262,43 @@ class RunReader:
                     out.append((name, arg, ts))
             self.pos = f.tell()
         return out
+
+    def opencode(self, d):
+        """The entries one OpenCode event adds, under the same rules as a Claude Code
+        block: a tool call is a step, a thought or a line of speech feeds seen_at only."""
+        part = d["part"]
+        ms = d.get("timestamp")
+        ts = iso(ms) if isinstance(ms, (int, float)) else None
+        kind = d["type"]
+        if kind == "step_finish":
+            # The reasoning a step spent arrives with the step's end, not as its own
+            # event, so this is where the run's thinking count grows.
+            key = part.get("id")
+            if key not in self.seen:
+                self.seen.add(key)
+                self.thinking_tokens += (part.get("tokens") or {}).get("reasoning") or 0
+            return []
+        if kind in ("text", "reasoning"):
+            key = part.get("id")
+            if key in self.seen:
+                return []
+            self.seen.add(key)
+            rows = [l for l in (" ".join(x.split())
+                                for x in (part.get("text") or "").splitlines()) if l]
+            return [("thinking" if kind == "reasoning" else "says", "\n".join(rows), ts)] if rows else []
+        if kind != "tool_use":
+            return []
+        key = part.get("id") or part.get("partID")
+        if key in self.seen:
+            return []
+        self.seen.add(key)
+        tool = part.get("tool", "?")
+        name = TOOL_LABELS.get(tool, tool)
+        state = part.get("state") or {}
+        arg = render_args(state.get("input") or {})
+        if state.get("status") == "error":
+            arg = (arg + " — refused: " + " ".join(str(state.get("error") or "").split()))[:ARGS_LIMIT]
+        self.when = time.time()
+        self.when_ts = ts_value(ts)
+        self.last = "step"
+        return [(name, arg, ts)]

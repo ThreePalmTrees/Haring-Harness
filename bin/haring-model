@@ -5,56 +5,46 @@
 #   haring-model <model>
 #   haring-model --project <model>
 #   haring-model --qa [<model>]
-#   haring-model --qa-mode [<auto|ask|never>]
 #
 # With no argument, prints the model a worker started here would run on, and where
 # that came from — the same order bin/haring-worker settles a fresh run's model
 # from, minus --model, which only a launch itself can give: <project>/.haring/model,
-# then <haring-root>/model, then the default, claude-sonnet-5.
+# then <haring-root>/model, then the default, opencode-go/deepseek-v4.1-flash.
 #
 # With one argument, writes that name into <haring-root>/model — haring's own
 # choice, in force everywhere unless a project overrides it — and prints what it
 # wrote. --project writes <project>/.haring/model instead: the per-project
 # override, set the same way it is read.
 #
-# --qa reads or writes the QA model the same way the plain surface reads and
-# writes the worker model, from the same two places minus any default:
-# <project>/.haring/qa-model, then <haring-root>/qa-model. A QA pass runs on a
-# model the client chose, so no default sits behind the two files: when neither
-# names one, the read prints "qa model unset" and exits 1 — the one answer the
-# plain read never has to give.
+# --qa reads or writes the model a QA pass runs on, from the same two places:
+# <project>/.haring/qa-model, then <haring-root>/qa-model. A QA pass runs only when
+# the client asks for one. With neither file naming a model it runs on opus, as the
+# Claude Code agent haring-qa, and the read says so. opus and sonnet run as that
+# agent on that model; an OpenCode model runs as a haring-worker qa run.
 #
-# --qa-mode reads or writes the QA mode the same way, from
-# <project>/.haring/qa-mode, then <haring-root>/qa-mode. A read prints what a
-# file holds without validating it — a hand edit is printed as it stands; only a
-# write validates, and takes one of auto, ask or never. When neither file names
-# a mode, the read prints "ask (default)" and exits 0: ask is the mode the
-# manager falls back to.
-#
-# The model is one of four — claude-opus-5, claude-sonnet-5, glm-5.3, glm-5.3-flash,
-# the same four bin/haring-worker accepts — and a name outside that list is refused.
+# The worker model is one of opencode-go/deepseek-v4.1-flash and
+# opencode-go/glm-5.3-flash, the same ones bin/haring-worker accepts; the QA model
+# is one of those, opus or sonnet. A name outside the list is refused.
 #
 # project is the git top level of the current directory, resolved the same way
 # bin/haring-worker resolves a workdir.
 #
-# Exits 2 when called wrongly: an unknown option, more than one model name, the two
-# QA surfaces in one call, a plain model name beside a QA surface, a model name
-# outside the four, a mode outside the three, or --project with nothing to write on
-# any surface. Exits 1 when called rightly but unable to finish — haring's own
-# directory could not be found, the file could not be written, or the QA model is
-# unset.
+# Exits 2 when called wrongly: an unknown option, more than one model name, a plain
+# model name beside --qa, a model name outside the list, or --project with nothing
+# to write. Exits 1 when called rightly but unable to finish — haring's own
+# directory could not be found, or the file could not be written.
 set -e
 
-MODEL_DEFAULT=claude-sonnet-5
+MODEL_DEFAULT=opencode-go/deepseek-v4.1-flash
 
 usage() {
-  echo "usage: haring-model [<model>] [--qa [<model>]] [--qa-mode <auto|ask|never>] [--project]" >&2
+  echo "usage: haring-model [<model>] [--qa [<model>]] [--project]" >&2
   exit 2
 }
 
 is_model() {
   case "$1" in
-    claude-opus-5 | claude-sonnet-5 | glm-5.3 | glm-5.3-flash) return 0 ;;
+    opencode-go/deepseek-v4.1-flash | opencode-go/glm-5.3-flash) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -75,8 +65,6 @@ project_flag=""
 model=""
 qa_flag=""
 qa_write=""
-qa_mode_flag=""
-qa_mode_write=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) project_flag=1; shift ;;
@@ -86,30 +74,23 @@ while [ $# -gt 0 ]; do
             ''|-*) ;;
             *) qa_write=$1; shift ;;
           esac ;;
-    --qa-mode) qa_mode_flag=1; shift
-          case "${1-}" in
-            ''|-*) ;;
-            *) qa_mode_write=$1; shift ;;
-          esac ;;
     -*) echo "haring-model: unknown option: $1" >&2; usage ;;
     *) [ -z "$model" ] || { echo "haring-model: takes at most one model name" >&2; usage; }
        model=$1; shift ;;
   esac
 done
 
-[ -z "$qa_flag" ] || [ -z "$qa_mode_flag" ] || {
-  echo "haring-model: --qa and --qa-mode do not go together" >&2; usage; }
-[ -z "$model" ] || [ -z "$qa_flag$qa_mode_flag" ] || {
-  echo "haring-model: a plain model name does not go with --qa or --qa-mode" >&2; usage; }
+[ -z "$model" ] || [ -z "$qa_flag" ] || {
+  echo "haring-model: a plain model name does not go with --qa" >&2; usage; }
 
 project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 
 if [ -n "$qa_flag" ]; then
   if [ -n "$qa_write" ]; then
-    if ! is_model "$qa_write"; then
-      echo "haring-model: unknown model: $qa_write" >&2
-      echo "  haring-model takes one of: claude-opus-5, claude-sonnet-5," >&2
-      echo "  glm-5.3, glm-5.3-flash." >&2
+    if ! is_model "$qa_write" && [ "$qa_write" != opus ] && [ "$qa_write" != sonnet ]; then
+      echo "haring-model: unknown QA model: $qa_write" >&2
+      echo "  haring-model --qa takes one of: opus, sonnet," >&2
+      echo "  opencode-go/deepseek-v4.1-flash, opencode-go/glm-5.3-flash." >&2
       exit 2
     fi
     if [ -n "$project_flag" ]; then
@@ -133,47 +114,15 @@ if [ -n "$qa_flag" ]; then
     echo "$candidate ($model_file)"
     exit 0
   done
-  echo "qa model unset"
-  exit 1
-fi
-
-if [ -n "$qa_mode_flag" ]; then
-  if [ -n "$qa_mode_write" ]; then
-    case "$qa_mode_write" in
-      auto | ask | never) ;;
-      *) echo "haring-model: unknown qa mode: $qa_mode_write" >&2
-         echo "  haring-model takes one of: auto, ask, never." >&2
-         exit 2 ;;
-    esac
-    if [ -n "$project_flag" ]; then
-      mkdir -p "$project/.haring" || { echo "haring-model: could not create $project/.haring" >&2; exit 1; }
-      dest="$project/.haring/qa-mode"
-    else
-      dest="$HARING/qa-mode"
-    fi
-    printf '%s\n' "$qa_mode_write" > "$dest" || { echo "haring-model: could not write $dest" >&2; exit 1; }
-    echo "$qa_mode_write -> $dest"
-    exit 0
-  fi
-  [ -z "$project_flag" ] || { echo "haring-model: --project needs a mode to write" >&2; usage; }
-  # Reads do not validate: a hand-edited mode is printed as it stands, and only a
-  # write decides what the three words are.
-  for mode_file in "$project/.haring/qa-mode" "$HARING/qa-mode"; do
-    [ -f "$mode_file" ] || continue
-    candidate=$(tr -d '[:space:]' < "$mode_file")
-    [ -n "$candidate" ] || continue
-    echo "$candidate ($mode_file)"
-    exit 0
-  done
-  echo "ask (default)"
+  echo "opus (default: the Claude Code agent haring-qa)"
   exit 0
 fi
 
 if [ -n "$model" ]; then
   if ! is_model "$model"; then
     echo "haring-model: unknown model: $model" >&2
-    echo "  haring-model takes one of: claude-opus-5, claude-sonnet-5," >&2
-    echo "  glm-5.3, glm-5.3-flash." >&2
+    echo "  haring-model takes one of: opencode-go/deepseek-v4.1-flash," >&2
+    echo "  opencode-go/glm-5.3-flash." >&2
     exit 2
   fi
   if [ -n "$project_flag" ]; then

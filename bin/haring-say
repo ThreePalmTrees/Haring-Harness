@@ -3,26 +3,28 @@
 
     haring-say <run-folder> "<message>"
 
-The message reaches the worker over the input pipe its run was started with, and it
-answers it before its run ends: steering is for a worker doing the right task by a
+The message is posted into the worker's live OpenCode session with steer delivery, and
+the worker takes it at its next step and answers it before its run ends: steering is for a worker doing the right task by a
 wrong route, and it is worth a whole restart when the mistake is one sentence long.
 A worker on the wrong task is still a matter for haring-kill.
 
-Delivery is said only when it happened. The message is appended to say.jsonl in the
-run folder, and the keeper holding the worker's input pipe records in say.state each
-time it has handed one over; this waits to see that before claiming anything. A run
-that ended first leaves the message in say.jsonl, where it can be read for what it
-was too late to say.
+Delivery is said only when it happened: when the OpenCode server has admitted the
+message into a session that is still working. Each delivered message is written to
+said.jsonl in the run folder, which haring-transcript joins with the stream.
 
 Exits 2 when called wrongly: no argument, a missing or empty message, or a path that
 is not a haring run folder. Exits 1 when called rightly but unable to deliver — the
-run has finished and reported, or nothing is reading messages for it. Exits 0 only
+run has finished and reported, its session is no longer working, or the OpenCode
+server could not be reached. Exits 0 only
 when the message was handed to the worker.
 """
 import sys, os, time, json, subprocess
 
+HARING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+sys.path.insert(0, HARING_LIB)
+import haring_events
+
 USAGE = 'usage: haring-say <run-folder> "<message>"'
-HANDOVER_WAIT = 30   # seconds watching for the hand-over before the queue is the news
 STARTUP_WAIT = 5     # seconds to allow a just-started run to begin listening at all
 
 
@@ -76,8 +78,6 @@ if not message.strip():
 
 meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
 report = os.path.join(run, "report.json")
-queue = os.path.join(run, "say.jsonl")
-state = os.path.join(run, "say.state")
 
 
 def alive(pid):
@@ -91,59 +91,46 @@ def alive(pid):
 if os.path.exists(report) and os.path.getsize(report):
     die("this run already finished and reported. There is no worker to say anything to.", 1)
 
-# The keeper writes say.state when it starts and takes it away when it closes the pipe,
-# so its presence means the worker is still listening. A run started moments ago may not
-# have got as far as listening yet; one whose worker is gone will never listen at all,
-# and is told apart by the pid in meta rather than by waiting.
+# A run started moments ago may not have its runner up yet; one whose runner is gone
+# will never answer, and is told apart by the pid in meta rather than by waiting.
 deadline = time.time() + STARTUP_WAIT
 while True:
-    if os.path.exists(state):
-        break
     pid = meta.get("pid", "")
-    if not pid.isdigit() or not alive(pid):
-        die(f"no worker is running for {run}", 1)
+    if pid.isdigit() and alive(pid):
+        break
     if time.time() > deadline:
-        die(f"the worker in {run} is not reading messages. It is either finishing its run "
-            f"or was started before haring-say existed, so the message cannot be "
-            f"delivered.", 1)
+        die(f"no worker is running for {run}", 1)
     time.sleep(0.2)
 
-reading = dict(l.strip().split("=", 1) for l in open(state) if "=" in l)
-if not alive(reading.get("pid", "")):
-    die(f"the worker in {run} has stopped reading messages; its run is ending.", 1)
+# Only a session that is working is told anything. A message posted to an idle session
+# starts a turn of its own that nobody is reading — the run's client has already left —
+# so a run between its last answer and its report gets a refusal, not a message.
+session = haring_events.live_session(run)
+if not session:
+    die(f"the worker in {run} has not started its session yet; say it again in a moment.", 1)
+ok, active = haring_events.opencode_api("GET", "/api/session/active")
+if not ok:
+    die(f"could not reach the OpenCode server to deliver the message: {active[:300]}", 1)
+if session not in active:
+    die(f"the worker in {run} is not working any more; its run is ending. Read its "
+        f"report when it lands.", 1)
 
-# This message is line n of the queue, and the keeper records in say.state how many of
-# the queue's messages have reached the worker, so seeing handed reach n is seeing this
-# message handed over. It is not always immediate: a worker mid-turn takes the message
-# only when that turn ends, so this reports the queue as the truth it is rather than
-# waiting out a turn that may run for many minutes.
-with open(queue, "a") as f:
-    f.write(json.dumps({"content": message}) + "\n")
-lines = 0
-if os.path.exists(queue):
-    with open(queue) as f:
-        lines = sum(1 for l in f if l.strip())
-waited_to = time.time() + HANDOVER_WAIT
-while True:
-    try:
-        reading = dict(l.strip().split("=", 1) for l in open(state) if "=" in l)
-    except OSError:
-        reading = {}
-    handed = reading.get("handed", "")
-    if handed.isdigit() and int(handed) >= lines:
-        kind = meta.get("kind", "?")
-        print(f"delivered to the {kind} run {os.path.basename(run)}.", file=sys.stderr)
-        print(f"  It answers this before its run ends; watch with haring-wait or", file=sys.stderr)
-        print(f"  haring-pulse. Handed over as message {lines} of {queue}.", file=sys.stderr)
-        sys.exit(0)
-    if not alive(reading.get("pid", "")) or not os.path.exists(state):
-        die(f"the run ended before the message could be handed over. It is kept in "
-            f"{queue}, unread.", 1)
-    if time.time() > waited_to:
-        kind = meta.get("kind", "?")
-        print(f"queued for the {kind} run {os.path.basename(run)}, as message {lines} of "
-              f"{queue}.", file=sys.stderr)
-        print(f"  The worker is mid-turn; it takes the message when that turn ends and", file=sys.stderr)
-        print(f"  answers it before its run ends. haring-wait shows it land.", file=sys.stderr)
-        sys.exit(0)
-    time.sleep(0.2)
+# Steer is OpenCode's own delivery for a word to a session mid-run: the worker takes it
+# at its next step, inside the same run, and its answer arrives in the same stream.
+ok, answer = haring_events.opencode_api("POST", f"/api/session/{session}/prompt",
+                                        {"text": message, "delivery": "steer"})
+if not ok:
+    die(f"the OpenCode server refused the message: {answer[:300]}", 1)
+
+# The stream shows what the worker did with the message, not the message itself, so it
+# is written to said.jsonl with the moment it landed, stamped the way the event stream's
+# moments are stamped, and haring-transcript joins the two.
+secs, frac = divmod(time.time(), 1)
+when = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
+with open(os.path.join(run, "said.jsonl"), "a") as f:
+    f.write(json.dumps({"at": when, "content": message}) + "\n")
+kind = meta.get("kind", "?")
+print(f"delivered to the {kind} run {os.path.basename(run)}.", file=sys.stderr)
+print(f"  It takes this at its next step and answers it before its run ends; watch", file=sys.stderr)
+print(f"  with haring-wait or haring-pulse.", file=sys.stderr)
+sys.exit(0)

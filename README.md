@@ -9,14 +9,15 @@
 
 A wrapper for using sub-agents, so you do not repeat the same setup every time.
 
-**Manager:** Any model. `Opus` is recommended.<br/>
-**Worker:** One of `claude-opus-5`, `claude-sonnet-5`, `glm-5.3`, `glm-5.3-flash`. Your
-choice, set with `haring-model`.
+**Manager:** Claude Code, on any model you pick with `/model`. `Opus` is recommended.<br/>
+**Worker:** An [OpenCode](https://opencode.ai) session on `opencode-go/deepseek-v4.1-flash`
+(the default) or `opencode-go/glm-5.3-flash`. Your choice, set with `haring-model`.
 
 ## Why Haring
 
-Using Opus for everything consumes your subscription quickly.<br/>
-Haring gives you more bang for your buck.
+Using Opus for everything consumes your subscription quickly, and so does an Anthropic
+worker beside it.<br/>
+Haring keeps Claude for the thinking and hands the legwork to a fast, cheap model.
 
 Manager: Plans, architects, orchestrates, and reviews.<br/>
 Worker: Collects details, does the coding.
@@ -25,16 +26,17 @@ Worker: Collects details, does the coding.
 
 1. Clone this repository anywhere.
 
-2. Navigate inside and Run the installer:
+2. Install [OpenCode](https://opencode.ai) and sign in to OpenCode Go:
+```
+opencode auth login
+```
+
+3. Navigate inside and run the installer:
 ```
 cd haring-harness && ./install.sh
 ```
-
-3. Add your Z.ai API key to macOS Keychain:
-```
-security add-generic-password -a "$USER" -s haring-zai -U -w
-```
-> The terminal will prompt you for the key. The key stays out of your shell history.
+> It links the skill into `~/.claude/skills`, the scripts into `~/.local/bin`, and one
+> OpenCode agent per kind of worker into `~/.config/opencode/agents`.
 
 
 
@@ -49,7 +51,7 @@ Just mention `/haring` in your prompt
     .haring/runs/{stamp}-{kind}-{pid}/
       prompt.md      what the worker was asked, the only copy of the question
       report.json    what it returned, starting with the task as the worker read it
-      events.jsonl   the run's events, written by haring as they happen
+      events.jsonl   the run's events, OpenCode's own stream as they happen
       stats.txt      model, tokens, cache reads, turns, seconds
       meta           what the run was, so it can be continued
       PROGRESS.md    written as they go, by every kind but errand
@@ -73,8 +75,7 @@ document.
                     haring-model     read the worker's model, or write it —
                                     haring's own choice, or the project's
                                     with --project; --qa reads or writes
-                                    the QA model the same way, --qa-mode
-                                    the QA mode, auto, ask or never
+                                    the QA model the same way
                     haring-wait      follow a run, then print its report
                     haring-pulse     the workers' stream since the last pass, fast then
                                     at a pace you can retune
@@ -95,16 +96,27 @@ document.
 
     skills/haring/  SKILL.md         everything the manager needs, in one file
 
+    opencode/       agents/          one OpenCode agent per kind of task; the deny
+                                     rules there are what a kind may not do
+
+    lib/            haring_events.py reads a run's stream for every reader
+                    haring_report.py turns the stream into report.json, and
+                                     checks the report against its schema
+
     rules/          worker.md        the rules every worker gets
                     kinds/           one file per kind of task, added to worker.md
 
     schemas/        one JSON schema per kind, the shape of that kind's report
 
-A project, or haring itself, can hold a `qa-model` and a `qa-mode` file; the
-project's overrides haring's own. With no QA model set anywhere, haring refuses to
-start a QA. With no mode set, the mode is ask.
+A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
+agent `haring-qa` (`claude/agents/`, linked into `~/.claude/agents`). A project, or
+haring itself, can hold a `qa-model` file naming `sonnet` or an OpenCode model instead;
+the project's overrides haring's own, and an OpenCode model runs as a `haring-worker qa`
+run.
 
-Everything is linked, not copied, so editing a file here takes effect at once. Editing a
+Everything is linked, not copied, so editing a file here takes effect at once — except an
+agent in `opencode/agents/`: the OpenCode service does not notice that edit, so run
+`opencode reload` (or `./install.sh`) after one, or its old rules stay in force. Editing a
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh
 Claude Code session. Run `./install.sh` again only when you add a script to `bin/` or move
 this directory.

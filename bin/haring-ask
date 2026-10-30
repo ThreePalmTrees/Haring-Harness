@@ -5,8 +5,8 @@
 
 The question is appended to ask.jsonl in this run's folder, and haring-pulse prints it
 to the manager the moment it lands. The answer comes back the way every word reaches a
-worker already: haring-say writes it to say.jsonl, and the keeper holding the input pipe
-hands it over when this worker's turn ends. So this waits for nothing — a worker's turn
+worker already: haring-say posts it into this worker's live session, and the worker
+takes it at its next step. So this waits for nothing — a worker's turn
 cannot end while it is inside a command, so a question that waited for its reply could
 never be answered. It returns at once, and the worker carries on with whatever does not
 depend on the answer.

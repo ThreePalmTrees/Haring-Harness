@@ -25,8 +25,10 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-A worker runs on one of four models: `claude-opus-5`, `claude-sonnet-5`, `glm-5.3`, or
-`glm-5.3-flash`. The choice is the client's. `haring-model` reads it and sets it;
+A worker is an OpenCode session, started with `opencode run`, on one of two models:
+`opencode-go/deepseek-v4.1-flash` (the default) or `opencode-go/glm-5.3-flash`. You are
+a Claude Code session; the worker is not, so a worker is never started with the Agent
+tool — always with `haring-worker`. The choice of model is the client's. `haring-model` reads it and sets it;
 `--model` on `haring-worker` exists for the same reason, when the client asks for a
 different model on one run. You never choose a model on your own. `haring-meta` already
 prints the current one, so you have it before you ask.
@@ -420,7 +422,8 @@ Pick the kind first. It sets the tools and the shape of the report.
 - **check** — one claim, answered true, false, partly or could_not_check, with evidence.
 - **implement** — do the work, on a branch.
 - **qa** — break what the diff changed, after the manager is satisfied; report only
-  what is wrong.
+  what is wrong. Only when the client asks for it, and by default on opus as the Claude
+  Code agent `haring-qa`, not as a worker — see "Run the QA".
 
 ### Pick the kind by whether the question needs a shell
 
@@ -523,37 +526,35 @@ Any idea ?
 
 ### Run the QA
 
-The QA is a worker of its own kind, and the gate fires at one moment: you have
-finished your own review, every correction is carried out and verified, and you are
-about to write the client that the task is done. Just before that message. The
-worker's report landing is not the signal, and neither is the end of the review loop.
+A QA pass is optional and runs only when the client asks for one — "do a QA pass",
+"have it QA'd". Your own review of the diff is the gate every job passes; the QA is a
+second pair of eyes the client asks for. Never offer it as a step the job is waiting on.
 
-Resolve the range yourself — the task's commits as base..head — and state in the QA
-task what is deliberately outside it: uncommitted work, reverted commits. Client
-guidance is welcome, never required. A task that produced no commits has no range to
-diff, so the gate passes without a question.
+When asked, wait until you have finished your own review and every correction is
+carried out and verified. Resolve the range yourself — the task's commits as
+base..head — and state in the QA task what is deliberately outside it: uncommitted
+work, reverted commits. A task that produced no commits has no range to diff; say so
+instead of starting one.
 
-Read the QA model and mode when the gate fires — `haring-model --qa` and
-`haring-model --qa-mode` — never earlier: either can change between the first pass and
-the handover. The mode decides what happens at the gate.
+Read the QA model with `haring-model --qa` when the client asks, never earlier:
 
-- **auto** — the QA starts. One line to the client that it started, and on what range.
-- **ask** — one question whether the client wants a QA pass on that range, then,
-  verbatim: You can run ! haring-model --qa-mode <auto|never> to set the QA mode.
-- **never** — no question, no start.
+- **opus**, the default, or **sonnet** — start the Claude Code agent with the Agent
+  tool: `subagent_type: "haring-qa"`, and `model: "sonnet"` only when that is the
+  model named. The agent reads the QA rules and the report schema itself; your prompt
+  is the task alone, written as you would write any worker's, with the base and head
+  commits and the project path. Its final message is the report, as JSON. Run it in
+  the background and carry on. It writes no run folder, so there is nothing for
+  `haring-wait` or the pulse to follow.
+- **an OpenCode model** (`opencode-go/...`) — start it as a worker:
+  `haring-worker qa <workdir> <prompt-file>`, and follow it like any other run.
 
-A plain-language request from the client overrides every mode.
-
-When QA is due (mode ask or auto) and the QA model is unset, the client gets exactly
-two things and nothing starts. First: ! haring-model --qa <model>. Then, when the mode
-is missing or ask: You can run ! haring-model --qa-mode <auto|never> to set the QA
-mode.
+A model the client names in the request ("QA it with sonnet") beats the setting for
+that one pass.
 
 Findings come back through you. Each is checked at the place it names, and the agreed
 ones become worker task or tasks, whose fixes you verify were carried out faithfully.
 Verifying findings is manager work, not a QA second pass. No re-QA of the same work; a
-second QA pass happens only when the client asks. Only then is the client told the
-task is done.
+second QA pass happens only when the client asks.
 
 A QA run that ends with no report is one brief line to the client: the QA tried with
 <exact model name> and didn't work — the reason if the run's stderr names one, and if
@@ -578,9 +579,10 @@ continued. You do not write it — typing it as well makes the prompt open `Quic
 It also prepends the `haring-meta` block to a fresh worker's prompt, and to nothing
 else: a continue already has one from the run it continues. You never paste the block
 into a task yourself.
-`--effort` is optional and no kind sets one: without it, every kind runs at the tool's
-own default. The levels are low, medium, high, xhigh and max. Every number below was
-measured on `glm-5.3-flash`, and describes that model, not necessarily another one.
+`--effort` is optional and no kind sets one: without it, every kind runs at the model's
+own default. The levels are low, high and max, the model's OpenCode variants. Every
+number below was measured on `glm-5.3-flash` under the earlier Claude Code launcher, and
+describes that model, not necessarily another one.
 Measured on a single-fact extraction, low was correct all three times and twice as fast:
 9, 12 and 9 seconds against 18, 14 and 26. Measured on a task with several numbered
 questions, low and medium each came back with a non-answer of about 180 characters where
@@ -613,15 +615,14 @@ haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state and a listing of the project
-haring-model [<model>] [--qa [<model>]] [--qa-mode <auto|ask|never>] [--project]
+haring-model [<model>] [--qa [<model>]] [--project]
                                 the worker's model: prints it and where
                                 it came from with no argument, writes it
                                 with one — haring's own choice, or the
                                 project's override with --project.
                                 --qa reads or writes the QA model the
-                                same way, --qa-mode the QA mode, auto,
-                                ask or never; --project scopes the
-                                write to the current project
+                                same way: opus (the default), sonnet, or
+                                an OpenCode model
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
@@ -679,18 +680,13 @@ A shell command you are running yourself is not a worker and never appears.
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
 
-**An Anthropic worker hands over no reasoning, and that is not a fault.** Its thinking
-blocks hold nothing: the stream carries its tool calls and its speech, never its
-reasoning, and the count survives — the pulse's quiet line still says how many thinking
-tokens it has spent. A Z.ai worker gives all three. `--effort` does not change this: a
-`claude -p` run asked to think first, with no effort and with `--effort high`, both
-produced thinking blocks holding nothing. On one Sonnet run,
-2026-09-13-132851-implement-67982, the stream held six thinking blocks with zero
-characters between them, fifteen tool calls with their arguments, and six substantive
-lines of speech in 426 characters — while its thinking-token count still reached 14,575
-across 124 events. The same reading on a Z.ai run, 2026-09-13-131955-implement-67268,
-shows 9,739 thinking_tokens events and thinking blocks that carry words. This is the
-model, not the pulse, `haring-wait` or `haring-transcript`.
+**A tool call shows up when it finishes, not when it starts.** OpenCode writes each part
+of a worker's turn to the stream once it is complete, so a command that runs for four
+minutes is four minutes of nothing in `haring-wait` and the pulse, and then one line.
+A quiet worker is usually inside a long command; its reasoning, which the stream does
+carry, and the `PROGRESS.md` line it wrote before the command tell you which one. The
+run stops itself after fifteen minutes with no new event, and a single command that
+long counts.
 
 **Name the watch for what it runs.** The description you give the Monitor call is what
 the client sees in the list of background tasks. One read "haring workers on gitforked" —
@@ -769,25 +765,23 @@ implements, and it keeps everything it learned while looking. A continued run fo
 its own run folder and its own session, so the run it came from stays whole and can be
 continued again.
 
-Every kind runs in the project itself. `check` gets `Read`, `Glob`, `Grep` and a shell as well
-— reading a codebase needs one — and `Write` and `Edit` are denied it, so a check cannot
-change a file by ignoring its rules. `errand` gets the same three without the shell, and
-`Bash`, `Write` and `Edit` are denied it outright. `qa` gets what `check` gets — the same
-three tools and the shell, with `Write` and `Edit` denied — since a QA that could write
-could fix what it should only report. What the harness holds every kind to,
-including the shell, is the deny list `haring-worker` writes into each run folder as
-`settings.json` and passes with `--settings`: the client's private paths outside the project
-— `~/.claude/**`, `~/.ssh/**`,
-`~/.aws/**`, `~/.config/gcloud/**`, `~/.zsh_history`, `~/.bash_history`. A read of any of them
-is refused by the Read tool, and by a shell command that names the path. Measured: the check
-reads the path out of the command, so `wc -l ~/.zsh_history` is refused and
-`wc -l "$(echo $HOME/.zsh_history)"` is not. It stops the worker that wanders there, which is
-what happens; it does not stop one that sets out to get round it, and no rule inside the
-process could. The run's own work is untouched by it. When the project is not haring's own
-repository, the same list also holds haring's source — the repository haring is installed
-from, and the `haring-*` links it put in `~/.local/bin` — against a read and against a
-command that would change it, so a worker sent somewhere else cannot edit the tool that sent it
-there. A worker sent to haring itself is held to the private paths alone. `implement` works on
+Every kind runs in the project itself, as its own OpenCode agent,
+`opencode/agents/haring-<kind>.md`, and a kind's limits are that agent's deny rules: a
+denied tool is not in the session at all. `check` gets `Read`, `Glob`, `Grep` and a shell
+as well — reading a codebase needs one — and has no write or edit tool, so a check cannot
+change a file by ignoring its rules. `errand` gets the same three without the shell. A
+`qa` worker gets what `check` gets, since a QA that could write could fix what it should
+only report. Every kind is denied `question`, `subagent`, `skill`, `webfetch` and
+`websearch`. What every kind is held to besides is the client's private paths outside the
+project — `~/.claude/`, `~/.ssh/`, `~/.aws/`, `~/.config/gcloud/`, `~/.zsh_history`,
+`~/.bash_history`: the read and edit tools are refused them by the global OpenCode
+configuration, and the shell by the agents' rules, which match the text of each command.
+Measured: `wc -l ~/.zsh_history`, `ls ~/.ssh` and a python one-liner opening the history
+file are all refused, and a command that builds the path while it runs would not be. It
+stops the worker that wanders there, which is what happens; it does not stop one that sets
+out to get round it, and no rule inside the process could. Nothing else outside the project
+is walled: haring's own source, a sibling repository and `/tmp` are all open to every tool,
+so a worker sent elsewhere is kept out of haring's source by its rules alone. `implement` works on
 a branch. Write down which branch the project is on, because that is where the work goes back
 to, then create yours:
 
@@ -804,8 +798,7 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 `.gitignore` and says so. Run records are haring's, not the project's.
 
 A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
-`settings.json` with the denied paths that run was held to, `events.jsonl` with the
-run's events written by haring itself as they happen, and for every kind but `errand` a
+`events.jsonl` with the run's events, OpenCode's own stream as they happen, and for every kind but `errand` a
 `PROGRESS.md` the worker appends to as it goes. A run whose worker asked you a question also
 leaves `ask.jsonl`, one line per question with the moment it was asked. A run whose manager
 said something to its worker also leaves `said.jsonl`, one line per message with the moment
@@ -864,19 +857,19 @@ arrived, where the fix itself was six.
 ### When one is taking too long
 
 Read `PROGRESS.md` first, then the run's own `events.jsonl`, which is written entry by
-entry as it happens. `haring-wait` reads the same stream, and a worker waiting on the
-endpoint shows up there as `api_retry` events — a worker that looks stuck may only be
-waiting for the API to answer.
+entry as it happens. `haring-wait` reads the same stream. OpenCode writes no event while
+it retries the endpoint or while a command runs, so a worker waiting on the API and a
+worker inside a long command look the same: nothing new.
 
 - The same tool call again and again — stuck in a loop. Stop it with `haring-kill`,
   restate the task in a fresh run, and say what it looped on.
 - Reads of files unrelated to the task — lost. The task was under-specified or too wide.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it
   next time.
-- Few calls, no new events, process alive — a long thinking block, or an `api_retry`
-  burst; read the thinking-token count on the pulse's quiet line instead, which rises
-  while a worker thinks on any model. Wait. Next time hand it the design instead of
-  making it derive one.
+- Few calls, no new events, process alive — a long thought, a long command, or the
+  endpoint not answering. Its last reasoning and its last `PROGRESS.md` line say which.
+  Wait; the run stops itself after fifteen minutes of nothing. Next time hand it the
+  design instead of making it derive one.
 - Process gone, no report — finished or crashed. Read the report. No report plus changed
   files is a failure.
 

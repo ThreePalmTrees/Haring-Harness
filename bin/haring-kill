@@ -4,7 +4,9 @@
     haring-kill <run-folder>
 
 Signals the worker's whole process group: the runner python, the shell running the
-run's run.sh, and the claude process inside it. The chip's "x" on a background task does
+run's run.sh, and the opencode client inside it — then interrupts the worker's session
+in the OpenCode server, because the session lives there and goes on working after its
+client dies. The chip's "x" on a background task does
 none of this — it kills the haring-wait watching the run, and the worker survives it,
 because haring-worker deliberately detached the worker into its own session so that it
 outlives whatever started it. That same detachment is why an ordinary kill cannot reach
@@ -24,6 +26,10 @@ the run has already finished and reported, or the worker would not die. Exits 0 
 worker is dead, including when a previous haring-kill had already stopped it.
 """
 import sys, os, time, signal, subprocess
+
+HARING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+sys.path.insert(0, HARING_LIB)
+import haring_events
 
 USAGE = "usage: haring-kill <run-folder>"
 GRACE = 5   # seconds a group is given to die of SIGTERM before it is SIGKILLed
@@ -102,8 +108,8 @@ def names_run(command):
         bool(session) and session in command)
 
 
-def is_claude(command):
-    return bool(command.split()) and os.path.basename(command.split()[0]) == "claude"
+def is_worker(command):
+    return bool(command.split()) and os.path.basename(command.split()[0]) == "opencode"
 
 
 def rows():
@@ -126,7 +132,7 @@ def rows():
 def worker_group():
     """The process group the worker itself runs in, or None when it is not running.
 
-    The anchor is the shell meta names, then the claude process. A haring-wait watching
+    The anchor is the shell meta names, then the opencode client. A haring-wait watching
     this run names the run folder on its own command line, and so does any command the
     manager runs that mentions the folder; taking one of those for the worker would
     signal its group instead and leave the worker alive.
@@ -139,14 +145,14 @@ def worker_group():
         if names_run(command):
             return pgid
     for _, pgid, command in live:
-        if is_claude(command) and session and session in command:
+        if is_worker(command) and session and session in command:
             return pgid
     return None
 
 
 # One group holds the whole run: haring-worker's setsid made it, and nothing the run
-# starts afterwards leaves it. Signalling the group is what reaches claude — the pid in
-# meta is its shell, and killing that alone would orphan claude mid-run.
+# starts afterwards leaves it. Signalling the group is what reaches the opencode client —
+# the pid in meta is its shell, and killing that alone would orphan the client mid-run.
 group = worker_group()
 if group is None:
     report = os.path.join(run, "report.json")
@@ -161,7 +167,7 @@ def still_there():
 
 live = rows()
 members = sorted(p for p, g, _ in live if g == group)
-claude = sorted(p for p, g, c in live if g == group and is_claude(c))
+client = sorted(p for p, g, c in live if g == group and is_worker(c))
 
 for sig in (signal.SIGTERM, signal.SIGKILL):
     try:
@@ -178,16 +184,30 @@ left = still_there()
 if left:
     die(f"the worker in process group {group} is still alive after SIGKILL: {left}", 1)
 
+# The client is gone and the session is not: measured, a session whose client was killed
+# is still running in the server three seconds later, and only an interrupt stops it.
+live_session = haring_events.live_session(run)
+interrupted, answer = (haring_events.opencode_api("POST", f"/api/session/{live_session}/interrupt")
+                       if live_session else (False, "no session id in events.jsonl or meta"))
+
 now = time.strftime("%Y-%m-%dT%H:%M:%S")
 with open(marker, "w") as f:
     f.write(f"at={now}\n")
     f.write(f"user={os.environ.get('USER') or '?'}\n")
     f.write(f"pgid={group}\n")
     f.write(f"pids={' '.join(str(p) for p in members)}\n")
+    f.write(f"session={live_session}\n")
 
 kind = meta.get("kind", "?")
-inside = f", claude was pid {', '.join(str(p) for p in claude)}" if claude else ""
+inside = f", opencode was pid {', '.join(str(p) for p in client)}" if client else ""
 print(f"stopped {kind} run {os.path.basename(run)}", file=sys.stderr)
 print(f"  process group {group}: pids {' '.join(str(p) for p in members)}{inside}",
       file=sys.stderr)
 print(f"  recorded in {marker}", file=sys.stderr)
+if interrupted:
+    print(f"  session {live_session} interrupted in the OpenCode server", file=sys.stderr)
+else:
+    print(f"  !! session {live_session or '?'} was not interrupted, and may still be working "
+          f"in the OpenCode server: {answer[:300]}", file=sys.stderr)
+    print(f"     stop it with: opencode api POST /api/session/{live_session}/interrupt",
+          file=sys.stderr)

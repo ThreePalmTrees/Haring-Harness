@@ -10,7 +10,7 @@ transcript line and a wait line for the same moment read alike. A message the
 manager said to the worker prints where it landed, labelled manager. There is
 no transcript file in the run folder: everything here is read from the run's
 own records at the moment you ask — events.jsonl, the one record haring owns,
-and said.jsonl, the keeper's note of each message it handed over — so nothing
+and said.jsonl, haring-say's note of each message it delivered — so nothing
 can go stale or disagree with what happened. Tool results are not in it — a result can be a
 whole file — and a StructuredOutput call prints as its name alone, since the
 report it carried is what haring-report prints.
@@ -85,8 +85,8 @@ except OSError as e:
 
 # A message the manager said reaches the worker over its standard input, and whether
 # the worker echoes it into its own stream is the worker's choice, so the record the
-# stream holds can be half the conversation. The keeper wrote each message it handed
-# over into said.jsonl with the moment it landed, so those join the entries here and
+# stream holds can be half the conversation. haring-say wrote each message it delivered
+# into said.jsonl with the moment it landed, so those join the entries here and
 # the transcript shows what was said as well as what was done. A run whose manager
 # said nothing has no such file and prints as it always printed.
 said = os.path.join(run, "said.jsonl")

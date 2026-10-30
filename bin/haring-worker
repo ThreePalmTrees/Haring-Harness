@@ -8,19 +8,20 @@
 #
 # kind is one of: check implement errand qa
 #
-# The model is one of four — claude-opus-5 and claude-sonnet-5 answered by Anthropic,
-# glm-5.3 and glm-5.3-flash by Z.ai — and the endpoint follows the model. Absent
-# --model, it settles from <project>/.haring/model, then <haring-root>/model, then
-# claude-sonnet-5, read and written by haring-model. The manager never chooses a model
+# The worker is an OpenCode session, started with `opencode run`, on one of the models
+# in the table below. Absent --model, it settles from <project>/.haring/model, then
+# <haring-root>/model, then opencode-go/deepseek-v4.1-flash, read and written by
+# haring-model. The manager never chooses a model
 # on its own: --model exists only for when the person who asked for the work asks for it.
-# A qa run settles differently: it has no default, because a QA pass runs on a model
-# the client chose — so a fresh qa run takes its model from <project>/.haring/qa-model,
-# then <haring-root>/qa-model, both read and written by haring-model --qa, and refuses
-# when neither names one. --model overrides with the same warning as any kind; a
+# A qa run settles differently: a QA pass runs on opus as the Claude Code agent
+# haring-qa unless the client chose an OpenCode model for it, so a fresh qa run takes
+# its model from <project>/.haring/qa-model, then <haring-root>/qa-model, both read and
+# written by haring-model --qa, and refuses — pointing at the agent — when neither
+# names an OpenCode model. --model overrides with the same warning as any kind; a
 # continue keeps the run's own model.
-# --effort lowers or raises how hard the worker thinks, and exists only for when the
-# person who asked for the work asks for it. No kind sets it: see the comment above
-# the kind table.
+# --effort lowers or raises how hard the worker thinks — low, high or max, the model's
+# OpenCode variant — and exists only for when the person who asked for the work asks
+# for it. No kind sets it: see the comment above the kind table.
 # --no-pulse starts a run without a live haring-pulse watching the project, which
 # otherwise is refused. It is consumed here and never reaches the worker.
 set -e
@@ -37,21 +38,15 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
-MODEL_DEFAULT=claude-sonnet-5
+MODEL_DEFAULT=opencode-go/deepseek-v4.1-flash
 
-# The model a worker runs on decides the endpoint that answers it. This table decides:
-# a model it does not hold is refused once the model settles, and the endpoint is read
-# out of the same table then — never guessed from the shape of the name.
-#
-#   claude-opus-5     Anthropic
-#   claude-sonnet-5   Anthropic
-#   glm-5.3           Z.ai
-#   glm-5.3-flash     Z.ai
-model_endpoint() {
+# The models a worker may run on, written the way `opencode run -m` takes them. A model
+# this does not hold is refused once the model settles, before anything is created.
+# Adding one is one line here and one in bin/haring-model.
+is_model() {
   case "$1" in
-    claude-opus-5 | claude-sonnet-5) echo anthropic ;;
-    glm-5.3 | glm-5.3-flash) echo zai ;;
-    *) echo none ;;
+    opencode-go/deepseek-v4.1-flash | opencode-go/glm-5.3-flash) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -75,7 +70,8 @@ MAX_NESTED_WORKERS=0
 # workers.
 #
 # The check is the marker HARING_NESTED, which the haring-worker that started this worker
-# put in its environment, below. It travels from there through run.sh into claude and into
+# put in its environment, below. It travels from there through run.sh into opencode, which
+# hands its environment to the session in the OpenCode server, and so into
 # every shell command the worker runs, so there is no route round it: calling the script
 # through sh, or by its full path, ends here all the same.
 #
@@ -145,9 +141,9 @@ while [ $# -gt 0 ]; do
              echo "  who asked for the work asked for it." >&2 ;;
     --effort) [ $# -ge 2 ] && [ -n "$2" ] || usage; effort=$2; shift 2
              case "$effort" in
-               low|medium|high|xhigh|max) ;;
+               low|high|max) ;;
                *) echo "haring-worker: unknown effort level: $effort" >&2
-                  echo "  The tool takes: low, medium, high, xhigh, max." >&2
+                  echo "  The worker models take: low, high, max." >&2
                   usage ;;
              esac ;;
     --no-pulse) no_pulse=1; shift ;;
@@ -171,20 +167,14 @@ project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$work
 # over rather than treated as a choice or an error.
 model_source=""
 if [ "$kind" = qa ]; then
-  # A qa run falls back to no default, and does not reach the plain settle below at
-  # all: a QA pass runs on a model the client chose, so the worker-model files are
-  # not its business. A fresh qa run without --model settles from the qa-model files
-  # — the project's, then haring's — under the same whitespace rule as the plain
-  # settle, and refuses when neither names one. The refusal is a missing setting
-  # rather than a wrongly written command, so it is exit 1 and names the command
-  # that sets it, and it sits here, before anything is created and above the pulse
-  # check and the one-worker check, so it fires whatever else is true about the
-  # project. A qa-model that names something, but something the table below does
-  # not hold, is not this refusal: it falls through to the unknown-model refusal,
-  # exit 2 — a garbage file is a wrongly written command, an absent one is a
-  # missing setting. A continue never reaches here with an empty model, so the
-  # settle and its refusal are fresh-launch behaviour; a continued qa keeps the
-  # model of the run it continues, like every kind.
+  # A QA pass runs only when the client asks for one, and by default on opus as the
+  # Claude Code agent haring-qa, which the manager starts with its Agent tool — not
+  # here. This script runs a QA only when the client chose an OpenCode model for it:
+  # --model, or the qa-model files, the project's then haring's, read under the same
+  # whitespace rule as the plain settle. Unset, opus or sonnet is the agent's to run,
+  # and is refused with where to go instead. It sits here, before anything is created
+  # and above the pulse check and the one-worker check, so it fires whatever else is
+  # true about the project. A continue keeps the model of the run it continues.
   if [ -z "$model" ]; then
     for model_file in "$project/.haring/qa-model" "$HARING/qa-model"; do
       [ -f "$model_file" ] || continue
@@ -194,8 +184,14 @@ if [ "$kind" = qa ]; then
       model_source=$model_file
       break
     done
-    [ -n "$model" ] || { echo "haring-model --qa <model>" >&2; exit 1; }
   fi
+  case "$model" in
+    ''|opus|sonnet)
+      echo "haring-worker: this QA runs on ${model:-opus}, as the Claude Code agent haring-qa." >&2
+      echo "  Start it with the Agent tool (subagent_type haring-qa${model:+, model $model})." >&2
+      echo "  haring-worker runs a QA only on an OpenCode model: haring-model --qa <model>." >&2
+      exit 1 ;;
+  esac
 elif [ -z "$model" ]; then
   for model_file in "$project/.haring/model" "$HARING/model"; do
     [ -f "$model_file" ] || continue
@@ -209,24 +205,30 @@ fi
 : "${model:=$MODEL_DEFAULT}"
 
 # A model the table above does not hold is refused here and now, before anything is
-# created: Claude Code's own refusal to an unknown name arrives only after it has
+# created: OpenCode's own refusal to an unknown name arrives only after it has
 # started, which here means after the run folder exists and the worker is launched —
 # a dead run for a mistyped model. Like a bad kind, it is a wrongly written command,
 # so it is answered before the environment is examined at all: above the pulse check
 # and the one-worker check, which would each refuse first for its own reason and say
 # nothing about the model.
-endpoint=$(model_endpoint "$model")
-if [ "$endpoint" = none ]; then
+if ! is_model "$model"; then
   echo "haring-worker: unknown model: $model" >&2
   [ -n "$model_source" ] && echo "  (from $model_source)" >&2
-  echo "  haring-worker takes one of: claude-opus-5, claude-sonnet-5," >&2
-  echo "  glm-5.3, glm-5.3-flash." >&2
+  echo "  haring-worker takes one of: opencode-go/deepseek-v4.1-flash," >&2
+  echo "  opencode-go/glm-5.3-flash." >&2
   exit 2
 fi
 
-# The tools each kind may use, and the tools it is denied. A read-only kind gets a shell
-# because reading needs one, and has the writing tools denied rather than being talked
-# out of them by its rules.
+# Each kind runs as its own OpenCode agent, opencode/agents/haring-<kind>.md, linked
+# into ~/.config/opencode/agents by install.sh. The agent is where a kind's limits
+# live: a deny rule there removes the tool from the session outright, so a read-only
+# kind has no write tool to be talked out of. check and qa are denied edit (which
+# covers write and patch too), errand is denied the shell as well, and every kind is
+# denied question, subagent, skill, webfetch and websearch. The private paths every
+# worker is refused are refused twice: to the read and edit tools by the global
+# ~/.config/opencode/opencode.jsonc, and to the shell by the agents' own shell rules,
+# which match the text of each command. Anything else outside the project is open to
+# every tool — OpenCode allows external directories to these agents by default.
 #
 # No kind sets --effort. Measured: at --effort low a single-fact extraction ran twice as
 # fast and stayed correct, but a multi-part task came back in 179 characters where the
@@ -239,21 +241,16 @@ fi
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
-  check)
-      tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
-      extra='--bare' ;;
-  errand)
-      tools='Read,Glob,Grep'; denied='Bash,Write,Edit'
-      extra='--bare' ;;
-  implement)
-      tools='Read,Write,Edit,Glob,Grep,Bash'; denied=''
-      extra='--permission-mode acceptEdits' ;;
-  qa)
-      tools='Read,Glob,Grep,Bash'; denied='Write,Edit'
-      extra='--bare' ;;
+  check|errand|implement|qa) agent="haring-$kind" ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
-[ -n "$effort" ] && extra="$extra --effort $effort"
+model_arg=$model
+[ -n "$effort" ] && model_arg="$model#$effort"
+command -v opencode >/dev/null 2>&1 || {
+  echo "haring-worker: opencode is not on PATH. Install it, then run ./install.sh again." >&2; exit 1; }
+[ -e "$HOME/.config/opencode/agents/$agent.md" ] || {
+  echo "haring-worker: the $agent agent is not installed in ~/.config/opencode/agents." >&2
+  echo "  Run ./install.sh in $HARING, which links it there." >&2; exit 1; }
 
 # A run nobody is watching is a run the manager hears nothing about: haring-pulse prints
 # one line per live worker, and starting it is the rule the manager was told to follow
@@ -347,10 +344,16 @@ fi
 run="$project/.haring/runs/$(date +%Y-%m-%d-%H%M%S)-$kind-$$"
 mkdir -p "$run"
 
-# Name the session ourselves. Claude writes each transcript under the session id, so
-# naming it here puts the run's transcript in the run's meta, and haring-session can
-# tell a worker from the manager without guessing from what the worker did last.
-session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+# Name the session ourselves: `opencode run -s` creates a session under an id it has not
+# seen, so the run's meta names its session before the worker has done anything. The id
+# must start with ses_. A continued run cannot be named this way — --fork copies the
+# session it continues under an id OpenCode picks — so its meta names the session it
+# forked from, and every reader takes the live id from the first line of events.jsonl.
+if [ -z "$resume_id" ]; then
+  session=ses_haring$(python3 -c 'import uuid; print(uuid.uuid4().hex[:20])')
+else
+  session=$resume_id
+fi
 
 {
   echo "kind=$kind"
@@ -397,98 +400,6 @@ fi
   esac
 } > "$run/prompt.md"
 
-# The private paths every worker is refused, of every kind, whatever it was asked: Claude
-# Code's own transcripts and memory, private keys, cloud credentials, shell history.
-deny_entries='      "Read(~/.claude/**)",
-      "Read(~/.ssh/**)",
-      "Read(~/.aws/**)",
-      "Read(~/.config/gcloud/**)",
-      "Read(~/.zsh_history)",
-      "Read(~/.bash_history)"'
-
-# A worker sent to a project other than haring's own repository is refused haring's source
-# as well: the repository holds every script, rule and schema haring is, and it is reachable
-# again through the links install.sh puts in ~/.local/bin. The skill link in ~/.claude/skills
-# needs no entry of its own: it is inside ~/.claude, which the first entry already names, and
-# the files it points at are inside the repository, which the repository entry names. Left
-# out when the worker was sent to haring, which has to be able to read and change itself.
-#
-# Why these four entries and not fewer or different ones, all measured rather than assumed:
-# a Read rule holds the Read tool and a shell command alike, and it holds them through a
-# symlink, so the repository entry alone already covers a command naming an installed link.
-# It does not hold a command that writes — that is what the Edit rule is for, since a Write
-# rule is ignored by the shell check and Edit is the rule the harness applies to a command
-# that creates, changes or removes a file. And only the ~ form is applied to shell commands
-# at all: the same rule written with an absolute path never fires there, which is why the
-# repository is spelled with ~ and why a repository outside $HOME gets the absolute form as
-# a best effort, holding the Read tool but not known to hold the shell.
-haring_real=$(CDPATH= cd -- "$HARING" && pwd -P)
-project_real=$(CDPATH= cd -- "$project" && pwd -P)
-if [ "$project_real" != "$haring_real" ]; then
-  case "$haring_real" in
-    "$HOME")   haring_home="~" ;;
-    "$HOME"/*) haring_home="~/${haring_real#"$HOME"/}" ;;
-    *)         haring_home="$haring_real" ;;
-  esac
-  deny_entries="$deny_entries$(printf ',\n      "Read(%s/**)"' "$haring_home")"
-  deny_entries="$deny_entries$(printf ',\n      "Edit(%s/**)"' "$haring_home")"
-  deny_entries="$deny_entries,
-      \"Read(~/.local/bin/haring-*)\",
-      \"Edit(~/.local/bin/haring-*)\""
-fi
-
-# Written into the run folder and handed to Claude Code with --settings, so the refusal
-# comes from the harness and not from the worker's own good behaviour. A deny rule names a
-# path, and Claude Code checks that path against shell commands as well as against the Read
-# tool — which is why a worker holding a shell is held by this list too.
-cat > "$run/settings.json" <<DENIED
-{
-  "permissions": {
-    "deny": [
-$deny_entries
-    ]
-  }
-}
-DENIED
-
-# The endpoint follows the model, from the same table that admitted it above. A Z.ai
-# model gets the Z.ai token and base url, unless the caller has already chosen them —
-# an override is what lets workers run through a local gateway when the plan quota is
-# spent. An Anthropic model gets neither from here, and strips the six Anthropic
-# variables instead of exporting any: on this client's machine the redirect to Z.ai
-# lives in the user settings' env block, which the child re-applies even when the
-# process environment is clean, so the launch also excludes the user settings layer
-# with --setting-sources project,local — both routes in, cut. The Keychain is never
-# read on this path either — on a machine without the haring-zai key that read fails
-# or prompts, and an Anthropic worker has no use for it.
-#
-# --bare cannot ride along on this path either, whatever kind set it: --bare reads no
-# OAuth and no Keychain, its own help text names ANTHROPIC_API_KEY or apiKeyHelper as
-# the only auth under it, and the first-party login on this machine is Keychain OAuth
-# — --bare and Anthropic auth here do not mix. The consequence is real and left for
-# the next reader rather than solved here: an Anthropic check, errand or qa worker
-# loads what --bare skips — the project's hooks and CLAUDE.md — that its glm twin
-# does not. Stripping --bare also turns auto-memory back on: measured on this path
-# by tonight's qa run, an Anthropic worker is handed the project's memory index in
-# its system prompt while the run's own deny list forbids reading under ~/.claude,
-# and an implement worker holds Write, so it can write there too.
-sources_flag=''
-case "$endpoint" in
-  zai)
-    ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-$(security find-generic-password -a "$USER" -s haring-zai -w)}
-    ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}
-    export ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ;;
-  anthropic)
-    unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY \
-      ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL
-    sources_flag='--setting-sources project,local'
-    case "$extra" in
-      *--bare*)
-        extra=$(printf '%s' "$extra" | sed -e 's/--bare//' -e 's/  */ /g' -e 's/^ //' -e 's/ $//')
-        echo "haring: an anthropic worker runs without --bare — --bare reads no Keychain, and the first-party login on this machine lives there." >&2 ;;
-    esac ;;
-esac
-
 # Every worker this script starts is marked, so that haring-worker and haring-kill refuse
 # if it tries to start or stop a run of its own. HARING_ALLOW_NESTING lifts that for one
 # launch: the manager sets it on the way in, and this worker alone is left unmarked and so
@@ -502,272 +413,126 @@ else
 fi
 
 schema="$HARING/schemas/$kind.json"
-# Assembled in memory. It is the same 15KB for every run of a kind, so it is not copied into
-# the run folder; regenerate any run's rules with `haring-prompt <kind>`.
-sysprompt=$("$HARING/bin/haring-prompt" "$kind")
-# Every run gets its own session id, minted above and recorded in its meta, so every run has
-# a transcript of its own that haring-session can tell apart from the manager's. A continued
-# run adds --fork-session, which is what makes the resumed conversation land under this run's
-# id instead of writing back into the one it came from.
-resume_flag=""
-[ -n "$resume_id" ] && resume_flag="--resume $resume_id --fork-session"
+# The worker's first message: the rules, the report it owes and the schema that report
+# must match, then the task. OpenCode takes no system prompt from the command line, and
+# an agent's own prompt would replace OpenCode's, so the rules travel in the message
+# instead. A fresh run gets every rule; a continued one already holds worker.md from
+# the run it continues and gets only its kind's rules, since the kind may differ. It is
+# rebuilt for every run, not kept: regenerate any run's rules with `haring-prompt <kind>`.
+{
+  if [ -z "$resume_id" ]; then
+    "$HARING/bin/haring-prompt" "$kind"
+  else
+    cat "$HARING/rules/kinds/$kind.md"
+  fi
+  printf '\n\n---\n\n## Your report\n\n'
+  printf 'Your final message is your report, and a program reads it, not a person. It is\n'
+  printf 'one JSON object and nothing else: no words before or after it, no markdown fence.\n'
+  printf 'It matches this JSON schema exactly — every required field present, and no field\n'
+  printf 'the schema does not list. A report that does not parse or does not match comes\n'
+  printf 'back to you with what is wrong, to send again.\n\n'
+  cat "$schema"
+  printf '\n\n---\n\n'
+  cat "$run/prompt.md"
+} > "$run/message.tmp"
 
 # The worker runs as its own session, not merely in the background. A background child
 # stays in its launcher's process group, so anything that kills that group — a tool
 # timeout, a cancelled command — kills the worker too, and it dies leaving an empty
 # report. Detaching properly is the only way a long run survives the thing that started it.
 #
-# The three redirections on the python call are load-bearing. A detached grandchild inherits
-# whatever descriptors it is handed, and if it keeps the caller's stdout then
-# `run=$(haring-worker ...)` never returns: command substitution waits for that pipe to close
-# and the pipe stays open until the worker finishes. Every launch would block for the whole
-# run.
-# stdout is the event stream, not the report. stream-json writes each event on its own
-# line the moment it happens, which is the record haring owns: Claude Code's transcript
-# lives at a path nothing promises, and when it moved, every command watching a run went
-# blind while the worker carried on. The stream's last result event holds every field the
-# old --output-format json printed, so report.json is rebuilt from it below and stays the
-# file the other commands already read. --verbose is not optional: stream-json under -p
-# refuses to start without it.
+# The three redirections on the python call below are load-bearing. A detached grandchild
+# inherits whatever descriptors it is handed, and if it keeps the caller's stdout then
+# `run=$(haring-worker ...)` never returns: command substitution waits for that pipe to
+# close and the pipe stays open until the worker finishes.
 #
-# report.json is emptied here rather than left to the extractor. A file absent until the
-# end is a run that looks unfinished the whole time it runs; an empty one is what
-# haring-wait and haring-pulse already treat as "not landed yet", and what a killed worker
-# leaves behind.
-# claude reads its input from a pipe rather than from nothing, so that a word said to a
-# running worker can reach it: --input-format stream-json makes it read user messages
-# from stdin while it works, and the task itself travels over that pipe as the first of
-# them. Holding the pipe open for the life of the run is the keeper written just below —
-# it is the only thing holding it, so a keeper that dies ends the run instead of hanging
-# it, and it closes the pipe itself once claude has answered everything it was sent.
-# The denied list travels as --disallowedTools only when the kind denies something: the
-# run.sh heredoc expands parameters but does not split words, so an empty value written
-# straight into it would leave the bare flag holding the next argument as its list.
-denied_flag=''
-if [ -n "$denied" ]; then denied_flag="--disallowedTools $denied"; fi
+# opencode reads a /dev/null of its own and nothing else. When its input is not a
+# terminal it reads it to the end before it so much as reaches the server, and the stdin
+# Claude Code hands its shells is one no JavaScript runtime ever sees the end of —
+# measured, Bun and Node both hang on it where cat reads the end at once. It hangs with no
+# event, no session and no error, and looks exactly like a provider outage. A freshly
+# opened /dev/null ends at once. Steering does not need the pipe: haring-say posts into the live
+# session through the OpenCode server.
+#
+# stdout is the event stream: --format json writes one event per finished part, and
+# events.jsonl is the record haring owns. --thinking puts the worker's reasoning in it
+# too, which is what haring-wait and haring-pulse show while a worker is quiet. report.json is rebuilt from it by
+# lib/haring_report.py into the shape the readers already read. It is emptied first: an
+# empty report.json is what haring-wait and haring-pulse treat as "not landed yet", and
+# what a killed worker leaves behind.
+#
+# A final message that is not a report matching the schema is sent back to the same
+# session with what is wrong, at most REPORT_RETRIES times, and the last answer is kept
+# either way — written without structured_output, so the manager reads the raw text.
+#
+# The watchdog stops a run that has gone silent. The longest silence any run has
+# recorded is 7.0 minutes and every run near it finished with a report, so fifteen
+# minutes with no new event is a run that is not working. OpenCode writes a tool call
+# only once it has finished, so a long command counts as silence until it returns.
+# HARING_STALL_SECONDS overrides the fifteen minutes, so the stop can be tested in
+# seconds rather than minutes. Killing the process group is
+# not enough on its own: the session lives in the OpenCode server and goes on working
+# with nobody reading it, so it is interrupted there first. The `stalled` file is
+# written before the group is signalled, because the watchdog is in that group.
+REPORT_RETRIES=2
+stall_limit=${HARING_STALL_SECONDS:-900}
 cat > "$run/run.sh" <<RUNNER
 #!/bin/sh
 echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 : > "$run/report.json"
-cat > "$run/keeper.tmp" <<'KPIPE'
-import json, os, select, signal, sys, time
+live_session() {
+  python3 -c 'import json,sys
+for l in open(sys.argv[1]):
+    try: s = json.loads(l).get("sessionID")
+    except ValueError: continue
+    if s: print(s); break' "$run/events.jsonl" 2>/dev/null
+}
+(
+  limit=$stall_limit
+  while :; do
+    sleep 15
+    [ -f "$run/events.jsonl" ] || continue
+    age=\$(( \$(date +%s) - \$(stat -f %m "$run/events.jsonl") ))
+    [ "\$age" -ge "\$limit" ] || continue
+    printf 'at=%s\nsilent=%s\n' "\$(date +%Y-%m-%dT%H:%M:%S)" "\$age" > "$run/stalled"
+    sid=\$(live_session); [ -n "\$sid" ] || sid=$session
+    opencode api POST "/api/session/\$sid/interrupt" </dev/null >/dev/null 2>&1
+    kill -9 0
+  done
+) &
+watchdog=\$!
+fork_flag=''
+[ -n "$resume_id" ] && fork_flag=--fork
+opencode run --format json --thinking --agent $agent -m "$model_arg" -s "$session" \$fork_flag \
+  "\$(cat "$run/message.tmp")" </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+tries=0
+while :; do
+  problem=\$(python3 "$HARING/lib/haring_report.py" "$run" "$schema")
+  [ \$? -eq 1 ] || break
+  tries=\$((tries + 1))
+  if [ \$tries -gt $REPORT_RETRIES ]; then
+    python3 "$HARING/lib/haring_report.py" "$run" "$schema" --final
+    break
+  fi
+  sid=\$(tail -r "$run/events.jsonl" | python3 -c 'import json,sys
+for l in sys.stdin:
+    try: s = json.loads(l).get("sessionID")
+    except ValueError: continue
+    if s: print(s); break')
+  opencode run --format json --thinking --agent $agent -m "$model_arg" -s "\$sid" \
+    "Your final message was not the report. What is wrong with it:
+\$problem
 
-# Holds the writing end of the pipe claude reads its input from. The task itself is the
-# first thing over that pipe — a line written before claude is up reading waits in the
-# pipe for it, as a pipe does — and everything the manager says later with haring-say
-# goes over the same one, appended to say.jsonl in the run folder. A message is handed
-# over only once everything before it has been answered, because claude reads its input
-# between turns: one written mid-turn sat unread for the rest of the run, where one
-# written after a result starts the next turn and gets its own. When claude has answered
-# everything handed to it, the pipe is closed, which is how an unsteered run ends exactly
-# when it always did and a steered one ends once it has answered.
-#
-# This process is the only holder of the pipe, on purpose. If it dies for any reason the
-# pipe closes with it, claude reads end of input and finishes the turn it is on rather
-# than waiting forever for a message that will never come. The other half of that is
-# watched the same way: claude can end while a message is still owed — a crash, or a
-# turn that was its last — and a write end held to a pipe nobody reads would hang the
-# whole run, so the reader's side of the pipe is polled, and its going is the end too.
-
-run = sys.argv[1]
-limit = int(sys.argv[2])                 # seconds of no new event before the run stops
-queue = os.path.join(run, "say.jsonl")   # haring-say appends one line per message
-state = os.path.join(run, "say.state")   # who is listening, and how much it has taken
-events = os.path.join(run, "events.jsonl")
-said = os.path.join(run, "said.jsonl")   # each message the manager said, and when it landed
-
-reader = select.poll()
-reader.register(sys.stdout.fileno(), select.POLLERR | select.POLLHUP | select.POLLNVAL)
-
-
-def reader_gone():
-    return bool(reader.poll(0))
-
-
-def added(path, pos):
-    """Complete lines appended at path since pos, and the position to read from next."""
-    out = []
-    if os.path.exists(path):
-        with open(path) as f:
-            f.seek(pos)
-            rest = f.read()
-        while True:
-            cut = rest.find("\n")
-            if cut < 0:
-                break
-            out.append(rest[:cut])
-            rest = rest[cut + 1:]
-            pos += cut + 1
-    return out, pos
-
-
-def mark(handed, written):
-    if handed == written:
-        return written
-    tmp = state + ".tmp"
-    with open(tmp, "w") as f:
-        f.write("pid=%d\nhanded=%d\n" % (os.getpid(), handed))
-    os.replace(tmp, state)
-    return handed
-
-
-def counted(lines):
-    """How many of these lines are answers."""
-    answers = 0
-    for line in lines:
-        try:
-            d = json.loads(line)
-        except ValueError:
-            continue
-        if d.get("type") == "result":
-            answers += 1
-    return answers
-
-
-def stamped(lines):
-    """Whether any of these lines carries a timestamp, which only real message events do."""
-    for line in lines:
-        try:
-            d = json.loads(line)
-        except ValueError:
-            continue
-        if "timestamp" in d:
-            return True
-    return False
-
-
-def hand_over(text):
-    sys.stdout.write(json.dumps({"type": "user",
-                                 "message": {"role": "user", "content": text}}) + "\n")
-    sys.stdout.flush()
-
-
-qpos = epos = consumed = sent = results = 0
-handed = None   # nothing written to disk yet; the first mark is the first write
-pending = []
-caught_up = False
-last_grew = time.time()   # silence is measured from message events, not from every line
-try:
-    with open(os.path.join(run, "prompt.md")) as f:
-        pending.append(f.read())
-    while True:
-        lines, qpos = added(queue, qpos)
-        for line in lines:
-            consumed += 1
-            try:
-                text = json.loads(line).get("content")
-            except ValueError:
-                text = None
-            if isinstance(text, str) and text.strip():
-                pending.append(text)
-        # Idle means every message so far has its result, so the next one starts a turn
-        # of its own. The task itself goes over by the same rule, before any result.
-        if pending and results >= sent:
-            text = pending.pop(0)
-            if sent:
-                # The manager said this, and nothing in the event stream will say so —
-                # whether claude echoes a message into its own output is its choice. The
-                # moment is written the way the event stream writes its timestamps, so
-                # the two files order against each other. The first hand over is the
-                # task, which is not a message and gets no line.
-                secs, frac = divmod(time.time(), 1)
-                when = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
-                with open(said, "a") as f:
-                    f.write(json.dumps({"at": when, "content": text}) + "\n")
-            hand_over(text)
-            sent += 1
-        # Handed is what haring-say watches for: how many of the queue's messages have
-        # actually reached claude, which is one behind sent until the task is in.
-        handed = mark(max(0, sent - 1), handed)
-        lines, epos = added(events, epos)
-        results += counted(lines)
-        if stamped(lines):
-            last_grew = time.time()
-        if reader_gone():
-            break
-        if time.time() - last_grew >= limit:
-            # The endpoint has stopped answering: no message event has carried a
-            # timestamp for the limit, and claude would sit here writing api_retry events
-            # forever, since its retry counter starts over on every request. api_retry and
-            # thinking_tokens carry no timestamp, because they are written while nothing
-            # is arriving, and resetting on them would keep a failing run alive
-            # indefinitely. The keeper is the one thing that
-            # lives exactly as long as the run, so the stop is made from inside it. The
-            # file is written before the group is signalled, because this keeper is inside
-            # the group and will not survive the signal; haring-wait reads the file to
-            # report a stall instead of a worker that vanished.
-            with open(os.path.join(run, "stalled"), "w") as f:
-                f.write("at=%s\n" % time.strftime("%Y-%m-%dT%H:%M:%S"))
-                f.write("silent=%d\n" % (time.time() - last_grew))
-            os.killpg(os.getpgrp(), signal.SIGKILL)
-        if results >= sent and not pending:
-            # One more turn of the loop before closing, so a message handed over in the
-            # same breath as the answer is still owed its answer.
-            if caught_up:
-                break
-            caught_up = True
-        else:
-            caught_up = False
-        time.sleep(0.2)
-except BrokenPipeError:
-    pass
-finally:
-    try:
-        sys.stdout.close()
-    except OSError:
-        pass
-    try:
-        os.remove(state)
-    except OSError:
-        pass
-KPIPE
-# 900 is fifteen minutes of silence, after which the run stops itself and leaves a
-# stalled file. The longest silence any run here has recorded is 7.0 minutes and every
-# run near it finished with a report, so a run quiet for twice that is not working. The
-# limit travels as an argument so it can be tested in seconds rather than minutes.
-python3 "$run/keeper.tmp" "$run" 900 | claude -p \
-  --model "$model" \
-  --session-id "$session" \
-  --append-system-prompt "\$(cat "$run/system.tmp")" \
-  --allowedTools "$tools" \
-  $denied_flag \
-  --output-format stream-json --input-format stream-json --verbose \
-  --json-schema "\$(cat "$schema")" \
-  --settings "$run/settings.json" \
-  $extra $sources_flag $resume_flag \
-  2>&1 1> "$run/events.jsonl" \
-  | grep -v "unrecognized_model" \
-  | grep -v "claude.ai connectors are disabled" > "$run/stderr.txt"
+Send the report again: one JSON object matching the schema you were given, and nothing else." \
+    </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+done
+kill \$watchdog 2>/dev/null
 [ -s "$run/stderr.txt" ] || rm -f "$run/stderr.txt"
-# The last result event is the report. There can be more than one in a stream, and the
-# last is the one that says how the run ended. A stream with none — a killed worker, a
-# claude that never started — leaves report.json as the empty file it was, which is the
-# signal haring-wait's exit 3 and the stopped marker of haring-kill both hang off.
-python3 -c '
-import json, sys
-events, report = sys.argv[1], sys.argv[2]
-found = None
-for line in open(events):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except ValueError:
-        continue
-    if d.get("type") == "result":
-        found = d
-if found is not None:
-    with open(report, "w") as f:
-        json.dump(found, f, indent=2)
-        f.write("\n")
-' "$run/events.jsonl" "$run/report.json"
 "$HARING/bin/haring-stats" "$run" > "$run/stats.txt" 2>/dev/null || true
-rm -f "$run/system.tmp" "$run/keeper.tmp" "$run/run.sh"
+rm -f "$run/message.tmp" "$run/run.sh"
 RUNNER
 chmod +x "$run/run.sh"
-printf '%s' "$sysprompt" > "$run/system.tmp"
 
 python3 -c '
 import os, sys, subprocess

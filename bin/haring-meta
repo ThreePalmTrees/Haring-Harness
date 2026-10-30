@@ -116,7 +116,7 @@ def worker_model(root):
             continue
         if candidate:
             return candidate
-    return "claude-sonnet-5"
+    return "opencode-go/deepseek-v4.1-flash"
 
 
 def count(p):

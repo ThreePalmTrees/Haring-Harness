@@ -257,9 +257,11 @@ if not landed():
               f"{rec.get('silent', '?')}s of silence.", file=sys.stderr)
         print("Nothing reached its events for that long, which is how a run looks when",
               file=sys.stderr)
-        print("the endpoint has stopped answering. Read the progress before you build on",
+        print("the endpoint has stopped answering, or when one command ran that long:",
               file=sys.stderr)
-        print("it.", file=sys.stderr)
+        print("OpenCode records a tool call only once it returns. Read the progress",
+              file=sys.stderr)
+        print("before you build on it.", file=sys.stderr)
     elif alive():
         print(f"still running after {waited}s. The process is alive.", file=sys.stderr)
     else:
