@@ -108,7 +108,22 @@ resume_id=""
 if [ "$1" = "continue" ]; then
   kind=$2; prev=$3; promptfile=$4
   [ -n "$kind" ] && [ -n "$prev" ] && [ -n "$promptfile" ] || usage
-  [ -f "$prev/meta" ] || { echo "no meta in $prev — not a haring run folder" >&2; usage; }
+  # A run may be named as a folder, relative or absolute, or by a bare name under the
+  # project's runs folder: the same rule as resolve_run in bin/haring-kill.
+  while [ "${prev%/}" != "$prev" ]; do prev=${prev%/}; done
+  if [ ! -d "$prev" ] || [ ! -f "$prev/meta" ]; then
+    case "$prev" in
+      */*) echo "not a haring run folder: $prev" >&2; usage ;;
+      *)
+        top=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || :)
+        runs=${top:-$(pwd)}/.haring/runs
+        found=$runs/$prev
+        [ -d "$found" ] && [ -f "$found/meta" ] || {
+          echo "no run named $prev under $runs" >&2; usage; }
+        prev=$found
+        ;;
+    esac
+  fi
   # These two are real failures of the previous run, not a mistyped command: the
   # folder named is a haring run and there is nothing in it to continue from.
   [ -s "$prev/report.json" ] || {
