@@ -500,7 +500,7 @@ The work, on a branch. Name the change, and name the commands that show it is do
 Create the branch first.
 
 A review of a worker's own change is an implement task: the review is the task, and
-`rules/kinds/implement.md` tells the worker how to read one.
+`kinds/implement/rules.md` tells the worker how to read one.
 
 ```
 Objective: <what must be true at the end>.
@@ -766,7 +766,7 @@ its own run folder and its own session, so the run it came from stays whole and 
 continued again.
 
 Every kind runs in the project itself, as its own OpenCode agent,
-`opencode/agents/haring-<kind>.md`, and a kind's limits are that agent's deny rules: a
+`kinds/<kind>/opencode.md`, and a kind's limits are that agent's deny rules: a
 denied tool is not in the session at all. `check` gets `Read`, `Glob`, `Grep` and a shell
 as well — reading a codebase needs one — and has no write or edit tool, so a check cannot
 change a file by ignoring its rules. `errand` gets the same three without the shell. A

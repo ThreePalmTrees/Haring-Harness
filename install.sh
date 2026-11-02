@@ -30,12 +30,12 @@ link "$HARING/skills/haring" "$HOME/.claude/skills/haring"
 
 echo "claude code agent (the QA pass, on opus by default):"
 mkdir -p "$HOME/.claude/agents"
-link "$HARING/claude/agents/haring-qa.md" "$HOME/.claude/agents/haring-qa.md"
+link "$HARING/kinds/qa/claude.md" "$HOME/.claude/agents/haring-qa.md"
 
 echo "opencode agents (one per kind of worker):"
 mkdir -p "$HOME/.config/opencode/agents"
-for f in "$HARING"/opencode/agents/haring-*.md; do
-  link "$f" "$HOME/.config/opencode/agents/$(basename "$f")"
+for f in "$HARING"/kinds/*/opencode.md; do
+  link "$f" "$HOME/.config/opencode/agents/haring-$(basename "$(dirname "$f")").md"
 done
 
 # The OpenCode service does not see an edit made through these links, so it is told to

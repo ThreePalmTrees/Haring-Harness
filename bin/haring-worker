@@ -234,7 +234,7 @@ if ! is_model "$model"; then
   exit 2
 fi
 
-# Each kind runs as its own OpenCode agent, opencode/agents/haring-<kind>.md, linked
+# Each kind runs as its own OpenCode agent, kinds/<kind>/opencode.md, linked
 # into ~/.config/opencode/agents by install.sh. The agent is where a kind's limits
 # live: a deny rule there removes the tool from the session outright, so a read-only
 # kind has no write tool to be talked out of. check and qa are denied edit (which
@@ -427,18 +427,18 @@ else
   export HARING_NESTED="$run"
 fi
 
-schema="$HARING/schemas/$kind.json"
+schema="$HARING/kinds/$kind/schema.json"
 # The worker's first message: the rules, the report it owes and the schema that report
 # must match, then the task. OpenCode takes no system prompt from the command line, and
 # an agent's own prompt would replace OpenCode's, so the rules travel in the message
-# instead. A fresh run gets every rule; a continued one already holds worker.md from
+# instead. A fresh run gets every rule; a continued one already holds kinds/rules.md from
 # the run it continues and gets only its kind's rules, since the kind may differ. It is
 # rebuilt for every run, not kept: regenerate any run's rules with `haring-prompt <kind>`.
 {
   if [ -z "$resume_id" ]; then
     "$HARING/bin/haring-prompt" "$kind"
   else
-    cat "$HARING/rules/kinds/$kind.md"
+    cat "$HARING/kinds/$kind/rules.md"
   fi
   printf '\n\n---\n\n## Your report\n\n'
   printf 'Your final message is your report, and a program reads it, not a person. It is\n'

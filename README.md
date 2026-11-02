@@ -96,26 +96,27 @@ document.
 
     skills/haring/  SKILL.md         everything the manager needs, in one file
 
-    opencode/       agents/          one OpenCode agent per kind of task; the deny
-                                     rules there are what a kind may not do
+    kinds/          rules.md         the rules every worker gets
+                    <kind>/rules.md  one file per kind of task, added to rules.md
+                    <kind>/schema.json
+                                     the shape of that kind's report
+                    <kind>/opencode.md
+                                     one OpenCode agent per kind; its deny rules are
+                                     what that kind may not do
+                    qa/claude.md     the Claude Code agent for the QA pass
 
     lib/            haring_events.py reads a run's stream for every reader
                     haring_report.py turns the stream into report.json, and
                                      checks the report against its schema
 
-    rules/          worker.md        the rules every worker gets
-                    kinds/           one file per kind of task, added to worker.md
-
-    schemas/        one JSON schema per kind, the shape of that kind's report
-
 A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
-agent `haring-qa` (`claude/agents/`, linked into `~/.claude/agents`). A project, or
+agent `haring-qa` (`kinds/qa/claude.md`, linked into `~/.claude/agents`). A project, or
 haring itself, can hold a `qa-model` file naming `sonnet` or an OpenCode model instead;
 the project's overrides haring's own, and an OpenCode model runs as a `haring-worker qa`
 run.
 
 Everything is linked, not copied, so editing a file here takes effect at once — except an
-agent in `opencode/agents/`: the OpenCode service does not notice that edit, so run
+agent in `kinds/<kind>/opencode.md`: the OpenCode service does not notice that edit, so run
 `opencode reload` (or `./install.sh`) after one, or its old rules stay in force. Editing a
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh
 Claude Code session. Run `./install.sh` again only when you add a script to `bin/` or move
