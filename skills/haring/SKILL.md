@@ -650,7 +650,8 @@ their list of background tasks, and a run path in it is noise. One wait read as
 `haring-wait 2026-09-09-032301-implement-10209` was the same wait. The client had asked
 for the short form, the commands take it, and the manager still typed the path.
 
-**Start `haring-pulse` under the Monitor tool right after you launch the first worker.** The
+**Start `haring-pulse` under the Monitor tool before you launch the first worker.** `haring-worker`
+refuses to start a run while no pulse is watching the project. The
 pulse exists so you can act on a worker that has gone sideways, and that is its first purpose;
 the client seeing progress without opening anything is the second. Each pass prints everything
 each live worker's stream has added since the pass before — its thinking, its speech and
@@ -725,7 +726,7 @@ hand. The tools answer back now too: a still-running answer names what asking ag
 and a second `haring-pulse` refuses while the first lives.
 
 The Monitor tool has exactly one use here, and "Start `haring-pulse` under the Monitor
-tool right after you launch the first worker" is it: each line the pulse prints wakes
+tool before you launch the first worker" is it: each line the pulse prints wakes
 you mid-run, and a background wait cannot. A Monitor aimed at anything else is a second
 mechanism you invented, and it takes away the client's only window. This sits beside
 "Do not add timers of your own to a run you are watching" and splits one line with it:
