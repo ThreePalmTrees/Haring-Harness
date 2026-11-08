@@ -81,11 +81,7 @@ report = os.path.join(run, "report.json")
 
 
 def alive(pid):
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except (OSError, ValueError):
-        return False
+    return haring_events.run_pid_alive(run, pid)
 
 
 if os.path.exists(report) and os.path.getsize(report):

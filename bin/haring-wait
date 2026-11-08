@@ -128,13 +128,7 @@ rid = "-".join(parts[4:]) if len(parts) > 5 else os.path.basename(run)
 
 
 def alive():
-    if pid is None:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    return pid is not None and haring_events.run_pid_alive(run, pid)
 
 
 def landed():

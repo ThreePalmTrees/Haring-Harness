@@ -234,7 +234,7 @@ def live_runs():
         except OSError:
             continue
         pid = meta.get("pid", "")
-        if not pid.isdigit() or not alive(int(pid)) or landed(run):
+        if not haring_events.run_pid_alive(run, pid) or landed(run):
             continue
         found.append((run, meta, meta_path))
     return found

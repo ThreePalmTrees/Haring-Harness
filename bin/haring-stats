@@ -14,6 +14,10 @@ read as a dead one, and must not read as numbers either.
 """
 import sys, json, os, time, subprocess
 
+HARING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+sys.path.insert(0, HARING_LIB)
+import haring_events
+
 USAGE = "usage: haring-stats <run-folder>"
 
 
@@ -57,22 +61,17 @@ def resolve_run(arg):
 # folder. A run folder is known by its meta file, the same marker `haring-worker
 # continue` uses; the argument may also be a bare run name under the current project.
 run = resolve_run(sys.argv[1])
-# The same liveness test haring-wait uses: a pid that answers signal 0 is a worker still
-# going. The report file alone cannot tell a run in flight from a dead one — a run that
-# was killed leaves the same empty file a running one has not filled yet.
+# The same liveness test haring-wait uses: the pid answers signal 0 and its command
+# names this run's folder, because a pid handed to an unrelated process is not a worker
+# still going. The report file alone cannot tell a run in flight from a dead one — a run
+# that was killed leaves the same empty file a running one has not filled yet.
 def live_pid(run):
     try:
         meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
     except OSError:
         return None
     pid = meta.get("pid", "")
-    if not pid.isdigit():
-        return None
-    try:
-        os.kill(int(pid), 0)
-    except OSError:
-        return None
-    return pid
+    return pid if haring_events.run_pid_alive(run, pid) else None
 
 
 # The pulse is the one watcher a still-running answer can name without guessing: it

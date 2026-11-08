@@ -302,9 +302,11 @@ fi
 # One worker at a time in a project. The manager's own rules say this and broke it anyway,
 # so the limit lives here, next to the nesting guard above, where a rule becomes something
 # that answers back. Live is decided exactly as haring-pulse decides it: a run whose meta
-# names a pid that is still alive and whose report.json is still empty. Sitting here the
-# test reads only runs already on disk, and refuses before the .gitignore below or the run
-# folder below that is written, so a refused start leaves nothing behind.
+# names a pid that is still alive, whose command names this run's folder, and whose
+# report.json is still empty. The command matters because a freed pid is handed to
+# whatever starts next, and a dead run read as live refuses a worker that should start.
+# Sitting here the test reads only runs already on disk, and refuses before the .gitignore
+# below or the run folder below that is written, so a refused start leaves nothing behind.
 #
 # HARING_ALLOW_PARALLEL lifts it for one launch, as HARING_ALLOW_NESTING does, up to
 # MAX_PARALLEL_WORKERS: the plan's concurrency limit, which holds even under the lift. It
@@ -317,6 +319,8 @@ for meta in "$project"/.haring/runs/*/meta; do
   pid=$(sed -n 's/^pid=//p' "$meta")
   case "$pid" in ''|*[!0-9]*) continue ;; esac
   kill -0 "$pid" 2>/dev/null || continue
+  cmd=$(ps -p "$pid" -o command= 2>/dev/null) || continue
+  case "$cmd" in *"${run_dir##*/}"*) ;; *) continue ;; esac
   [ -s "$run_dir/report.json" ] && continue
   live_count=$((live_count + 1))
   live="$live

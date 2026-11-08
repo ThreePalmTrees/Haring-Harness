@@ -15,9 +15,41 @@ evidence, and the only reader that wants them is the display with a row budget. 
 haring-wait applies both after read() returns, and every other reader gets the stream
 whole. BLOCK_LINES and BLOCK_LINES_WORKING stay here, because haring-wait needs both
 numbers and this module is where the shared numbers live.
+
+More than one command also asks whether a run's worker is still going, and the answer
+takes the pid's command as well as the signal, so that test lives here too.
 """
 import json, os, subprocess, time
 from datetime import datetime
+
+
+def run_pid_alive(run, pid):
+    """Whether a run's worker is still going: its pid answering signal 0, and the
+    command that pid carries naming the run's folder.
+
+    A pid alone is not the worker. A freed pid is handed to whatever starts next, so a
+    dead run whose pid now belongs to an unrelated process reads as live and a worker
+    refuses to start beside it; the runner shell is started as /bin/sh <run>/run.sh, so
+    its command always contains the run folder's basename, and a command without that
+    basename is some other process. The basename is matched rather than the whole path
+    because a process carries the path it was handed and realpath resolves symlinks —
+    on macOS /tmp is a link to /private/tmp, so the realpath of a run under /tmp matches
+    no command line.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True)
+    except OSError:
+        return False
+    return out.returncode == 0 and os.path.basename(run.rstrip("/")) in out.stdout
 
 
 def live_session(run):
