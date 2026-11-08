@@ -286,7 +286,14 @@ if [ -z "$no_pulse" ]; then
     case "$pulse_pid" in
       '') why="$pulse_file gave no process id" ;;
       *[!0-9]*) why="$pulse_file holds '$pulse_pid', which is not a process id" ;;
-      *) kill -0 "$pulse_pid" 2>/dev/null || why="the pulse that wrote $pulse_file is gone: pid $pulse_pid is not alive — a pulse killed hard is not a pulse" ;;
+      *) if ! kill -0 "$pulse_pid" 2>/dev/null; then
+           why="the pulse that wrote $pulse_file is gone: pid $pulse_pid is not alive — a pulse killed hard is not a pulse"
+         else
+           case "$(ps -p "$pulse_pid" -o command= 2>/dev/null)" in
+             *haring-pulse*) ;;
+             *) why="the pulse that wrote $pulse_file is gone: pid $pulse_pid now belongs to another process" ;;
+           esac
+         fi ;;
     esac
   fi
   if [ -n "$why" ]; then
