@@ -9,27 +9,30 @@ way haring-worker resolves a workdir. --every is the gap between passes once som
 has been reported, and defaults to 300. --first is the gap before that first report,
 counted from the pass that first saw the worker, and defaults to 180: a worker that is
 implementing a spec the manager has already written needs longer than that before what
-it has to show is worth waking anyone for. Both take a positive integer; --every is
-refused above 300 and --first at 300 or more, because one rule covers both — no look,
-opening or settled, waits longer than five minutes.
+it has to show is worth waking anyone for. Both take a positive integer and are held
+between 60 and 300 seconds: a smaller number is used as 60, a larger as 300, and the
+pulse says on a line starting `cadence` when it limited either one.
 
 The pace can also be retuned mid-run, without stopping and restarting this, by writing
-one number of seconds into <project>/.haring/cadence. The file is read between passes,
-so the pass after the write already uses the number, under the same 300-second ceiling.
-A number above the ceiling, or not a number at all, is refused rather than obeyed — the
-pace in force stands. Both the adoption and the refusal are printed on stdout as a line
-starting `cadence`, once each when they happen, so a reader of this stream never has to
-guess why the pace moved or failed to. A missing or empty file is not a refusal: it
-means the --every interval again.
+one number of seconds into <project>/.haring/cadence. The file belongs to one pulse:
+this one removes any file left by an earlier pulse as it takes the project, reads the
+file written while it runs between passes, and removes it on the way out. A number in
+the file is held to the same 60 to 300 seconds, so a number outside the range is used
+at the nearer edge rather than obeyed. A file that is not a positive whole number is
+refused — the pace in force stands — while a missing or empty file means the --every
+interval again. Each adoption, limit, clearing and refusal is printed on stdout as a
+line starting `cadence`, once each when it happens, so a reader of this stream never
+has to guess why the pace moved or failed to.
 
 While it lives, this process's own pid is written to <project>/.haring/pulse, and the
 file is removed on every way out — each exit above, a Ctrl-C, a kill — but only while it
-still names this process. One pulse watches a project. A second one reads the file
-before writing its own, and when what it names is alive and is a haring-pulse it
-refuses: one line on standard error naming that pid, and the pass interval in force
-when <project>/.haring/cadence holds a number the first pulse would adopt, then exit 1
-with the file untouched. Every other case takes the file over and runs — the file
-missing, unreadable, empty, the pid dead, the pid alive without being a haring-pulse.
+still names this process. The cadence file is removed with it under the same condition.
+One pulse watches a project. A second one reads the file before writing its own, and
+when what it names is alive and is a haring-pulse it refuses: one line on standard error
+naming that pid, and the pass interval in force when <project>/.haring/cadence holds a
+positive number, named after limiting, then exit 1 with the file untouched. Every other
+case takes the file over and runs — the file missing, unreadable, empty, the pid dead,
+the pid alive without being a haring-pulse.
 A pulse killed with SIGKILL leaves the file behind, because SIGKILL is the one death
 nothing can be done on the way out of, which is why the reader checks the pid and the
 command and not just the file: what it names being dead, or being no pulse, is no pulse.
@@ -103,8 +106,9 @@ QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says
 # it after 900 seconds of silence, so this line exists to give the manager about
 # twelve minutes of warning before the run stops itself.
 SILENT_AFTER = 180
+FLOOR = 60           # one minute is the shortest gap the manager may ever choose
 CEILING = 300        # five minutes is the longest gap the manager may ever choose
-FIRST_CEILING = 300  # an opening look is held to the same five minutes
+FIRST_CEILING = 300  # an opening look is held to the same floor and ceiling
 # A safety valve for a run that has gone wrong and never a way of trimming what a
 # worker did. The largest whole-run stream measured across 91 runs in this project is
 # 286,081 characters, and MAX_CHARS sits well above it, so the next slightly larger
@@ -132,6 +136,19 @@ def whole_seconds(flag, val):
     return int(val)
 
 
+def limited(flag, value, ceiling):
+    """Return value inside the floor and ceiling, saying when it had to move."""
+    if value < FLOOR:
+        print(f"cadence {flag} {value}s is below the {FLOOR}s floor, using {FLOOR}s",
+              flush=True)
+        return FLOOR
+    if value > ceiling:
+        print(f"cadence {flag} {value}s is above the {ceiling}s ceiling, using {ceiling}s",
+              flush=True)
+        return ceiling
+    return value
+
+
 argv = sys.argv[1:]
 project_arg, every, first = None, 300, 180
 i = 0
@@ -141,16 +158,12 @@ while i < len(argv):
         i += 1
         if i >= len(argv):
             die("--every needs a number of seconds", 2)
-        every = whole_seconds("--every", argv[i])
-        if every > CEILING:
-            die(f"--every must be at most {CEILING} seconds, got: {every}", 2)
+        every = limited("--every", whole_seconds("--every", argv[i]), CEILING)
     elif a == "--first":
         i += 1
         if i >= len(argv):
             die("--first needs a number of seconds", 2)
-        first = whole_seconds("--first", argv[i])
-        if first >= FIRST_CEILING:
-            die(f"--first must be under {FIRST_CEILING} seconds, got: {first}", 2)
+        first = limited("--first", whole_seconds("--first", argv[i]), FIRST_CEILING)
     elif a.startswith("-") and a != "-":
         die(f"unknown option: {a}", 2)
     elif project_arg is None:
@@ -169,6 +182,7 @@ if not os.path.isdir(project_arg):
 top = subprocess.run(["git", "-C", os.path.abspath(project_arg), "rev-parse", "--show-toplevel"],
                      capture_output=True, text=True).stdout.strip()
 project = top or os.path.abspath(project_arg)
+cadence_file = os.path.join(project, ".haring", CADENCE_FILE)
 
 
 def elapsed(since):
@@ -282,15 +296,16 @@ refused = None
 def take_cadence():
     """Fold .haring/cadence into the pace, saying on stdout why a number was not obeyed.
 
-    Called between passes. A number in the file becomes the pace from the next pass on;
-    nothing in the file means the --every interval again; anything else leaves the pace
-    in force standing. The file lives where the manager writes and this reads, so the
-    reader of the run lines cannot see it — which is why both an adoption and a refusal
-    are printed rather than left to be inferred from the timing of later lines.
+    Called between passes. A number in the file becomes the pace from the next pass on,
+    held to the 60 to 300 second range; nothing in the file means the --every interval
+    again; anything else leaves the pace in force standing. The file lives where the
+    manager writes and this reads, so the reader of the run lines cannot see it — which
+    is why an adoption, a limit, a clearing and a refusal are all printed rather than
+    left to be inferred from the timing of later lines.
     """
     global pace, refused
     try:
-        text = open(os.path.join(project, ".haring", CADENCE_FILE), errors="replace").read().strip()
+        text = open(cadence_file, errors="replace").read().strip()
     except OSError:
         text = ""
     if not text:
@@ -298,18 +313,24 @@ def take_cadence():
         refused = None
         if pace != every:
             pace = every
-            print(f"cadence {pace}s", flush=True)
+            print(f"cadence .haring/cadence cleared, back to --every {every}s", flush=True)
     elif not text.isdigit() or int(text) < 1:
         if text != refused:
             refused = text
             print(f"cadence {text!r} refused, not a number of seconds", flush=True)
-    elif int(text) > CEILING:
-        refused = text
-        print(f"cadence {text}s refused, above the {CEILING}s ceiling", flush=True)
-    elif int(text) != pace:
+    else:
         refused = None
-        pace = int(text)
-        print(f"cadence {pace}s", flush=True)
+        number, edge = int(text), None
+        if number < FLOOR:
+            number, edge = FLOOR, f"below the {FLOOR}s floor"
+        elif number > CEILING:
+            number, edge = CEILING, f"above the {CEILING}s ceiling"
+        if number != pace:
+            pace = number
+            said = f"cadence .haring/cadence says {int(text)}s"
+            if edge:
+                said += f", {edge}"
+            print(f"{said}, --every said {every}s, using {pace}s", flush=True)
 
 
 # The pid file is the other side of haring-worker's refusal to start a run nobody is
@@ -318,8 +339,8 @@ def take_cadence():
 # missing project leaves no file behind. A second pulse refused here leaves it standing
 # too: the refusal happens before anything is written, so the first pulse's claim on the
 # file is exactly what the second one read. The refusal names the cadence number only
-# when the file holds one the first pulse would adopt — anything else, including a
-# number above the ceiling, is not the interval in force and is not claimed. The removal
+# when the file holds a positive number, named after limiting to the floor and ceiling —
+# anything else is not the interval in force and is not claimed. The removal
 # sits in a finally, so every exit in the loop below lands there; the handler turns a
 # kill into an exit so a killed pulse reaches it as well, since the default action for
 # SIGTERM stops the process without unwinding. The removal reads the file first, so it
@@ -332,18 +353,36 @@ holder = live_pulse_pid(pulse_file)
 if holder:
     message = f"a haring-pulse (pid {holder}) is already watching this project"
     try:
-        cadence = open(os.path.join(project, ".haring", CADENCE_FILE)).read().strip()
+        cadence = open(cadence_file).read().strip()
     except OSError:
         cadence = ""
-    if cadence.isdigit() and 1 <= int(cadence) <= CEILING:
-        message += f", at a pass interval of {cadence}s"
+    if cadence.isdigit() and int(cadence) >= 1:
+        in_force = min(max(int(cadence), FLOOR), CEILING)
+        message += f", at a pass interval of {in_force}s"
     die(message, 1)
 with open(pulse_file, "w") as f:
     f.write(f"{os.getpid()}\n")
 
+# The cadence belongs to the pulse that reads it. A file left by an earlier pulse is
+# removed now, once the pid file is ours, and said on stdout so its number is not
+# mistaken for one this pulse chose. A second pulse refused above never reaches here,
+# so it touches neither file.
+try:
+    with open(cadence_file, errors="replace") as f:
+        stale = f.read().strip()
+except OSError:
+    stale = None
+if stale is not None:
+    try:
+        os.remove(cadence_file)
+    except OSError:
+        pass
+    print(f"cadence removed a .haring/cadence left from an earlier pulse "
+          f"(it said {stale}); --every {every}s stands", flush=True)
+
 
 def take_pulse_down():
-    """Remove the pid file, but only while it still names this process."""
+    """Remove the pid file and the cadence, but only while the pid file names this process."""
     try:
         with open(pulse_file) as f:
             text = f.read().strip()
@@ -351,10 +390,11 @@ def take_pulse_down():
         text = ""
     if text and text != str(os.getpid()):
         return   # another pulse holds the file now, and needs it standing
-    try:
-        os.remove(pulse_file)
-    except OSError:
-        pass
+    for path in (pulse_file, cadence_file):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def leave(signum, frame):

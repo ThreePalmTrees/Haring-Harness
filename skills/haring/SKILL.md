@@ -662,11 +662,11 @@ many lines it holds. Turn what arrives into one short sentence for the client th
 the worker is doing. Do not paste the raw stream. The first pass on a worker comes `--first`
 seconds after the pulse finds it, defaulting to 180, long enough that a worker implementing a
 plan you have already written has something worth the wake-up; after that it reports every
-`--every` seconds, defaulting to 300. Neither look waits longer than five minutes: `--first` is
-refused at 300 or more, `--every` above 300. To change the pace while a run is going, write
-one number of seconds into `.haring/cadence` in the project; the next pass uses it, under the
-same 300-second ceiling, and a line starting `cadence` on the pulse's own output says when a
-number was taken and when one was refused. A pass with nothing new still speaks once a run's
+`--every` seconds, defaulting to 300. Both numbers and the file are held between 60 and 300
+seconds: a value outside is used at the nearer edge rather than refused, and a line starting
+`cadence` on the pulse's own output says when one was limited, taken, cleared or refused. To
+change the pace while a run is going, write one number of seconds into `.haring/cadence` in the
+project; the next pass uses it, and the file lasts only as long as the pulse that read it. A pass with nothing new still speaks once a run's
 last step is more than a minute old: one line naming the run, saying the worker is thinking,
 how long since that step, how many thinking tokens the run has accumulated, and how long since
 anything at all was written to its events stream. When that file has gone three minutes
