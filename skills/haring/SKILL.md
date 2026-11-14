@@ -672,8 +672,10 @@ how long since anything at all was written to its events stream. When the worker
 worker.conf says thinking=yes and the stream has carried a thought, the line also says the
 worker is thinking and how many thinking tokens the run has accumulated; otherwise it says
 there has been no action, with no claim about thinking. When that file has gone three
-minutes unwritten, the words change instead to say the worker may have died, which a
-worker deep in a long thought never lets happen. Every wake-up costs you a turn, which is
+minutes unwritten, the words change instead to say the stream has been silent that long.
+That is not a death: a thought is written only when it ends, so a worker in one long
+thought writes nothing until then, and runs have gone seven minutes silent and still
+reported. The run stops itself after fifteen minutes of silence. Every wake-up costs you a turn, which is
 why both numbers are
 minutes. The workers it reports are every worker live while it watches, whenever it started: a
 worker you start after the pulse began is taken on too, not left for a next pulse. It looks

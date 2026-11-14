@@ -69,9 +69,10 @@ worker is still going, so the file's own age is what the line reads. The elapsed
 times in the line grow, so no two of these lines are the same — which is the point,
 because a worker deep in a long thought
 must not read as one that has died. If the file has gone unwritten for longer
-than SILENT_AFTER seconds, the line changes its words instead: the stream itself has
-stopped, which a worker in a long thought never lets happen, and the worker may have
-died. A run with nothing new for less than QUIET_AFTER is silent on that pass, which is
+than SILENT_AFTER seconds, the line changes its words instead: the stream has been
+silent that long. It does not say the worker died: a thought is written only when it
+ends, so a worker in one long thought writes nothing until then. The watchdog in
+haring-worker stops a run after fifteen minutes of real silence. A run with nothing new for less than QUIET_AFTER is silent on that pass, which is
 correct output here, not a fault.
 
 A pass carrying more than MAX_CHARS characters of one run's stream prints the most
@@ -466,8 +467,9 @@ try:
                     written = (os.path.getmtime(events) if os.path.exists(events)
                                else os.path.getmtime(meta_path))
                     if time.time() - written >= SILENT_AFTER:
-                        print(f"{prefix}nothing written to events.jsonl for "
-                              f"{elapsed(written)}, the worker may have died",
+                        print(f"{prefix}silent for {elapsed(written)}: nothing written to "
+                              f"events.jsonl; a thought shows only when it ends, so the "
+                              f"worker may still be thinking",
                               flush=True)
                     elif (haring_events.worker_conf(run).get("thinking")
                           and reader.has_thought):
