@@ -506,11 +506,8 @@ echo "pid=\$\$" >> "$run/meta"
 cd "$workdir" || exit 1
 : > "$run/report.json"
 live_session() {
-  python3 -c 'import json,sys
-for l in open(sys.argv[1]):
-    try: s = json.loads(l).get("sessionID")
-    except ValueError: continue
-    if s: print(s); break' "$run/events.jsonl" 2>/dev/null
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import haring_events
+print(haring_events.live_session(sys.argv[2]))' "$HARING/lib" "$run" 2>/dev/null
 }
 (
   limit=$stall_limit
@@ -521,7 +518,6 @@ for l in open(sys.argv[1]):
     [ "\$age" -ge "\$limit" ] || continue
     printf 'at=%s\nsilent=%s\n' "\$(date +%Y-%m-%dT%H:%M:%S)" "\$age" > "$run/stalled"
     sid=\$(live_session)
-    [ -n "\$sid" ] || sid=\$(cat "$run/session" 2>/dev/null)
     [ -n "\$sid" ] || sid=$resume_id
     [ -z "\$sid" ] || "$HARING/workers/$worker/stop" "\$sid" </dev/null >/dev/null 2>&1
     kill -9 0
@@ -546,11 +542,7 @@ while :; do
     python3 "$HARING/lib/haring_report.py" "$run" "$schema" --final
     break
   fi
-  sid=\$(tail -r "$run/events.jsonl" | python3 -c 'import json,sys
-for l in sys.stdin:
-    try: s = json.loads(l).get("sessionID")
-    except ValueError: continue
-    if s: print(s); break')
+  sid=\$(live_session)
   printf 'Your final message was not the report. What is wrong with it:\n%s\n\nSend the report again: one JSON object matching the schema you were given, and nothing else.\n' \
     "\$problem" > "$run/retry.tmp"
   "$HARING/workers/$worker/start" --kind "$kind" --model "$model" $effort_arg \
