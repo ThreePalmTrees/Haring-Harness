@@ -119,6 +119,10 @@ stalled = os.path.join(run, "stalled")
 # hidden: a result can be a whole file.
 events = os.path.join(run, "events.jsonl")
 
+# The hints the worker declares for its harness, read the same way the event module is:
+# thinking says its stream can carry a thought, which is what lets a quiet line say so.
+worker_conf = haring_events.worker_conf(run)
+
 # Every line carries the run's identity, because a header at the top of the stream would
 # have scrolled away before the first step. The date
 # and time of the stamp are dropped and the kind and pid kept:
@@ -222,7 +226,8 @@ while not landed():
         # and a stalled worker looks different from a busy one.
         if reader.last == "retry":
             say("waiting", f"on the endpoint, {reader.retries} retries so far", None)
-        elif now - reader.seen_at < haring_events.IDLE_AFTER / 2:
+        elif (worker_conf["thinking"] and reader.has_thought
+              and now - reader.seen_at < haring_events.IDLE_AFTER / 2):
             # Not the word used for a thinking block: that label carries the worker's own
             # words, and this line carries none. A reader must be able to tell a thought
             # from a report that there is no thought yet.

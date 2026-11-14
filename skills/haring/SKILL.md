@@ -667,11 +667,14 @@ seconds: a value outside is used at the nearer edge rather than refused, and a l
 `cadence` on the pulse's own output says when one was limited, taken, cleared or refused. To
 change the pace while a run is going, write one number of seconds into `.haring/cadence` in the
 project; the next pass uses it, and the file lasts only as long as the pulse that read it. A pass with nothing new still speaks once a run's
-last step is more than a minute old: one line naming the run, saying the worker is thinking,
-how long since that step, how many thinking tokens the run has accumulated, and how long since
-anything at all was written to its events stream. When that file has gone three minutes
-unwritten, the words change instead to say the worker may have died, which a worker deep in a
-long thought never lets happen. Every wake-up costs you a turn, which is why both numbers are
+last step is more than a minute old: one line naming the run, how long since that step and
+how long since anything at all was written to its events stream. When the worker's
+worker.conf says thinking=yes and the stream has carried a thought, the line also says the
+worker is thinking and how many thinking tokens the run has accumulated; otherwise it says
+there has been no action, with no claim about thinking. When that file has gone three
+minutes unwritten, the words change instead to say the worker may have died, which a
+worker deep in a long thought never lets happen. Every wake-up costs you a turn, which is
+why both numbers are
 minutes. The workers it reports are every worker live while it watches, whenever it started: a
 worker you start after the pulse began is taken on too, not left for a next pulse. It looks
 for them between passes rather than only when one is due, so it ends within a second or two
@@ -762,9 +765,10 @@ it, the same as `haring-kill`.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that checked can be continued as one that
-implements, and it keeps everything it learned while looking. A continued run forks: it gets
-its own run folder and its own session, so the run it came from stays whole and can be
-continued again.
+implements, and it keeps everything it learned while looking. A continued run gets its own
+run folder. Its worker forks the session when its worker.conf says fork=yes, so the run it
+came from stays whole and can be continued again; otherwise it resumes the same session,
+and the two runs share that transcript.
 
 Every kind runs in the project itself, as its own OpenCode agent,
 `workers/opencode/agents/<kind>.md`, and a kind's limits are that agent's deny rules: a

@@ -65,6 +65,29 @@ def worker_events(run):
     return WORKERS[path]
 
 
+def worker_conf(run):
+    """The hints a run's worker declares for its harness, from workers/<name>/worker.conf
+    beside the module worker_events loads.
+
+    The file is written by hand when a worker is added, so every line is a hint and never
+    a promise. thinking says the harness can show a thought in the stream, and fork says a
+    continued run may fork its session. Each one is true only for the exact value yes; a
+    missing file, a missing line or any other value is the safe default, False, so a wrong
+    file cannot break a run.
+    """
+    hints = {"thinking": False, "fork": False}
+    try:
+        with open(os.path.join(worker_dir(run), "worker.conf")) as f:
+            for line in f:
+                key, sep, value = line.partition("=")
+                key = key.strip()
+                if sep and key in hints:
+                    hints[key] = value.strip() == "yes"
+    except OSError:
+        pass
+    return hints
+
+
 def run_pid_alive(run, pid):
     """Whether a run's worker is still going: its pid answering signal 0, and the
     command that pid carries naming the run's folder.
@@ -98,7 +121,7 @@ def live_session(run):
     """The session a run is working in: the first session id its events.jsonl names,
     else the id its start chose and wrote to the run's session file, else the one its
     meta names (old runs). A fresh run's session file is written before the worker does
-    anything; a continued run forks under an id the worker picks, which only the stream
+    anything; a continued run's fork, when its worker forks, picks an id only the stream
     knows."""
     worker = worker_events(run)
     try:
@@ -216,6 +239,8 @@ class RunReader:
                        counts its worker's finished steps hand back, which carry the
                        count without producing an entry — the cost of a long thought
                        that no entry shows
+      has_thought  whether the stream has carried a thought at all: a thinking entry,
+                   or a thinking_tokens count above 0
     """
 
     def __init__(self, when_ts=0.0):
@@ -225,6 +250,7 @@ class RunReader:
         self.retries = 0    # haring-wait's api_retry line reads these two
         self.retry_next = 1
         self.thinking_tokens = 0
+        self.has_thought = False
         self.when = time.time()
         self.when_ts = when_ts
         self.seen_at = 0.0
@@ -256,7 +282,10 @@ class RunReader:
         kind = e.get("kind")
         ts = e.get("ts")
         if kind == "thinking_tokens":
-            self.thinking_tokens += e.get("count") or 0
+            count = e.get("count") or 0
+            self.thinking_tokens += count
+            if count > 0:
+                self.has_thought = True
             return None
         if kind == "tool":
             arg = render_args(e.get("args") or {})
@@ -268,6 +297,8 @@ class RunReader:
             self.last = "step"
             return (e.get("name", "?"), arg, ts)
         if kind in ("thinking", "says"):
+            if kind == "thinking":
+                self.has_thought = True
             rows = [l for l in (" ".join(x.split())
                                 for x in (e.get("text") or "").splitlines()) if l]
             return (kind, "\n".join(rows), ts) if rows else None
