@@ -32,7 +32,9 @@
 #
 # The worker model is one of those listed in the settled worker's worker.conf, the same
 # ones bin/haring-worker accepts; the QA model is one of those, opus or sonnet. A name
-# outside the list is refused.
+# given on the command line is refused when it is outside the list. A saved model file
+# is shared by every worker, so a file that names a model outside the settled worker's
+# list is skipped, with one warning naming the file, and the next place is used.
 #
 # project is the git top level of the current directory, resolved the same way
 # bin/haring-worker resolves a workdir.
@@ -224,11 +226,16 @@ fi
 
 # The same order bin/haring-worker settles a fresh run's model from, minus --model.
 # A file that is missing, empty, or holds only whitespace names nothing and is
-# passed over rather than treated as a choice.
+# passed over rather than treated as a choice. A file that names a model outside the
+# settled worker's list is passed over too, with one warning naming the file.
 for model_file in "$project/.haring/model" "$HARING/model"; do
   [ -f "$model_file" ] || continue
   candidate=$(tr -d '[:space:]' < "$model_file")
   [ -n "$candidate" ] || continue
+  if ! is_model "$candidate"; then
+    echo "haring-model: ignoring $model_file: $candidate is not in the $worker worker's models ($MODELS)." >&2
+    continue
+  fi
   echo "$candidate ($model_file)"
   exit 0
 done
