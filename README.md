@@ -117,7 +117,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `WORKERS.md` | | the contract a worker harness must meet, and how a run chooses its worker |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
-| | `haring-model` | read the worker's model, or write it — haring's own choice, or the project's with `--project`; `--qa` reads or writes the QA model the same way, and `--worker` reads or writes the worker itself |
+| | `haring-model` | print each kind's model and its agent file; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
 | | `haring-wait` | follow a run, then print its report |
 | | `haring-pulse` | the workers' stream since the last pass, fast then at a pace you can retune |
 | | `haring-kill` | stop a running worker on purpose |
@@ -138,11 +138,11 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
 | | `haring_run.py` | the numbers a run's report holds, shared by `haring-stats` and `haring-stats-page` |
-| `workers/claude/` | `worker.conf` | the default model and the models a Claude Code worker may run on |
+| `workers/claude/` | `worker.conf` | the hints and route texts a Claude Code worker declares |
 | | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
-| | `agents/<kind>.md` | one Claude Code agent per kind |
-| `workers/opencode/` | `worker.conf` | the default model and the models a worker may run on |
+| | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is that kind's model |
+| `workers/opencode/` | `worker.conf` | the hints a worker declares |
 | | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
 | | `start` | run one worker turn and write the event stream |
 | | `steer` | send a message into a live session |
@@ -158,11 +158,15 @@ A fresh run settles its worker from the worker file `<project>/.haring/worker`, 
 `<haring-root>/worker`, then `opencode`. A continue keeps the worker recorded in the run's
 `meta`. `WORKERS.md` section 6 gives the full rule.
 
-A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
-agent `haring-qa` (`workers/claude/agents/qa.md`, linked into `~/.claude/agents`). A project, or
-haring itself, can hold a `qa-model` file naming `sonnet` or an OpenCode model instead;
-the project's overrides haring's own, and an OpenCode model runs as a `haring-worker qa`
-run.
+Every kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
+OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
+runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+
+A QA pass runs only when you ask for one. The QA worker settles from
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`. By default
+that is the Claude worker, whose `workers/claude/agents/qa.md` names `claude-opus-5-5`
+on its `model:` line. The project's QA worker file overrides haring's own. An OpenCode
+QA worker runs as a `haring-worker qa` run.
 
 Everything is linked, not copied, so editing a file here takes effect at once — except an
 agent in `workers/opencode/agents/<kind>.md`: the OpenCode service does not notice that edit, so run

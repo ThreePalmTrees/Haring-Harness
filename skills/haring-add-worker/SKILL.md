@@ -36,7 +36,8 @@ Find these facts.
 - One-shot command. A command that takes one prompt, runs it, prints the result and
   exits. It must work without a terminal. This is what `start` wraps.
 - Model flag. The flag or setting that chooses a model, and the exact model names. Ask
-  the user which models their plan allows. These become `default_model` and `models`.
+  the user which models their plan allows. Each kind's model is the `model:` line of its
+  `agents/<kind>.md` file.
 - Live event stream. A machine-readable stream that can be read while the run is going.
   It must name the session, the steps, the tool calls, the text and the end of the run.
   Find whether it carries the harness's thinking.
@@ -72,20 +73,26 @@ Use these files:
 - `steer`
 - `stop`
 - `agents-config`
+- `agents/<kind>.md`, one per kind
 
-Add `agents/<kind>.md` and helper modules only if the harness needs them.
+Add helper modules only if the harness needs them.
 
-`worker.conf`:
+`worker.conf` holds hints only:
 
-- `default_model=` one model name from the user's plan.
-- `models=` every model the user may choose, separated by spaces.
 - `thinking=yes` only when the event stream really carries the harness's thinking.
   Otherwise leave the line out.
 - `fork=yes` only when a continue can start a copy of the session under a new id.
   Otherwise leave the line out.
+- `steer_with=` and `stop_with=` when the manager starts this worker with its own tool
+  and there is no `steer` or `stop` program to call.
 
 Never set a hint to `yes` to make output look better. A false hint makes haring claim
 something the stream does not support.
+
+`agents/<kind>.md` names the kind's model on its `model:` line. That line is the only
+place a model is named, and `haring-worker` reads it before a fresh launch and passes it
+to `start` with `--model`; a missing file or line stops the launch. The same file sets
+the kind's tools and limits.
 
 `events.py`: implement `session(event)`, `entries(event, seen)` and `summary(events)`
 with the exact entry and summary shapes in `WORKERS.md` section 3. Map the harness's

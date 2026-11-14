@@ -26,8 +26,8 @@ that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
 
-- `worker.conf` holds the model list and the hints. A fresh launch cannot run without
-  a readable model list.
+- `worker.conf` holds the hints. Every line is a hint, so a missing or unreadable file
+  leaves the safe defaults and stops nothing.
 - `events.py` is a Python module with three functions. Every command that reads a
   run's event stream loads it.
 - `start` is optional. When present, it runs one worker turn and writes the event
@@ -37,20 +37,19 @@ The core uses these files.
 - `agents-config` installs, removes and checks the worker's harness-side files.
   `haring-worker` calls its `check` before a launch, and the installers call `install`
   and `remove`. A worker the manager starts does not need it.
-- `agents/<kind>.md` is one file per kind. Only the worker's own `agents-config`
-  reads these. The core never reads them.
+- `agents/<kind>.md` is one file per kind. Its `model:` line is the kind's model, and
+  the core reads it before it launches the kind. The worker's own `agents-config`
+  installs the file into the harness.
 - `api.py` is a helper module used by the OpenCode `steer` and `stop`. The core never
   reads it.
 
 A worker folder may hold other files. The core ignores them.
 
-A program that is present must be executable. `events.py` and `worker.conf` must be
-readable. `worker.conf` must be a file, not a directory.
+A program that is present must be executable. `events.py` must be readable.
 
 The OpenCode example has this shape.
 
-- `workers/opencode/worker.conf` names the default model, the models that may be
-  chosen, and the values `thinking=yes` and `fork=yes`.
+- `workers/opencode/worker.conf` names the values `thinking=yes` and `fork=yes`.
 - `workers/opencode/events.py` reads OpenCode part events and maps its tool names to
   the labels haring's readers show.
 - `workers/opencode/start` names a new session, writes its id to the file given with
@@ -69,8 +68,7 @@ The OpenCode example has this shape.
 The Claude Code example has this shape. The manager starts it with Claude Code's Agent
 tool, and haring reads the transcript the subagent writes.
 
-- `workers/claude/worker.conf` names `default_model=sonnet`, the models opus,
-  sonnet and haiku, `thinking=yes`, `fork=no`, and the two route texts
+- `workers/claude/worker.conf` names `thinking=yes`, `fork=no`, and the two route texts
   `steer_with=SendMessage to agent {agent_id}` and
   `stop_with=TaskStop on agent {agent_id}`.
 - `workers/claude/events.py` reads a subagent transcript and turns its user and
@@ -90,14 +88,7 @@ tool, and haring reads the transcript the subagent writes.
 sections, no quotes and no comment syntax. A line the core does not recognise is
 ignored.
 
-The core reads six keys.
-
-`default_model` is the model a fresh run uses when neither the project nor haring
-itself has chosen one. The value is the model name written the way the harness takes
-it.
-
-`models` is the space-separated list of models a run may use. A model outside this
-list is refused.
+The core reads four keys.
 
 `thinking` is a hint that the harness can put a thought in the event stream. When it
 is true, `haring-pulse` may say that a quiet worker is thinking and `haring-wait` may
@@ -115,31 +106,20 @@ and a missing `stop` program. `{agent_id}` in either text is replaced by the run
 
 The reading rules are exact.
 
-- `default_model` and `models` are read from the first line that starts at column 1
-  with `default_model=` or `models=`. A space before `=` hides the line. The value is
-  the rest of the line.
 - `thinking`, `fork`, `steer_with` and `stop_with` are read from any line with `=` in
   it. Spaces around the key and around the value are removed. `thinking` and `fork` are
   true only when the value is exactly `yes`; every other value is false. The other two
   are the rest of the line. If a key appears more than once, the last line wins.
-- `models` is split on spaces. A model name cannot contain a space.
 
 The safe value when a line is missing or wrong:
 
-- a missing or empty `default_model` or `models` is not replaced by a safe value. It
-  is a refusal. `haring-worker` and `haring-model` stop with the message that the
-  worker has no model list. `haring-meta` needs `default_model` for its model line, so
-  it prints `none` with the path when it cannot find that key.
-- a `default_model` that is not in `models` makes a launch fail when the model is
-  checked.
 - a missing or wrong `thinking` is false.
 - a missing or wrong `fork` is false.
 - a missing `steer_with` or `stop_with` makes the command say only that the run cannot
   be steered or stopped.
-- a missing or unreadable `worker.conf` makes both hints false, makes the two texts
-  empty, and makes any launch or model command fail for the missing model list.
+- a missing or unreadable `worker.conf` leaves all four at those values.
 
-The two hints never stop a run. The model list does.
+The hints never stop a run.
 
 ## 3. events.py
 
@@ -333,7 +313,8 @@ For a report retry:
 The arguments are:
 
 - `--kind`: one of `check`, `implement`, `errand` or `qa`.
-- `--model`: one model name from `worker.conf`.
+- `--model`: the model this kind runs on, from the `model:` line of the worker's
+  `agents/<kind>.md`, or the caller's one-run override.
 - `--effort`: `low`, `high` or `max`, only when the caller asked for one.
 - `--session-file`: the path where a fresh run may record its session id.
 - `--resume`: the session to continue.
@@ -494,9 +475,10 @@ A missing or unusable `agents-config` stops a fresh launch with exit 1. `install
 and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.sh
 --worker <name>` does not list that folder and refuses the name with exit 2.
 
-A missing or unreadable `worker.conf` stops a launch and `haring-model` with exit 1,
-because the worker has no model list. `haring-meta` prints `none` with the path when
-it cannot find a default model. The run's hints read as false.
+A missing or unreadable `worker.conf` leaves the hints false and the two route texts
+empty, so it stops nothing. A missing `agents/<kind>.md`, or one with no `model:` line,
+stops a fresh launch with exit 2 and names the file. `haring-meta` prints `none` with
+the path when it cannot find a kind's model.
 
 A missing worker folder makes `haring-worker` stop with exit 2 before it creates the
 run folder. A run whose `meta` names a worker folder that has since been removed has no
@@ -508,7 +490,7 @@ called it.
 
 ## 6. How the core chooses the worker
 
-A fresh run settles its worker the way it settles its model. It reads the first of
+A fresh run settles its worker from two files. It reads the first of
 `<project>/.haring/worker` and `<haring-root>/worker` that names one. A file that is
 missing, empty or holds only whitespace names nothing and is passed over. When neither
 file names a worker, `haring-worker` uses `WORKER_DEFAULT`, which is `opencode`.
@@ -533,27 +515,30 @@ reads the `worker=` line, or uses `opencode` when the line is absent. It then lo
 
 `haring-model` and `haring-meta` answer before a run exists. They settle the worker the
 same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
-then `opencode`. They read that worker's `worker.conf`. When the worker is not
-`opencode`, `haring-meta` names it in the model line, as
-`Worker model (<name>): ...`. For `opencode` the line is unchanged.
+then `opencode`. Each kind's model is the `model:` line of
+`workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled worker's check,
+errand and implement models with their files, and the QA worker with its `qa` model.
 
 `haring-model --worker` prints the settled worker and where it came from. Given a name,
 it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with
 `--project`, and refuses a name with no folder under `workers/`.
 
-A fresh run's model settles from files that belong to its worker. It reads
-`<project>/.haring/model.<worker>`, then `<haring-root>/model.<worker>`, then
-`default_model` in that worker's `worker.conf`. For the opencode worker only, a plain
-`<project>/.haring/model` and `<haring-root>/model` are read after `model.opencode` in
-the same folder, so projects made before workers existed keep their choice. A file that
-is missing, empty or holds only whitespace names nothing and is passed over. A file
-whose model is outside that worker's `models` list is refused, not replaced.
-`haring-worker`, `haring-model` and `haring-meta` use this rule; `haring-meta` names the
-file and model on its model line when it cannot use the file.
+A fresh run's model is the `model:` line of `workers/<worker>/agents/<kind>.md`, read
+after the worker settles and before the run folder is created. The file is one place for
+every worker, every kind and every project. A missing file or model line stops the launch
+with exit 2 and names the file. `haring-worker --model` is a one-run override, passed
+through unchecked, and a continue keeps the model recorded in the run it continues.
 
-`haring-model <model>` writes the model into `<haring-root>/model.<settled worker>`, or
-`<project>/.haring/model.<settled worker>` with `--project`. `--qa` keeps its own
-`qa-model` files and the opus default, unchanged.
+A qa run settles a worker of its own: `<project>/.haring/qa-worker`, then
+`<haring-root>/qa-worker`, then `claude`, never the worker files. Its model is the
+`model:` line of that worker's `agents/qa.md`.
+
+`haring-model` with no argument prints the settled worker and, for check, errand and
+implement, the model and its agent file, then the QA worker and its model. It writes no
+model. `haring-model --qa` prints the QA worker, where it came from, and its `qa` model;
+given a name, it writes that name into `<haring-root>/qa-worker`, or
+`<project>/.haring/qa-worker` with `--project`. A model is changed by editing the agent
+file's `model:` line.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program
