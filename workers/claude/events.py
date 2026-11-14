@@ -6,10 +6,16 @@ user turns and its assistant turns. The core keeps what every worker shares —
 render_args, the step clock, retry counting and the report checks — and asks the run's
 worker module three questions: session(), entries() and summary(). A run with no pid in
 its meta asks a fourth, alive(), which this module answers from the sidecar meta file
-Claude Code writes beside the transcript.
+Claude Code writes beside the transcript and the transcript's own age.
 """
-import json, os
+import json, os, time
 from datetime import datetime
+
+# A Claude Code session that dies mid-subagent never writes "finished": true to the
+# sidecar, so without a clock the run would read as live for ever and every pulse in the
+# project would wait on it. The transcript is appended as the subagent works, and fifteen
+# minutes without a write is far past any single step a subagent takes.
+STALE_AFTER = 15 * 60  # seconds
 
 # Claude Code prefixes a message the manager sent to a running subagent with this, and
 # follows it with an instruction about the current task. A harness entry carries the
@@ -158,7 +164,9 @@ def alive(run, meta):
     Claude Code writes agent-<id>.meta.json beside agent-<id>.jsonl and adds
     "finished": true once the agent has ended. A run whose meta names no transcript, or
     whose sidecar file is missing or unreadable, has no evidence that the agent is going,
-    so it reads as ended rather than as live.
+    so it reads as ended rather than as live. A transcript that has not been written for
+    STALE_AFTER is also ended, because a session that dies mid-subagent writes no
+    "finished": true.
     """
     transcript = str((meta or {}).get("transcript") or "").strip().strip("'")
     if not transcript:
@@ -169,4 +177,9 @@ def alive(run, meta):
             state = json.load(f)
     except (OSError, ValueError):
         return False
-    return isinstance(state, dict) and state.get("finished") is not True
+    if not isinstance(state, dict) or state.get("finished") is True:
+        return False
+    try:
+        return time.time() - os.path.getmtime(transcript) < STALE_AFTER
+    except OSError:
+        return False

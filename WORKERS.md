@@ -212,7 +212,9 @@ a module that defines `alive(run, meta)` answers, and the run is alive only when
 function returns True. A module without the function cannot say a pid-less run is alive,
 so the run reads as ended. `workers/claude/events.py` answers from the sidecar
 meta file Claude Code writes beside a subagent transcript, which carries `"finished":
-true` once the subagent has ended.
+true` once the subagent has ended. The module also reads a transcript that has not been
+written for fifteen minutes as ended, because a Claude Code session that dies
+mid-subagent never writes that flag.
 
 The core's one liveness function is `run_alive` in `lib/haring_events.py`. It uses
 `run_pid_alive` when `meta` has a pid, and calls the module's `alive(run, meta)` when it
@@ -401,6 +403,12 @@ only in the session named by `CLAUDE_CODE_SESSION_ID`, under the folder named by
 `HARING_CLAUDE_PROJECTS` or, when that is unset, `~/.claude/projects`. Without a session
 id it adopts nothing and says so once.
 
+The pulse scans the runs folder once each pass and keeps what it learned about a run. A
+run that has reported, whose worker is gone, or whose worker module cannot be loaded is
+not read again by that pulse: no meta is parsed and no worker module is loaded. A run
+whose module cannot be loaded gets one warning naming the run and the file, and the pulse
+keeps reporting the other runs.
+
 For each subagent the pulse creates
 `<project>/.haring/runs/<stamp>-<kind>-<agent id>/`. Its `meta` holds `kind`,
 `workdir`, `model`, `worker=claude`, `agent_id`, `agent_type`, `transcript` and
@@ -414,7 +422,9 @@ text with `--final`. An unknown kind gets a report with the raw final text and n
 A run that ended with no answer gets one error report saying so.
 
 The run has no pid. Its liveness comes from the worker module's `alive()`, which reads
-the `"finished"` flag in the sidecar meta file beside the transcript.
+the `"finished"` flag in the sidecar meta file beside the transcript. A transcript not
+written for fifteen minutes also reads as ended, so a session that dies mid-subagent does
+not leave a run live for ever; such a run is finished as any other ended run is.
 
 ### agents-config
 

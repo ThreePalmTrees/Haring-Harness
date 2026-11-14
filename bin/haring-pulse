@@ -330,6 +330,70 @@ def agent_kind(agent_type):
     return "agent"
 
 
+# What this pulse has learned about each run folder, and the ones it is done with.
+# A run folder is read once: its meta is kept here, and a run that has reported, whose
+# worker is gone, or whose worker module cannot be loaded joins `settled`. A settled run
+# is never read again by this pulse — no meta parse and no worker module load — while the
+# scan still lists the runs folder each pass, so a folder created since the last look is
+# found within a second.
+known_runs = {}
+settled = set()
+known_agents = set()
+stopping = False   # set by the signal handler, so a signal's SystemExit is not swallowed
+
+
+def warn_unloadable(run):
+    """Say once that a run's worker events module cannot be loaded, naming both."""
+    path = os.path.join(haring_events.worker_dir(run), "events.py")
+    print(f"warning {os.path.basename(run)}: cannot load its worker events module "
+          f"{path}; ignoring this run for the rest of this pulse", flush=True)
+
+
+def scan_runs():
+    """The one look at the runs folder each pass, shared by the three readers below.
+
+    Returns (live, ended): every run whose worker is still going, and every run whose
+    worker is gone and which has no report. The report check comes before run_alive, so
+    a run that has already reported never loads its worker module. A run whose worker
+    module cannot be loaded is warned about once and then ignored, so one unreadable
+    run cannot end the pulse and hide the other runs.
+    """
+    live, ended = [], []
+    for meta_path in sorted(glob.glob(os.path.join(project, ".haring", "runs", "*", "meta"))):
+        run = os.path.dirname(meta_path)
+        if run in settled:
+            continue
+        info = known_runs.get(run)
+        if info is None:
+            try:
+                with open(meta_path) as f:
+                    meta = dict(l.strip().split("=", 1) for l in f if "=" in l)
+            except OSError:
+                continue
+            info = (meta, meta_path)
+            known_runs[run] = info
+            if meta.get("agent_id"):
+                known_agents.add(meta["agent_id"])
+        meta, meta_path = info
+        if landed(run):
+            settled.add(run)
+            continue
+        try:
+            going = haring_events.run_alive(run, meta)
+        except SystemExit:
+            if stopping:
+                raise   # the signal handler's exit belongs to the pulse, not this run
+            warn_unloadable(run)
+            settled.add(run)
+            continue
+        except Exception:
+            warn_unloadable(run)
+            settled.add(run)
+            continue
+        (live if going else ended).append((run, meta, meta_path))
+    return live, ended
+
+
 def adopt_subagents():
     """Create a run for every subagent of this session that has none.
 
@@ -341,14 +405,7 @@ def adopt_subagents():
     """
     if not CLAUDE_SESSION:
         return
-    known = set()
-    for meta_path in glob.glob(os.path.join(project, ".haring", "runs", "*", "meta")):
-        try:
-            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
-        except OSError:
-            continue
-        if meta.get("agent_id"):
-            known.add(meta["agent_id"])
+    known = known_agents
     for meta_path in claude_meta_files():
         name = os.path.basename(meta_path)
         agent_id = name[len("agent-"):-len(".meta.json")]
@@ -390,8 +447,8 @@ def adopt_subagents():
         known.add(agent_id)
 
 
-def finish_subagents():
-    """Finish every adopted run whose subagent has ended and has no report yet.
+def finish_subagents(ended):
+    """Finish every ended adopted run that scan_runs handed over and has no report yet.
 
     The link to a transcript is replaced by a copy, so the run keeps its own evidence
     after Claude Code has moved on. A known kind is written with its schema and a
@@ -399,20 +456,11 @@ def finish_subagents():
     success carrying the final text and no structured_output. A run with no answer at
     all gets one report saying so, so it is not looked at again. stats.txt is what
     haring-stats printed for the finished run. A run whose transcript is unavailable is
-    left whole for a later look.
+    set aside with the other ended runs rather than looked at again.
     """
-    for meta_path in glob.glob(os.path.join(project, ".haring", "runs", "*", "meta")):
-        run = os.path.dirname(meta_path)
-        try:
-            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
-        except OSError:
-            continue
+    for run, meta, meta_path in ended:
+        settled.add(run)
         if not meta.get("agent_id") or meta.get("worker") != "claude":
-            continue
-        report = os.path.join(run, "report.json")
-        if os.path.exists(report) and os.path.getsize(report):
-            continue
-        if haring_events.run_alive(run, meta):
             continue
         transcript = str(meta.get("transcript") or "").strip().strip("'")
         events = os.path.join(run, "events.jsonl")
@@ -444,18 +492,9 @@ def finish_subagents():
             f.write(stats.stdout)
 
 
-def live_runs():
-    found = []
-    for meta_path in sorted(glob.glob(os.path.join(project, ".haring", "runs", "*", "meta"))):
-        run = os.path.dirname(meta_path)
-        try:
-            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
-        except OSError:
-            continue
-        if not haring_events.run_alive(run, meta) or landed(run):
-            continue
-        found.append((run, meta, meta_path))
-    return found
+def live_runs(live):
+    """The runs scan_runs found still going; the scan has already ruled out reports."""
+    return live
 
 
 # One reader per run, kept for the life of this pulse: the reader remembers where it
@@ -616,6 +655,8 @@ def take_pulse_down():
 
 
 def leave(signum, frame):
+    global stopping
+    stopping = True
     sys.exit(0)   # into the finally, which is where the pid file is removed
 
 
@@ -630,9 +671,10 @@ try:
     # The file may shorten the opening look but never lengthen it.
     reported = False
     while True:
+        live, ended = scan_runs()
         adopt_subagents()
-        finish_subagents()
-        runs = live_runs()
+        finish_subagents(ended)
+        runs = live_runs(live)
         if runs:
             ever_live = True
             # Every worker live on a pass is taken on, whenever it started, so a job
@@ -725,9 +767,10 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
+            live, ended = scan_runs()
             adopt_subagents()
-            finish_subagents()
-            now_live = live_runs()
+            finish_subagents(ended)
+            now_live = live_runs(live)
             if surface_asks(now_live):
                 reported = True
             if not now_live:
