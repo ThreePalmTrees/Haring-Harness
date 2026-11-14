@@ -109,6 +109,7 @@ Nothing in there needs maintaining. It is a record, not a document.
 | | `haring-report` | print a report, with the empty parts removed, the run's Read, Glob, Grep and Bash calls listed above it, and a warning when it made no such call |
 | | `haring-transcript` | print what a run did, in the order it did it: every tool call, thought and line of speech, read from `events.jsonl` |
 | | `haring-stats` | one line of numbers from a run |
+| | `haring-stats-page` | write one self-contained HTML page of every run, openable from disk with no server |
 | | `haring-session` | what this manager session has cost |
 | | `haring-prompt` | build a worker's system prompt |
 | | `haring-root` | print where haring is installed |
@@ -119,6 +120,7 @@ Nothing in there needs maintaining. It is a record, not a document.
 | | `<kind>/schema.json` | the shape of that kind's report |
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
+| | `haring_run.py` | the numbers a run's report holds, shared by `haring-stats` and `haring-stats-page` |
 | `workers/claude-agent/` | `worker.conf` | the default model and the models a Claude Code worker may run on |
 | | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |

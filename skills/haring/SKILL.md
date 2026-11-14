@@ -624,6 +624,9 @@ haring-transcript <run-folder>  print what the run did, in the order it did
                                 it: every tool call, thought and line of
                                 speech, whole
 haring-stats <run-folder>       one line of numbers
+haring-stats-page [project] [--out file]
+                                one self-contained HTML page of every
+                                run, openable from disk with no server
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker

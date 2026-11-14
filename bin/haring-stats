@@ -16,7 +16,7 @@ import sys, json, os, time, subprocess
 
 HARING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
 sys.path.insert(0, HARING_LIB)
-import haring_events
+import haring_events, haring_run
 
 USAGE = "usage: haring-stats <run-folder>"
 
@@ -138,33 +138,19 @@ except Exception as e:
 
 # The run's numbers come from report.json: the stream carries one event per finished
 # part and holds no totals, so turns, seconds and the token counts are the report's own.
-mu = d.get("modelUsage") or {}
-# The run's own model, taken from its meta file, so a report whose modelUsage names more
-# than one model still reports the worker's. A run whose meta names a model the report
-# does not carry falls back to the busiest entry.
-try:
-    model = dict(l.strip().split("=", 1)
-                 for l in open(os.path.join(run, "meta")) if "=" in l).get("model") or ""
-except OSError:
-    model = ""
-if model not in mu:
-    model = max(mu, key=lambda k: (mu[k] or {}).get("outputTokens") or 0, default="?")
-m = mu.get(model, {})
-ms = d.get("duration_ms", 0)
-turns = d.get("num_turns", 0)
-secs = round(ms / 1000)
-denials = len(d.get("permission_denials") or [])
+# The stats page reads the same function, so the line and the page cannot disagree.
+n = haring_run.run_numbers(run, report=d)
 print(
-    f"model={model} "
-    f"in={m.get('inputTokens', 0)} "
-    f"out={m.get('outputTokens', 0)} "
-    f"cache_read={m.get('cacheReadInputTokens', 0)} "
-    f"turns={turns} "
-    f"secs={secs} "
-    f"error={d.get('is_error')} "
-    f"ended={d.get('terminal_reason') or d.get('stop_reason')}"
+    f"model={n['model']} "
+    f"in={n['in']} "
+    f"out={n['out']} "
+    f"cache_read={n['cache_read']} "
+    f"turns={n['turns']} "
+    f"secs={n['secs']} "
+    f"error={n['error']} "
+    f"ended={n['ended']}"
 )
 # A denial the manager has to know about is still a denial whether it happened in the
 # run's last turn or an earlier one.
-if denials:
-    print(f"denials={denials}")
+if n["denials"]:
+    print(f"denials={n['denials']}")

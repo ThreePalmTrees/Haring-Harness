@@ -1,0 +1,608 @@
+#!/usr/bin/env python3
+"""haring-stats-page — one self-contained page of every run in a project.
+
+    haring-stats-page [project] [--out file]
+
+Writes an HTML file that opens from disk with no server and no network: the runs are
+embedded as JSON, the charts are CSS, and the little JavaScript sorts the table. The
+default output is <project>/.haring/stats.html. A run's numbers come from
+lib/haring_run.run_numbers, the same function haring-stats prints from, so the page and
+the terminal line cannot disagree.
+
+Never prints or stores money: the report's cost fields are not read. A run with a
+missing, empty or odd report still appears, with whatever its meta and folder say, and
+never stops the page from being built.
+"""
+import html, json, math, os, subprocess, sys, time
+
+HARING_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib")
+sys.path.insert(0, HARING_LIB)
+import haring_events, haring_run
+
+USAGE = "usage: haring-stats-page [project] [--out file]"
+
+
+def die(message, code):
+    print(message, file=sys.stderr)
+    if code == 2:
+        print(USAGE, file=sys.stderr)
+    sys.exit(code)
+
+
+def parse_args(argv):
+    project, out = None, None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--out":
+            i += 1
+            if i >= len(argv):
+                die("--out needs a file", 2)
+            out = argv[i]
+        elif a.startswith("--out="):
+            out = a.split("=", 1)[1]
+            if not out:
+                die("--out needs a file", 2)
+        elif a in ("-h", "--help"):
+            print(USAGE)
+            print("Write a self-contained HTML page of every run under <project>/.haring/runs.")
+            sys.exit(0)
+        elif a.startswith("-") and a != "-":
+            die(f"unknown option: {a}", 2)
+        elif project is None:
+            project = a
+        else:
+            die("haring-stats-page takes at most one project directory", 2)
+        i += 1
+    if project is None:
+        top = subprocess.run(["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True).stdout.strip()
+        project = top or os.getcwd()
+    project = os.path.abspath(os.path.expanduser(project))
+    if not os.path.isdir(project):
+        die(f"not a directory: {project}", 2)
+    if out is None:
+        out = os.path.join(project, ".haring", "stats.html")
+    else:
+        out = os.path.abspath(os.path.expanduser(out))
+    return project, out
+
+
+def stamp_from_name(run, name):
+    """The start a run folder's name records, as epoch seconds, or its file time.
+
+    A folder made by haring-worker begins YYYY-MM-DD-HHMMSS-kind-... . A run whose meta
+    is gone still has that name, so its start is known without guessing from a modified
+    file time.
+    """
+    parts = name.split("-")
+    if len(parts) >= 4 and all(p.isdigit() for p in parts[:3]) and len(parts[3]) == 6:
+        try:
+            return time.mktime(time.strptime("-".join(parts[:3]) + " " + parts[3],
+                                               "%Y-%m-%d %H%M%S"))
+        except ValueError:
+            pass
+    try:
+        return os.path.getmtime(run)
+    except OSError:
+        return 0.0
+
+
+def kind_from_name(name):
+    """The kind a run folder's name records, for a run whose meta is gone."""
+    parts = name.split("-")
+    return parts[4] if len(parts) >= 5 and parts[4] else "unknown"
+
+
+def start_of(run, name, meta):
+    """A run's start as epoch seconds, from meta when that number is readable and from
+    the folder name otherwise. A number the clock cannot represent is not a start."""
+    try:
+        started = float(haring_events.run_started(run, meta))
+        if math.isfinite(started):
+            time.localtime(started)
+            return started
+    except (OSError, OverflowError, TypeError, ValueError):
+        pass
+    return stamp_from_name(run, name)
+
+
+NUMERIC_FIELDS = ("secs", "turns", "in", "out", "cache_read")
+
+
+def usable_numbers(nums):
+    """The numbers a report gave, or None when a field is the wrong kind.
+
+    A report whose fields are not finite numbers and a boolean error is one the page
+    treats as no report: it still has the run's meta and folder to show, and a string
+    where a count belongs would make the totals meaningless rather than informative.
+    """
+    if nums is None:
+        return None
+    for key in NUMERIC_FIELDS:
+        value = nums.get(key)
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not math.isfinite(value)):
+            return None
+    if not isinstance(nums.get("error"), bool):
+        return None
+    return nums
+
+
+def outcome_of(run, nums, meta):
+    """What became of a run: an explicit marker, its report, its live worker, or nothing.
+
+    A stopped or stalled run carries the marker the command that acted on it wrote. A
+    readable report is the run's own answer, an error when it says so. A run with no
+    readable report but a live worker is still going; one with neither is a run that
+    ended without a report.
+    """
+    if os.path.exists(os.path.join(run, "stopped")):
+        return "stopped"
+    if os.path.exists(os.path.join(run, "stalled")):
+        return "stalled"
+    if nums is not None:
+        return "error" if nums["error"] else "ok"
+    try:
+        alive = haring_events.run_alive(run, meta)
+    except (Exception, SystemExit):
+        alive = False
+    return "running" if alive else "no report"
+
+
+def row_for(run, name):
+    """One run as the page's data holds it: what is known, blank where nothing is."""
+    meta = haring_run.read_meta(run)
+    started = start_of(run, name, meta)
+    nums = None
+    try:
+        nums = usable_numbers(haring_run.run_numbers(run, meta=meta))
+    except (Exception, SystemExit):
+        pass
+    model = nums["model"] if nums is not None else (meta.get("model") or "unknown")
+    return {
+        "run": name,
+        "started": round(started, 3),
+        "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)),
+        "day": time.strftime("%Y-%m-%d", time.localtime(started)),
+        "kind": meta.get("kind") or kind_from_name(name),
+        "worker": meta.get("worker") or "opencode",
+        "model": model,
+        "durationSecs": nums["secs"] if nums is not None else None,
+        "turns": nums["turns"] if nums is not None else None,
+        "tokensIn": nums["in"] if nums is not None else None,
+        "tokensOut": nums["out"] if nums is not None else None,
+        "cacheRead": nums["cache_read"] if nums is not None else None,
+        "outcome": outcome_of(run, nums, meta),
+    }
+
+
+def collect(project):
+    runs_dir = os.path.join(project, ".haring", "runs")
+    try:
+        names = sorted(os.listdir(runs_dir))
+    except OSError:
+        return []
+    rows = []
+    for name in names:
+        run = os.path.join(runs_dir, name)
+        if not os.path.isdir(run):
+            continue
+        try:
+            rows.append(row_for(run, name))
+        except (Exception, SystemExit):
+            # The page is a reading of the record, not a gate on it: a folder that
+            # cannot be read still leaves its name and file time on the page.
+            started = stamp_from_name(run, name)
+            rows.append({
+                "run": name,
+                "started": round(started, 3),
+                "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)),
+                "day": time.strftime("%Y-%m-%d", time.localtime(started)),
+                "kind": kind_from_name(name),
+                "worker": "unknown",
+                "model": "unknown",
+                "durationSecs": None,
+                "turns": None,
+                "tokensIn": None,
+                "tokensOut": None,
+                "cacheRead": None,
+                "outcome": "no report",
+            })
+    return rows
+
+
+PAGE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Haring run stats — __PROJECT__</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f4f4f0;
+  --panel: #ffffff;
+  --ink: #20211e;
+  --muted: #66685f;
+  --line: #dddcd4;
+  --track: #e6e5de;
+  --bar: #7d9fbe;
+  --accent: #315f88;
+  --ok: #2f6b3f;
+  --error: #9b2c2c;
+  --stopped: #8a5a00;
+  --stalled: #8a5a00;
+  --running: #2c5f8a;
+  --none: #66685f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141613;
+    --panel: #1d201c;
+    --ink: #eceee7;
+    --muted: #a2a69b;
+    --line: #343830;
+    --track: #2b2f28;
+    --bar: #6f93b5;
+    --accent: #9cc3ea;
+    --ok: #8fd19e;
+    --error: #f0a3a3;
+    --stopped: #e2bd76;
+    --stalled: #e2bd76;
+    --running: #9ec7ee;
+    --none: #a2a69b;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.45;
+}
+main { max-width: 1200px; margin: 0 auto; }
+h1 { margin: 0 0 .25rem; font-size: 1.65rem; letter-spacing: -.01em; }
+h2 { margin: 0 0 .6rem; font-size: 1.05rem; }
+p { margin: .25rem 0; }
+.sub { color: var(--muted); font-size: .92rem; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88rem; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .7rem;
+  margin: 1.2rem 0 .8rem;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .8rem .9rem;
+}
+.card .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.card .value { font-size: 1.4rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: .1rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 1.4rem; }
+.chip {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: .15rem .55rem;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .9rem 1rem;
+  margin: 1rem 0;
+}
+.group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 1rem;
+}
+.group-grid section { margin: 0; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { padding: .38rem .45rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { color: var(--muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--bar) 9%, transparent); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.name { min-width: 8rem; }
+.bar { height: 6px; max-width: 220px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: .3rem; }
+.bar span { display: block; height: 100%; background: var(--bar); }
+.sort {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.sort .mark { color: var(--accent); font-size: .85em; width: .8em; }
+.runs-wrap { overflow: auto; max-height: 72vh; }
+.runs-wrap thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.outcome { font-weight: 600; white-space: nowrap; }
+.outcome-ok { color: var(--ok); }
+.outcome-error { color: var(--error); }
+.outcome-stopped { color: var(--stopped); }
+.outcome-stalled { color: var(--stalled); }
+.outcome-running { color: var(--running); }
+.outcome-no-report { color: var(--none); }
+.empty { color: var(--muted); padding: .8rem 0; }
+noscript { display: block; margin: 1rem 0; color: var(--muted); }
+@media (max-width: 560px) {
+  body { padding: 1rem .7rem; }
+  .group-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Haring run stats</h1>
+    <p class="sub"><code>__PROJECT__</code></p>
+    <p class="sub" id="generated"></p>
+  </header>
+
+  <noscript>This page draws its tables with a little inline JavaScript. The run data is in the page either way.</noscript>
+
+  <section class="cards" id="totals" aria-label="Totals"></section>
+  <div class="chips" id="outcomes" aria-label="Runs by outcome"></div>
+
+  <div class="group-grid">
+    <section>
+      <h2>By worker</h2>
+      <div id="by-worker"></div>
+    </section>
+    <section>
+      <h2>By model</h2>
+      <div id="by-model"></div>
+    </section>
+    <section>
+      <h2>By kind</h2>
+      <div id="by-kind"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Runs per day</h2>
+    <div id="by-day"></div>
+  </section>
+
+  <section>
+    <h2>Every run</h2>
+    <p class="sub">Click a column name to sort. Duration and tokens are what the run's report recorded.</p>
+    <div class="runs-wrap">
+      <table id="runs-table">
+        <thead>
+          <tr>
+            <th data-key="started"><button class="sort" type="button">Started <span class="mark"></span></button></th>
+            <th data-key="kind"><button class="sort" type="button">Kind <span class="mark"></span></button></th>
+            <th data-key="worker"><button class="sort" type="button">Worker <span class="mark"></span></button></th>
+            <th data-key="model"><button class="sort" type="button">Model <span class="mark"></span></button></th>
+            <th class="num" data-key="durationSecs"><button class="sort" type="button">Duration <span class="mark"></span></button></th>
+            <th class="num" data-key="turns"><button class="sort" type="button">Turns <span class="mark"></span></button></th>
+            <th class="num" data-key="tokensIn"><button class="sort" type="button">Input tokens <span class="mark"></span></button></th>
+            <th class="num" data-key="tokensOut"><button class="sort" type="button">Output tokens <span class="mark"></span></button></th>
+            <th class="num" data-key="cacheRead"><button class="sort" type="button">Cache reads <span class="mark"></span></button></th>
+            <th data-key="outcome"><button class="sort" type="button">Outcome <span class="mark"></span></button></th>
+          </tr>
+        </thead>
+        <tbody id="run-rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script id="run-data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("run-data").textContent);
+  var RUNS = DATA.runs || [];
+  var ORDER = ["ok", "error", "stopped", "stalled", "running", "no report"];
+  var NUMERIC = {"started": true, "durationSecs": true, "turns": true,
+                 "tokensIn": true, "tokensOut": true, "cacheRead": true};
+  var sortKey = "started";
+  var sortDir = -1;
+
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c];
+    });
+  }
+  function num(value) {
+    return value == null ? "—" : Number(value).toLocaleString("en-US");
+  }
+  function duration(seconds) {
+    if (seconds == null) return "—";
+    var s = Math.max(0, Math.round(seconds));
+    if (s < 60) return s + "s";
+    var m = Math.floor(s / 60); s = s % 60;
+    if (m < 60) return m + "m " + s + "s";
+    var h = Math.floor(m / 60); m = m % 60;
+    if (h < 24) return h + "h " + m + "m";
+    return Math.floor(h / 24) + "d " + (h % 24) + "h";
+  }
+  function outcomeClass(value) {
+    return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  }
+  function total(key) {
+    var t = 0;
+    RUNS.forEach(function (r) { if (r[key] != null) t += r[key]; });
+    return t;
+  }
+  function grouped(key) {
+    var map = new Map();
+    RUNS.forEach(function (r) {
+      var name = r[key] || "unknown";
+      var g = map.get(name);
+      if (!g) {
+        g = {"name": name, "runs": 0, "durationSecs": 0, "tokensIn": 0,
+             "tokensOut": 0, "cacheRead": 0};
+        map.set(name, g);
+      }
+      g.runs += 1;
+      ["durationSecs", "tokensIn", "tokensOut", "cacheRead"].forEach(function (f) {
+        if (r[f] != null) g[f] += r[f];
+      });
+    });
+    return Array.from(map.values()).sort(function (a, b) {
+      return b.runs - a.runs || a.name.localeCompare(b.name);
+    });
+  }
+  function renderTotals() {
+    var cards = [
+      ["Runs", num(RUNS.length)],
+      ["Time", duration(total("durationSecs"))],
+      ["Input tokens", num(total("tokensIn"))],
+      ["Output tokens", num(total("tokensOut"))],
+      ["Cache reads", num(total("cacheRead"))]
+    ];
+    document.getElementById("totals").innerHTML = cards.map(function (c) {
+      return '<div class="card"><div class="label">' + esc(c[0]) +
+             '</div><div class="value">' + esc(c[1]) + "</div></div>";
+    }).join("");
+  }
+  function renderOutcomes() {
+    var count = {};
+    RUNS.forEach(function (r) { count[r.outcome] = (count[r.outcome] || 0) + 1; });
+    var seen = ORDER.filter(function (o) { return count[o]; });
+    Object.keys(count).forEach(function (o) {
+      if (ORDER.indexOf(o) < 0) seen.push(o);
+    });
+    document.getElementById("outcomes").innerHTML = seen.map(function (o) {
+      return '<span class="chip outcome outcome-' + esc(outcomeClass(o)) + '">' +
+             esc(o) + " " + num(count[o]) + "</span>";
+    }).join("");
+  }
+  function renderGroupTable(target, rows, label) {
+    var host = document.getElementById(target);
+    if (!rows.length) {
+      host.innerHTML = '<p class="empty">No runs.</p>';
+      return;
+    }
+    var max = Math.max.apply(null, rows.map(function (r) { return r.runs; }).concat([1]));
+    host.innerHTML = "<table><thead><tr><th>" + esc(label) +
+      '</th><th class="num">Runs</th><th class="num">Time</th>' +
+      '<th class="num">Input tokens</th><th class="num">Output tokens</th>' +
+      '<th class="num">Cache reads</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        var width = Math.max(1, Math.round(r.runs / max * 100));
+        return '<tr><td class="name">' + esc(r.name) +
+          '<div class="bar" aria-hidden="true"><span style="width:' + width + '%"></span></div></td>' +
+          '<td class="num">' + num(r.runs) + '</td>' +
+          '<td class="num">' + duration(r.durationSecs) + '</td>' +
+          '<td class="num">' + num(r.tokensIn) + '</td>' +
+          '<td class="num">' + num(r.tokensOut) + '</td>' +
+          '<td class="num">' + num(r.cacheRead) + '</td></tr>';
+      }).join("") + "</tbody></table>";
+  }
+  function byDay() {
+    var rows = grouped("day");
+    return rows.sort(function (a, b) { return b.name.localeCompare(a.name); });
+  }
+  function compare(a, b) {
+    if (NUMERIC[sortKey]) {
+      var av = a[sortKey], bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return (av - bv) * sortDir;
+    }
+    return String(a[sortKey] == null ? "" : a[sortKey])
+      .localeCompare(String(b[sortKey] == null ? "" : b[sortKey])) * sortDir;
+  }
+  function renderRuns() {
+    var rows = RUNS.slice().sort(compare);
+    var body = document.getElementById("run-rows");
+    body.innerHTML = rows.length ? rows.map(function (r) {
+      return '<tr><td class="mono" title="' + esc(r.run) + '">' + esc(r.start) + "</td>" +
+        "<td>" + esc(r.kind) + "</td>" +
+        "<td>" + esc(r.worker) + "</td>" +
+        '<td class="mono">' + esc(r.model) + "</td>" +
+        '<td class="num">' + duration(r.durationSecs) + "</td>" +
+        '<td class="num">' + num(r.turns) + "</td>" +
+        '<td class="num">' + num(r.tokensIn) + "</td>" +
+        '<td class="num">' + num(r.tokensOut) + "</td>" +
+        '<td class="num">' + num(r.cacheRead) + "</td>" +
+        '<td class="outcome outcome-' + esc(outcomeClass(r.outcome)) + '">' +
+        esc(r.outcome) + "</td></tr>";
+    }).join("") : '<tr><td colspan="10" class="empty">No runs yet.</td></tr>';
+    document.querySelectorAll("#runs-table th").forEach(function (th) {
+      var active = th.getAttribute("data-key") === sortKey;
+      th.setAttribute("aria-sort", active ? (sortDir === 1 ? "ascending" : "descending") : "none");
+      var mark = th.querySelector(".mark");
+      if (mark) mark.textContent = active ? (sortDir === 1 ? "▲" : "▼") : "";
+    });
+  }
+
+  document.querySelectorAll("#runs-table th button").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var key = button.parentElement.getAttribute("data-key");
+      if (sortKey === key) {
+        sortDir = -sortDir;
+      } else {
+        sortKey = key;
+        sortDir = key === "started" ? -1 : 1;
+      }
+      renderRuns();
+    });
+  });
+
+  document.getElementById("generated").textContent =
+    "Built " + DATA.generated + " from " + RUNS.length + " run folder" +
+    (RUNS.length === 1 ? "" : "s") + ".";
+  renderTotals();
+  renderOutcomes();
+  renderGroupTable("by-worker", grouped("worker"), "Worker");
+  renderGroupTable("by-model", grouped("model"), "Model");
+  renderGroupTable("by-kind", grouped("kind"), "Kind");
+  renderGroupTable("by-day", byDay(), "Day");
+  renderRuns();
+})();
+</script>
+</body>
+</html>
+"""
+
+
+def build_page(project, rows):
+    data = {
+        "project": project,
+        "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "runs": rows,
+    }
+    # `</script>` inside a string would end the block that holds the data. A unicode
+    # escape is still JSON and cannot close it.
+    data_json = json.dumps(data, ensure_ascii=True, separators=(",", ":")).replace("<", "\\u003c")
+    return (PAGE.replace("__PROJECT__", html.escape(project))
+                .replace("__DATA__", data_json))
+
+
+def main():
+    project, out = parse_args(sys.argv[1:])
+    rows = collect(project)
+    page = build_page(project, rows)
+    parent = os.path.dirname(out)
+    try:
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(page)
+    except OSError as e:
+        die(f"cannot write {out}: {e}", 1)
+    print(f"wrote {out} ({len(rows)} runs)")
+
+
+if __name__ == "__main__":
+    main()
