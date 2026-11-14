@@ -128,8 +128,8 @@ The safe value when a line is missing or wrong:
 
 - a missing or empty `default_model` or `models` is not replaced by a safe value. It
   is a refusal. `haring-worker` and `haring-model` stop with the message that the
-  worker has no model list. `haring-meta` reads only `default_model`, so it prints
-  `none` with the path when it cannot find that key.
+  worker has no model list. `haring-meta` needs `default_model` for its model line, so
+  it prints `none` with the path when it cannot find that key.
 - a `default_model` that is not in `models` makes a launch fail when the model is
   checked.
 - a missing or wrong `thinking` is false.
@@ -540,6 +540,20 @@ then `opencode`. They read that worker's `worker.conf`. When the worker is not
 `haring-model --worker` prints the settled worker and where it came from. Given a name,
 it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with
 `--project`, and refuses a name with no folder under `workers/`.
+
+A fresh run's model settles from files that belong to its worker. It reads
+`<project>/.haring/model.<worker>`, then `<haring-root>/model.<worker>`, then
+`default_model` in that worker's `worker.conf`. For the opencode worker only, a plain
+`<project>/.haring/model` and `<haring-root>/model` are read after `model.opencode` in
+the same folder, so projects made before workers existed keep their choice. A file that
+is missing, empty or holds only whitespace names nothing and is passed over. A file
+whose model is outside that worker's `models` list is refused, not replaced.
+`haring-worker`, `haring-model` and `haring-meta` use this rule; `haring-meta` names the
+file and model on its model line when it cannot use the file.
+
+`haring-model <model>` writes the model into `<haring-root>/model.<settled worker>`, or
+`<project>/.haring/model.<settled worker>` with `--project`. `--qa` keeps its own
+`qa-model` files and the opus default, unchanged.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program

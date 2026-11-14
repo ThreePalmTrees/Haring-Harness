@@ -123,11 +123,12 @@ def worker_name(root):
 
 def worker_model(root, worker):
     # The same order bin/haring-worker settles a fresh run's model from, minus
-    # --model, which only a launch itself can give: the project's own choice, then
-    # haring's, then the worker's own default. A file that is missing, empty, or holds
-    # only whitespace names nothing and is passed over. A saved file is shared by every
-    # worker, so one that names a model outside this worker's list is passed over too,
-    # and the model line says which file it was.
+    # --model, which only a launch itself can give: the project's
+    # <project>/.haring/model.<worker>, then <haring-root>/model.<worker>, then the
+    # worker's own default. For the opencode worker only, the plain model file is read
+    # after model.opencode in the same folder, so older projects keep their choice. A
+    # file that is missing, empty, or holds only whitespace names nothing and is passed
+    # over. A file whose model is outside this worker's list is refused, not replaced.
     haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     conf = os.path.join(haring, "workers", worker, "worker.conf")
     default = ""
@@ -144,8 +145,13 @@ def worker_model(root, worker):
                     models_seen = True
     except OSError:
         pass
-    ignored = []
-    for path in (os.path.join(root, ".haring", "model"), os.path.join(haring, "model")):
+    candidates = [os.path.join(root, ".haring", "model." + worker)]
+    if worker == WORKER_DEFAULT:
+        candidates.append(os.path.join(root, ".haring", "model"))
+    candidates.append(os.path.join(haring, "model." + worker))
+    if worker == WORKER_DEFAULT:
+        candidates.append(os.path.join(haring, "model"))
+    for path in candidates:
         try:
             with open(path) as f:
                 candidate = f.read().strip()
@@ -154,18 +160,11 @@ def worker_model(root, worker):
         if not candidate:
             continue
         if models and candidate not in models:
-            ignored.append(f"{path}: {candidate} is not in this worker's models")
-            continue
-        if ignored:
-            return f"{candidate} ({path}; ignored {'; '.join(ignored)})"
+            return (f"none ({path} names {candidate}, which is not in this worker's "
+                    f"models)")
         return candidate
     if default:
-        if ignored:
-            return f"{default} (default; ignored {'; '.join(ignored)})"
         return default
-    if ignored:
-        return (f"none ({conf} is missing or unreadable: the worker has no model list; "
-                f"ignored {'; '.join(ignored)})")
     return f"none ({conf} is missing or unreadable: the worker has no model list)"
 
 

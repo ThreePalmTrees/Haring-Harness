@@ -2,6 +2,7 @@
 .DS_Store
 contrails
 /model
+/model.*
 /qa-model
 /worker
 /qa-mode

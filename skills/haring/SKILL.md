@@ -34,6 +34,12 @@ with the Agent tool. The choice of model is the client's. `haring-model` reads i
 different model on one run. You never choose a model on your own. `haring-meta` already
 prints the current one, so you have it before you ask.
 
+A saved model belongs to one worker. `haring-model` reads
+`<project>/.haring/model.<worker>` and then `<haring-root>/model.<worker>`; the opencode
+worker also reads the older plain `model` file after `model.opencode` in each folder. A
+saved model outside that worker's list is refused, not replaced. Writing a model stores
+it for the settled worker.
+
 ## How a job runs
 
 1. **Start from the client.** Say what they asked for and why. Say how you expect the

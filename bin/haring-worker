@@ -227,9 +227,8 @@ fi
 # The models a worker may run on, written the way `opencode run -m` takes them, live in
 # the worker's own worker.conf: default_model= names the default and models= lists what
 # may be chosen. A model outside the list is refused once the model settles, before
-# anything is created, except a saved model file, which is skipped with a warning
-# because the saved files are shared by every worker. A worker with no readable list is
-# refused here rather than left running on a name nothing checked.
+# anything is created. A worker with no readable list is refused here rather than left
+# running on a name nothing checked.
 worker_conf="$HARING/workers/$worker/worker.conf"
 MODEL_DEFAULT=""
 MODELS=""
@@ -248,14 +247,25 @@ is_model() {
   esac
 }
 
+# The saved model is per worker. Only the opencode worker also reads the plain model
+# file, in the same folder and after model.opencode. A missing or empty file names
+# nothing; a model outside this worker's list is refused by the check below.
+try_model_file() {  # try_model_file <file>
+  if [ -n "$model" ]; then return 0; fi
+  [ -f "$1" ] || return 0
+  candidate=$(tr -d '[:space:]' < "$1")
+  [ -n "$candidate" ] || return 0
+  model=$candidate
+  model_source=$1
+}
+
 # The model settles from four places, the first that names one winning: --model above,
 # then the project's own choice, then haring's, then the default. A continue never
 # reaches here with an empty model — it already has one from the run it continues,
 # sourced from "$prev/meta" above — so this is only for a fresh run without --model.
 # A file that is missing, empty, or holds only whitespace names nothing and is passed
-# over rather than treated as a choice or an error. A saved file is shared by every
-# worker, so one that names a model outside this worker's list is passed over too, with
-# one warning naming the file; --model is still refused when it is outside the list.
+# over rather than treated as a choice or an error. A saved model is per worker; only
+# opencode also reads the plain model file, after model.opencode in the same folder.
 model_source=""
 if [ "$kind" = qa ]; then
   # A QA pass runs only when the client asks for one, and by default on opus as the
@@ -284,18 +294,10 @@ if [ "$kind" = qa ]; then
       exit 1 ;;
   esac
 elif [ -z "$model" ]; then
-  for model_file in "$project/.haring/model" "$HARING/model"; do
-    [ -f "$model_file" ] || continue
-    candidate=$(tr -d '[:space:]' < "$model_file")
-    [ -n "$candidate" ] || continue
-    if ! is_model "$candidate"; then
-      echo "haring-worker: ignoring $model_file: $candidate is not in the $worker worker's models ($MODELS)." >&2
-      continue
-    fi
-    model=$candidate
-    model_source=$model_file
-    break
-  done
+  try_model_file "$project/.haring/model.$worker"
+  if [ "$worker" = opencode ]; then try_model_file "$project/.haring/model"; fi
+  try_model_file "$HARING/model.$worker"
+  if [ "$worker" = opencode ]; then try_model_file "$HARING/model"; fi
 fi
 : "${model:=$MODEL_DEFAULT}"
 
