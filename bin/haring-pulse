@@ -87,6 +87,16 @@ a job that runs its independent work two at a time is covered from the first wor
 the last. It looks for them between passes rather than only when one is due, so it ends
 within a second or two of the last one instead of at the next report.
 
+When the environment names a Claude Code session in CLAUDE_CODE_SESSION_ID, every
+subagent of that session under <CLAUDE_CODE projects root>/*/<session>/subagents/ is
+adopted as a run of its own: the run folder takes its name and start from the
+transcript's first timestamp, its meta names the transcript, agent id and model, and
+prompt.md holds the first user message. The projects root is ~/.claude/projects unless
+HARING_CLAUDE_PROJECTS names another folder. Without a session id this adopts nothing
+and says so once. An adopted subagent still going is reported like any run; one that
+has ended is finished with a copy of its transcript, a report from
+lib/haring_report.py and stats.txt.
+
 Exits 0 once no worker it took on is live any more, or after about 120 seconds if no
 worker ever appears at all — how long this waits for a first worker is what keeps a
 pulse started against a project where nothing is ever launched from sitting there
@@ -96,7 +106,8 @@ There is no way to be called rightly and still fail, except one: a haring-pulse
 already watches this project, and one pulse to a project is the design — that
 refusal exits 1.
 """
-import sys, os, time, json, glob, subprocess, signal
+import sys, os, time, json, glob, subprocess, signal, shutil
+from datetime import datetime
 
 USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -120,6 +131,14 @@ FIRST_CEILING = 300  # an opening look is held to the same floor and ceiling
 MAX_CHARS = 500000
 CADENCE_FILE = "cadence"   # <project>/.haring/cadence, one number of seconds
 PULSE_FILE = "pulse"       # <project>/.haring/pulse, the watching pulse's pid
+# The Claude Code session this pulse belongs to. Its subagents are started by the
+# manager's Agent tool, and haring adopts each one as a run so the same readers see it.
+# HARING_CLAUDE_PROJECTS overrides the projects root for a fixture, and points nowhere
+# near the real one in a test.
+CLAUDE_PROJECTS = (os.environ.get("HARING_CLAUDE_PROJECTS")
+                   or os.path.expanduser("~/.claude/projects"))
+CLAUDE_SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+KINDS = ("check", "errand", "implement", "qa")
 
 # Turning the event stream into lines lives in lib/, shared with the other commands
 # that read a run.
@@ -187,6 +206,9 @@ top = subprocess.run(["git", "-C", os.path.abspath(project_arg), "rev-parse", "-
                      capture_output=True, text=True).stdout.strip()
 project = top or os.path.abspath(project_arg)
 cadence_file = os.path.join(project, ".haring", CADENCE_FILE)
+if not CLAUDE_SESSION:
+    print("adopt no CLAUDE_CODE_SESSION_ID: this pulse adopts no Claude Code subagents",
+          flush=True)
 
 
 def elapsed(since):
@@ -229,6 +251,199 @@ def landed(run):
     return os.path.exists(report) and os.path.getsize(report) > 0
 
 
+def claude_meta_files():
+    """Every subagent sidecar in this pulse's Claude Code session, oldest path first.
+
+    The projects root holds one folder per project and each session folder beneath it;
+    only the session named by CLAUDE_CODE_SESSION_ID is looked in, so a subagent of
+    another session is never seen.
+    """
+    if not CLAUDE_SESSION:
+        return []
+    return sorted(glob.glob(os.path.join(CLAUDE_PROJECTS, "*", CLAUDE_SESSION,
+                                         "subagents", "agent-*.meta.json")))
+
+
+def epoch_seconds(ts):
+    """A transcript timestamp as epoch seconds, or None when it is not a moment."""
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        return float(ts)
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def message_text(content):
+    """The text of one message content: a string as it stands, or the text blocks of a
+    list joined. A tool result carries no text block and comes back empty."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(block.get("text") or "" for block in content
+                         if isinstance(block, dict) and block.get("type") == "text")
+    return ""
+
+
+def transcript_facts(path):
+    """What adoption needs from a transcript: its first moment and cwd, the first user
+    text and the first assistant model. None when any of them has not been written yet,
+    so an agent still starting is looked at again on the next look."""
+    started = cwd = model = prompt = None
+    try:
+        with open(path) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(d, dict):
+                    continue
+                if started is None:
+                    started = epoch_seconds(d.get("timestamp"))
+                if cwd is None and isinstance(d.get("cwd"), str):
+                    cwd = d["cwd"]
+                message = d.get("message") if isinstance(d.get("message"), dict) else {}
+                if d.get("type") == "user" and prompt is None:
+                    prompt = message_text(message.get("content")) or None
+                elif d.get("type") == "assistant" and model is None:
+                    name = message.get("model")
+                    model = name if isinstance(name, str) and name else None
+                if started is not None and cwd is not None and model is not None \
+                        and prompt is not None:
+                    break
+    except OSError:
+        return None
+    if started is None or cwd is None or model is None or not prompt:
+        return None
+    return {"started": started, "cwd": cwd, "model": model, "prompt": prompt}
+
+
+def agent_kind(agent_type):
+    """The haring kind an agent type names, or agent for anything else."""
+    if isinstance(agent_type, str) and agent_type.startswith("haring-"):
+        kind = agent_type[len("haring-"):]
+        if kind in KINDS:
+            return kind
+    return "agent"
+
+
+def adopt_subagents():
+    """Create a run for every subagent of this session that has none.
+
+    A run is created at the moment the transcript's first line was written, so its
+    elapsed times are the subagent's own rather than the pulse's. The meta holds the
+    transcript to read, the id the manager needs to steer or stop it, and the start the
+    readers measure from. A subagent with no run and a transcript not yet readable is
+    left for the next look.
+    """
+    if not CLAUDE_SESSION:
+        return
+    known = set()
+    for meta_path in glob.glob(os.path.join(project, ".haring", "runs", "*", "meta")):
+        try:
+            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
+        except OSError:
+            continue
+        if meta.get("agent_id"):
+            known.add(meta["agent_id"])
+    for meta_path in claude_meta_files():
+        name = os.path.basename(meta_path)
+        agent_id = name[len("agent-"):-len(".meta.json")]
+        if not agent_id or agent_id in known:
+            continue
+        try:
+            with open(meta_path) as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(state, dict):
+            continue
+        transcript = os.path.abspath(meta_path[:-len(".meta.json")] + ".jsonl")
+        facts = transcript_facts(transcript)
+        if facts is None:
+            continue
+        kind = agent_kind(state.get("agentType"))
+        stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(facts["started"]))
+        run = os.path.join(project, ".haring", "runs", f"{stamp}-{kind}-{agent_id}")
+        if os.path.exists(run):
+            continue
+        try:
+            os.makedirs(run)
+            with open(os.path.join(run, "meta"), "w") as f:
+                f.write(f"kind={kind}\n")
+                f.write(f"workdir='{facts['cwd']}'\n")
+                f.write(f"model={facts['model']}\n")
+                f.write("worker=claude-agent\n")
+                f.write(f"agent_id={agent_id}\n")
+                f.write(f"agent_type={state.get('agentType') or ''}\n")
+                f.write(f"transcript={transcript}\n")
+                f.write(f"started={facts['started']:.3f}\n")
+            with open(os.path.join(run, "prompt.md"), "w") as f:
+                f.write(facts["prompt"])
+            os.symlink(transcript, os.path.join(run, "events.jsonl"))
+        except OSError:
+            shutil.rmtree(run, ignore_errors=True)
+            continue
+        known.add(agent_id)
+
+
+def finish_subagents():
+    """Finish every adopted run whose subagent has ended and has no report yet.
+
+    The link to a transcript is replaced by a copy, so the run keeps its own evidence
+    after Claude Code has moved on. A known kind is written with its schema and a
+    mismatch keeps the raw text with --final; an agent has no schema, so its report is a
+    success carrying the final text and no structured_output. A run with no answer at
+    all gets one report saying so, so it is not looked at again. stats.txt is what
+    haring-stats printed for the finished run. A run whose transcript is unavailable is
+    left whole for a later look.
+    """
+    for meta_path in glob.glob(os.path.join(project, ".haring", "runs", "*", "meta")):
+        run = os.path.dirname(meta_path)
+        try:
+            meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
+        except OSError:
+            continue
+        if not meta.get("agent_id") or meta.get("worker") != "claude-agent":
+            continue
+        report = os.path.join(run, "report.json")
+        if os.path.exists(report) and os.path.getsize(report):
+            continue
+        if haring_events.run_alive(run, meta):
+            continue
+        transcript = str(meta.get("transcript") or "").strip().strip("'")
+        events = os.path.join(run, "events.jsonl")
+        if not transcript or not os.path.isfile(transcript):
+            continue
+        try:
+            if os.path.islink(events) or os.path.exists(events):
+                os.remove(events)
+            shutil.copyfile(transcript, events)
+        except OSError:
+            continue
+        kind = meta.get("kind") or "agent"
+        script = os.path.join(HARING, "lib", "haring_report.py")
+        if kind in KINDS:
+            schema = os.path.join(HARING, "kinds", kind, "schema.json")
+            command = [sys.executable, script, run, schema]
+            wrote = subprocess.run(command, capture_output=True, text=True)
+            if wrote.returncode != 0:
+                subprocess.run(command + ["--final"], capture_output=True, text=True)
+            if not landed(run):
+                subprocess.run([sys.executable, script, run, "--no-answer"],
+                               capture_output=True, text=True)
+        else:
+            subprocess.run([sys.executable, script, run, "-"],
+                           capture_output=True, text=True)
+        stats = subprocess.run([os.path.join(HARING, "bin", "haring-stats"), run],
+                               capture_output=True, text=True)
+        with open(os.path.join(run, "stats.txt"), "w") as f:
+            f.write(stats.stdout)
+
+
 def live_runs():
     found = []
     for meta_path in sorted(glob.glob(os.path.join(project, ".haring", "runs", "*", "meta"))):
@@ -245,8 +460,8 @@ def live_runs():
 
 # One reader per run, kept for the life of this pulse: the reader remembers where it
 # stopped in the run's stream, so each pass reads only what arrived since the pass
-# before. The first pass on a run reads its stream from where the run began, with the
-# same moment the worker began, taken from the meta file, as the zero of its clock.
+# before. The first pass on a run reads its stream from where the run began: the start
+# its meta records, or the meta file's own time when it records none.
 readers = {}
 
 
@@ -277,7 +492,7 @@ def surface_asks(runs):
             continue
         ask_pos[run] = ask_pos.get(run, 0) + len(fresh)
         prefix = (f"{meta.get('kind', '?')} {os.path.basename(run)} "
-                  f"{elapsed(os.path.getmtime(meta_path))} ")
+                  f"{elapsed(haring_events.run_started(run, meta))} ")
         for line in fresh.decode(errors="replace").splitlines():
             try:
                 question = json.loads(line).get("content", "")
@@ -415,6 +630,8 @@ try:
     # The file may shorten the opening look but never lengthen it.
     reported = False
     while True:
+        adopt_subagents()
+        finish_subagents()
         runs = live_runs()
         if runs:
             ever_live = True
@@ -424,13 +641,14 @@ try:
             # when nothing it would have taken on is left.
             for run, meta, meta_path in runs:
                 reader = readers.get(run)
+                started = haring_events.run_started(run, meta)
                 if reader is None:
-                    reader = haring_events.RunReader(when_ts=os.path.getmtime(meta_path))
+                    reader = haring_events.RunReader(when_ts=started)
                     readers[run] = reader
                 events = os.path.join(run, "events.jsonl")
                 lines = reader.read(events) if os.path.exists(events) else []
                 prefix = (f"{meta.get('kind', '?')} {os.path.basename(run)} "
-                          f"{elapsed(os.path.getmtime(meta_path))} ")
+                          f"{elapsed(started)} ")
                 # The characters counted are the stream's own, not the prefixed rows
                 # printed around them — the same measure the largest whole run was
                 # taken with.
@@ -507,6 +725,8 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
+            adopt_subagents()
+            finish_subagents()
             now_live = live_runs()
             if surface_asks(now_live):
                 reported = True

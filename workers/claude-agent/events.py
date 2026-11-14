@@ -11,9 +11,12 @@ Claude Code writes beside the transcript.
 import json, os
 from datetime import datetime
 
-# Claude Code prefixes a message the manager sent to a running subagent with this, and a
-# user turn holding anything else — a tool result, a system reminder — carries no entry.
+# Claude Code prefixes a message the manager sent to a running subagent with this, and
+# follows it with an instruction about the current task. A harness entry carries the
+# manager's own words, so both the opening and that closing line are removed. A user
+# turn holding anything else — a tool result, a system reminder — carries no entry.
 COORDINATOR = "The coordinator sent a message while you were working:"
+COORDINATOR_CLOSES = "Address this before completing your current task."
 
 
 def epoch_ms(ts):
@@ -59,7 +62,10 @@ def entries(event, seen):
             if key in seen:
                 return []
             seen.add(key)
-            return [{"kind": "manager", "text": content, "ts": ts}]
+            text = content[len(COORDINATOR):].lstrip("\n").rstrip()
+            if text.endswith(COORDINATOR_CLOSES):
+                text = text[:-len(COORDINATOR_CLOSES)].rstrip()
+            return [{"kind": "manager", "text": text, "ts": ts}]
         return []
     if not isinstance(content, list):
         return []

@@ -66,7 +66,7 @@ The OpenCode example has this shape.
 sections, no quotes and no comment syntax. A line the core does not recognise is
 ignored.
 
-The core reads four keys.
+The core reads six keys.
 
 `default_model` is the model a fresh run uses when neither the project nor haring
 itself has chosen one. The value is the model name written the way the harness takes
@@ -84,15 +84,20 @@ arrived.
 session id. When it is true, `haring-worker` passes `--fork` to `start` on a continue.
 When it is false, a continue resumes the same session.
 
+`steer_with` is the text `haring-say` prints when the worker folder has no `steer`
+program: the route that does work instead. `stop_with` is the same for `haring-kill`
+and a missing `stop` program. `{agent_id}` in either text is replaced by the run's
+`agent_id` from `meta`.
+
 The reading rules are exact.
 
 - `default_model` and `models` are read from the first line that starts at column 1
   with `default_model=` or `models=`. A space before `=` hides the line. The value is
   the rest of the line.
-- `thinking` and `fork` are read from any line with `=` in it. Spaces around the key
-  and around the value are removed. The hint is true only when the value is exactly
-  `yes`. Every other value is false. If the key appears more than once, the last line
-  wins.
+- `thinking`, `fork`, `steer_with` and `stop_with` are read from any line with `=` in
+  it. Spaces around the key and around the value are removed. `thinking` and `fork` are
+  true only when the value is exactly `yes`; every other value is false. The other two
+  are the rest of the line. If a key appears more than once, the last line wins.
 - `models` is split on spaces. A model name cannot contain a space.
 
 The safe value when a line is missing or wrong:
@@ -105,8 +110,10 @@ The safe value when a line is missing or wrong:
   checked.
 - a missing or wrong `thinking` is false.
 - a missing or wrong `fork` is false.
-- a missing or unreadable `worker.conf` makes both hints false, and makes any launch
-  or model command fail for the missing model list.
+- a missing `steer_with` or `stop_with` makes the command say only that the run cannot
+  be steered or stopped.
+- a missing or unreadable `worker.conf` makes both hints false, makes the two texts
+  empty, and makes any launch or model command fail for the missing model list.
 
 The two hints never stop a run. The model list does.
 
@@ -396,10 +403,12 @@ A missing `start` makes the runner write a "not found" error to the run's
 `stderr.txt`. The runner then finds no events, writes no report, and leaves an empty
 `report.json`. The run looks like a worker that stopped without reporting.
 
-A missing `steer` makes `haring-say` exit 1 with the text of the operating system
-error. A missing `stop` makes `haring-kill` report that the session was not interrupted,
-with the operating system error as the reason, and it still writes the `stopped` marker.
-The watchdog ignores a missing `stop` and still kills the run's process group.
+A missing `steer` makes `haring-say` exit 1 before waiting, with the worker's
+`steer_with` text when `worker.conf` names one and `this run cannot be steered` when it
+does not. A missing `stop` makes `haring-kill` exit 1 before it signals anything, with
+the worker's `stop_with` text when `worker.conf` names one and `this run cannot be
+stopped` when it does not; it writes no `stopped` marker. The watchdog ignores a missing
+`stop`'s output and exit code and still kills the run's process group.
 
 A missing or unusable `agents-config` stops a fresh launch with exit 1. `install.sh`
 and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.sh

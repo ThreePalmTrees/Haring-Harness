@@ -75,15 +75,22 @@ def worker_conf(run):
     continued run may fork its session. Each one is true only for the exact value yes; a
     missing file, a missing line or any other value is the safe default, False, so a wrong
     file cannot break a run.
+
+    steer_with and stop_with are the words a command prints when the worker has no steer
+    or stop program: the route that does work instead. A missing line is an empty string,
+    and the command then says only that the run cannot be steered or stopped.
     """
-    hints = {"thinking": False, "fork": False}
+    hints = {"thinking": False, "fork": False, "steer_with": "", "stop_with": ""}
     try:
         with open(os.path.join(worker_dir(run), "worker.conf")) as f:
             for line in f:
                 key, sep, value = line.partition("=")
                 key = key.strip()
                 if sep and key in hints:
-                    hints[key] = value.strip() == "yes"
+                    if key in ("thinking", "fork"):
+                        hints[key] = value.strip() == "yes"
+                    else:
+                        hints[key] = value.strip()
     except OSError:
         pass
     return hints
@@ -116,6 +123,27 @@ def run_pid_alive(run, pid):
     except OSError:
         return False
     return out.returncode == 0 and os.path.basename(run.rstrip("/")) in out.stdout
+
+
+def run_started(run, meta=None):
+    """The moment a run began, as epoch seconds: the meta started= value when it names
+    one, and the meta file's own time otherwise.
+
+    haring-worker writes meta as it launches, so its file time is the worker's start.
+    A run adopted from a transcript that was already writing has a start earlier than
+    its meta file, so the pulse records it in started= and every reader that measures
+    elapsed time uses that number instead.
+    """
+    if meta is None:
+        try:
+            with open(os.path.join(run, "meta")) as f:
+                meta = dict(l.strip().split("=", 1) for l in f if "=" in l)
+        except OSError:
+            return os.path.getmtime(os.path.join(run, "meta"))
+    try:
+        return float(meta.get("started"))
+    except (TypeError, ValueError):
+        return os.path.getmtime(os.path.join(run, "meta"))
 
 
 def run_alive(run, meta=None):

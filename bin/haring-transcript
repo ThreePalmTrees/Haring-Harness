@@ -70,11 +70,10 @@ if len(sys.argv) != 2:
     sys.exit(2)
 
 run = resolve_run(sys.argv[1])
-meta_path = os.path.join(run, "meta")
 # Time is measured from the worker, not from this reading, the way haring-wait
-# measures it: the meta file is last written when the worker's runner records its
-# own pid, so its modification time is the moment the worker began.
-started = os.path.getmtime(meta_path)
+# measures it: a run records its own start in meta started= when it was already going
+# before haring knew of it, and the meta file's time is the start otherwise.
+started = haring_events.run_started(run)
 
 events = os.path.join(run, "events.jsonl")
 try:

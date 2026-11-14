@@ -98,9 +98,9 @@ run = resolve_run(argv[0])
 meta_path = os.path.join(run, "meta")
 meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
 # Time is measured from the worker, not from this wait, because the two can start minutes
-# apart. The meta file is last written when the worker begins, so its modification time
-# is the moment the worker began.
-started = os.path.getmtime(meta_path)
+# apart. A run that was already going before haring knew of it records its start in meta
+# started=; the meta file's own time is the start otherwise.
+started = haring_events.run_started(run, meta)
 report = os.path.join(run, "report.json")
 progress = os.path.join(run, "PROGRESS.md")
 # Written by haring-kill when a person stopped this run on purpose. It is the only thing

@@ -91,6 +91,17 @@ if os.path.exists(marker):
           file=sys.stderr)
     sys.exit(0)
 
+# A worker with no stop program cannot be interrupted by haring, and the manager needs
+# the route that does work rather than a process-group search that cannot find a run
+# haring never started as a process. The route is the worker's to name in worker.conf.
+worker_dir = haring_events.worker_dir(run)
+stop = os.path.join(worker_dir, "stop")
+if not (os.path.isfile(stop) and os.access(stop, os.X_OK)):
+    advice = haring_events.worker_conf(run).get("stop_with") or ""
+    if advice:
+        die(advice.replace("{agent_id}", meta.get("agent_id") or ""), 1)
+    die("this run cannot be stopped", 1)
+
 # The pid in meta belongs to the shell, and is not trusted on its own: pids are reused,
 # and a stale one can name a process with nothing to do with this run, whose process
 # group is not ours to signal. Both spellings of the folder are matched, because a
@@ -183,7 +194,6 @@ if left:
 
 # The client is gone and the session is not: measured, a session whose client was killed
 # is still running in the server three seconds later, and only an interrupt stops it.
-stop = os.path.join(haring_events.worker_dir(run), "stop")
 if session:
     try:
         stopped = subprocess.run([stop, session], capture_output=True, text=True)
