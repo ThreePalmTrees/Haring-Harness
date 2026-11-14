@@ -13,7 +13,7 @@ The idea is: you have 2 different subscriptions, one is the manager, and one is 
 
 My personal setup is:
 **Manager:** `Opus` via Claude Code.<br/>
-**Worker:** `opencode-go/deepseek-v4.1-flash` via `OpenCode`.
+**Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
 
 This is the supported setup: a Claude Code manager with OpenCode workers. Another worker
 harness can be added with the `haring-add-worker` skill and `WORKERS.md`. Other harnesses
@@ -72,18 +72,34 @@ Just mention `/haring` in your prompt
 
 ## What Haring writes into your project
 
-    .haring/runs/{stamp}-{kind}-{pid}/
+    .haring/runs/{stamp}-{kind}-{id}/
       prompt.md      // what the worker was asked to do
       report.json    // what the worker returned
-      events.jsonl   // the run's events, OpenCode's own stream as they happen
+      events.jsonl   // the run's events, from the worker's own stream
       stats.txt      // model, tokens, cache reads, turns, seconds
       meta           // what the run was, so it can be continued
-      PROGRESS.md    // the worker's progress
-      FACTS.md       // short list of learned facts about the project
+      PROGRESS.md    // the worker's progress, for a kind that keeps one
       stderr.txt     // only when something went wrong
+
+    .haring/FACTS.md // short list of learned facts about the project
 
 The first time haring writes a run into a repository it adds `.haring/` to that repository's `.gitignore`.<br/>
 Nothing in there needs maintaining. It is a record, not a document.
+
+To see every run in a project as one page, run:
+
+```
+haring-stats-page
+```
+
+It writes `stats.html` in the project's `.haring` folder and prints the path. Open that
+file in a browser; the page needs no server and no network. `--out <file>` writes it
+somewhere else, and naming a project writes the page for that project.
+
+When the manager is a Claude Code session and starts a subagent while `haring-pulse` is
+running, the pulse records the subagent as a run under `.haring/runs/`. When the
+subagent ends, the pulse copies its transcript into the run folder and writes
+`report.json` and `stats.txt` from it.
 
 <br/>
 <p align="center">

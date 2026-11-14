@@ -7,12 +7,15 @@ reports, watches live runs, steers them and stops them.
 
 A worker is everything under `workers/<name>/`. It knows one coding-agent harness:
 how to start it, how to send a message to it, how to stop it, and what its event
-stream means.
+stream means. A worker the manager starts with its own tools may leave out the start,
+steer and stop programs; the core then reads the transcript those tools write and
+names the manager's own route instead.
 
 The core calls the worker folder by path. It does not import the harness and does not
 read the harness's own configuration. This file describes what a worker folder must
 provide and what the core does with it today. `workers/opencode/` is the worked
-example for every part.
+example for a worker with its own programs; `workers/claude-agent/` is the worked
+example for one the manager starts.
 
 ## 1. What a worker folder is
 
@@ -23,14 +26,17 @@ that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
 
-- `worker.conf` holds the model list and two hints. A fresh launch cannot run without
+- `worker.conf` holds the model list and the hints. A fresh launch cannot run without
   a readable model list.
 - `events.py` is a Python module with three functions. Every command that reads a
   run's event stream loads it.
-- `start` runs one worker turn and writes the event stream.
-- `steer` delivers a message into a live session.
-- `stop` interrupts a live session.
+- `start` is optional. When present, it runs one worker turn and writes the event
+  stream. A worker the manager starts with its own tools has none.
+- `steer` is optional. When present, it delivers a message into a live session.
+- `stop` is optional. When present, it interrupts a live session.
 - `agents-config` installs, removes and checks the worker's harness-side files.
+  `haring-worker` calls its `check` before a launch, and the installers call `install`
+  and `remove`. A worker the manager starts does not need it.
 - `agents/<kind>.md` is one file per kind. Only the worker's own `agents-config`
   reads these. The core never reads them.
 - `api.py` is a helper module used by the OpenCode `steer` and `stop`. The core never
@@ -38,8 +44,8 @@ The core uses these files.
 
 A worker folder may hold other files. The core ignores them.
 
-`start`, `steer`, `stop` and `agents-config` must be executable. `events.py` and
-`worker.conf` must be readable. `worker.conf` must be a file, not a directory.
+A program that is present must be executable. `events.py` and `worker.conf` must be
+readable. `worker.conf` must be a file, not a directory.
 
 The OpenCode example has this shape.
 
@@ -59,6 +65,24 @@ The OpenCode example has this shape.
   four OpenCode agents, one for each kind.
 - `workers/opencode/api.py` builds the one `opencode api` request used by `steer` and
   `stop`.
+
+The Claude Code example has this shape. The manager starts it with Claude Code's Agent
+tool, and haring reads the transcript the subagent writes.
+
+- `workers/claude-agent/worker.conf` names `default_model=sonnet`, the models opus,
+  sonnet and haiku, `thinking=yes`, `fork=no`, and the two route texts
+  `steer_with=SendMessage to agent {agent_id}` and
+  `stop_with=TaskStop on agent {agent_id}`.
+- `workers/claude-agent/events.py` reads a subagent transcript and turns its user and
+  assistant turns into haring's entries and summary.
+- `workers/claude-agent/agents-config` links `agents/<kind>.md` into `~/.claude/agents`
+  as `haring-<kind>.md`.
+- `workers/claude-agent/agents/check.md`, `errand.md`, `implement.md` and `qa.md` are
+  the four Claude Code agents, one for each kind.
+- It has no `start`, `steer` or `stop`. The manager starts the subagent with the Agent
+  tool, steers it with SendMessage and stops it with TaskStop. `haring-pulse` adopts
+  the subagent as a run, and the run has no pid, so its liveness comes from the
+  module's `alive()` function.
 
 ## 2. worker.conf
 
@@ -187,11 +211,18 @@ returns one dict with exactly these keys.
 - `first`: the first event time in the stream, in epoch milliseconds, or `None`.
 - `last`: the last event time in the stream, in epoch milliseconds, or `None`.
 
-The core uses `final` and `error` to build `report.json`. When both are empty,
-`haring_report.py` exits with status 2 and writes no report. It uses the other keys for
+The core uses `final` and `error` to build `report.json`. It uses the other keys for
 the report's counts: `session` becomes `session_id`, `steps` becomes `num_turns`,
 `reason` becomes `stop_reason`, `tokens` becomes `usage`, `cost` becomes `costUSD`,
 and `first` and `last` become the duration.
+
+For a known kind without `--no-answer`, when the final message and the error text are
+both empty, `haring_report.py` exits with status 2 and writes no report. The no-schema
+mode — a schema file of `-`, or no schema argument — writes the final text as a success
+with no `structured_output`; a run with no answer gets one error report with an empty
+result. `--no-answer` writes that error report instead of exiting 2. `haring-pulse` uses
+the no-schema mode for an adopted subagent of an unknown kind, and `--no-answer` for an
+adopted run that ended with no answer.
 
 ### alive(run, meta)
 
@@ -202,6 +233,19 @@ function returns True. A module without the function cannot say a pid-less run i
 so the run reads as ended. `workers/claude-agent/events.py` answers from the sidecar
 meta file Claude Code writes beside a subagent transcript, which carries `"finished":
 true` once the subagent has ended.
+
+The core's one liveness function is `run_alive` in `lib/haring_events.py`. It uses
+`run_pid_alive` when `meta` has a pid, and calls the module's `alive(run, meta)` when it
+has none.
+
+### started=
+
+A run that haring starts as a process has no `started=` line in `meta`; its meta file's
+own time is its start. `haring-pulse` writes `started=` when it adopts a subagent whose
+transcript began earlier than the run folder. `run_started` in `lib/haring_events.py`
+reads that value when it is there, and falls back to the meta file's time when it is
+not. `haring-transcript`, `haring-wait`, `haring-pulse`, `haring-stats-page` and the
+duration in `report.json` measure from `run_started`.
 
 ### Real examples
 
@@ -355,6 +399,42 @@ standard error. Exit 2 means the call was wrong, with a usage line on standard e
 inside the run calls `stop` when the event stream has been silent for the stall limit.
 The watchdog ignores both output and exit code.
 
+### A worker the manager starts
+
+Some harnesses run inside the manager's own session. The manager starts the work with
+the harness's tool, and haring only reads the transcript. `workers/claude-agent/` is the
+example.
+
+Such a worker leaves out `start`, `steer` and `stop`. `haring-worker` refuses to launch
+it: when the settled worker has no `start` program it exits 2, names the missing path,
+and creates no run folder. The manager starts the run with Claude Code's Agent tool,
+steers it with SendMessage and stops it with TaskStop.
+
+When a worker has no `steer` or `stop`, `haring-say` and `haring-kill` do not try to
+reach it. They print the worker's `steer_with` or `stop_with` text and exit 1. With no
+such text they say only that the run cannot be steered or stopped. `{agent_id}` in the
+text is replaced by the run's `agent_id` from `meta`.
+
+`haring-pulse` records the subagents of its own Claude Code session as runs. It looks
+only in the session named by `CLAUDE_CODE_SESSION_ID`, under the folder named by
+`HARING_CLAUDE_PROJECTS` or, when that is unset, `~/.claude/projects`. Without a session
+id it adopts nothing and says so once.
+
+For each subagent the pulse creates
+`<project>/.haring/runs/<stamp>-<kind>-<agent id>/`. Its `meta` holds `kind`,
+`workdir`, `model`, `worker=claude-agent`, `agent_id`, `agent_type`, `transcript` and
+`started`. Its `prompt.md` holds the first user message. Its `events.jsonl` is a link to
+the transcript. A subagent still going is reported like any other live run.
+
+When the subagent has ended, the pulse replaces the link with a copy of the transcript,
+writes `report.json`, and writes `stats.txt` with `haring-stats`. A known kind is checked
+against `kinds/<kind>/schema.json`; a report that does not match is kept as the raw final
+text with `--final`. An unknown kind gets a report with the raw final text and no schema.
+A run that ended with no answer gets one error report saying so.
+
+The run has no pid. Its liveness comes from the worker module's `alive()`, which reads
+the `"finished"` flag in the sidecar meta file beside the transcript.
+
 ### agents-config
 
 The core calls:
@@ -399,9 +479,9 @@ A module that exists but fails to import raises its own traceback. The core name
 a missing file. A module without `session`, `entries` or `summary` raises
 `AttributeError` when that function is called.
 
-A missing `start` makes the runner write a "not found" error to the run's
-`stderr.txt`. The runner then finds no events, writes no report, and leaves an empty
-`report.json`. The run looks like a worker that stopped without reporting.
+A missing `start` stops a launch before the run folder exists: `haring-worker` exits 2
+and names the path. A worker the manager starts with its own tools has no `start`
+program; the manager starts it with the Agent tool instead.
 
 A missing `steer` makes `haring-say` exit 1 before waiting, with the worker's
 `steer_with` text when `worker.conf` names one and `this run cannot be steered` when it
@@ -456,6 +536,10 @@ same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worke
 then `opencode`. They read that worker's `worker.conf`. When the worker is not
 `opencode`, `haring-meta` names it in the model line, as
 `Worker model (<name>): ...`. For `opencode` the line is unchanged.
+
+`haring-model --worker` prints the settled worker and where it came from. Given a name,
+it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with
+`--project`, and refuses a name with no folder under `workers/`.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program
