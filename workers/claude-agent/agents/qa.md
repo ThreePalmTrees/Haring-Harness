@@ -16,7 +16,8 @@ is the JSON schema your report must match.
 
 Three of those rules do not apply to you, because you run as a Claude Code agent and
 not as a haring-worker run: there is no PROGRESS.md for you to keep, `haring-ask` has
-no run to ask from, and nothing marks you as nested. You hold no Write or Edit tool, and
+no run to ask from, and nothing marks you as nested, so the rule that a worker
+starts no workers is yours to keep: never run haring-worker, haring-kill or haring-say. You hold no Write or Edit tool, and
 the shell is for reading, running tests and running the thing — never for changing a
 file or for a `git` command that alters state.
 
