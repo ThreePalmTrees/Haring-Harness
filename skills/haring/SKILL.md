@@ -25,10 +25,11 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-A worker is an OpenCode session, started with `opencode run`, on a model from
-`workers/opencode/worker.conf`; today's default is `opencode-go/deepseek-v4.1-flash`. You are
-a Claude Code session; the worker is not, so a worker is never started with the Agent
-tool — always with `haring-worker`. The choice of model is the client's. `haring-model` reads it and sets it;
+By default a worker is an OpenCode session, started with `opencode run`, on a model from
+`workers/opencode/worker.conf`; today's default is `opencode-go/deepseek-v4.1-flash`. When
+the worker is `claude-agent`, it is a Claude Code subagent started with the Agent tool —
+see "Run a Claude Code agent". Otherwise a worker is started with `haring-worker`, never
+with the Agent tool. The choice of model is the client's. `haring-model` reads it and sets it;
 `--model` on `haring-worker` exists for the same reason, when the client asks for a
 different model on one run. You never choose a model on your own. `haring-meta` already
 prints the current one, so you have it before you ask.
@@ -423,7 +424,7 @@ Pick the kind first. It sets the tools and the shape of the report.
 - **implement** — do the work, on a branch.
 - **qa** — break what the diff changed, after the manager is satisfied; report only
   what is wrong. Only when the client asks for it, and by default on opus as the Claude
-  Code agent `haring-qa`, not as a worker — see "Run the QA".
+  Code agent `haring-qa`, not as an OpenCode worker — see "Run the QA".
 
 ### Pick the kind by whether the question needs a shell
 
@@ -543,8 +544,8 @@ Read the QA model with `haring-model --qa` when the client asks, never earlier:
   model named. The agent reads the QA rules and the report schema itself; your prompt
   is the task alone, written as you would write any worker's, with the base and head
   commits and the project path. Its final message is the report, as JSON. Run it in
-  the background and carry on. It writes no run folder, so there is nothing for
-  `haring-wait` or the pulse to follow.
+  the background and carry on. The pulse records the subagent as a run too, so
+  `haring-wait` and the same commands follow its run folder.
 - **an OpenCode model** (`opencode-go/...`) — start it as a worker:
   `haring-worker qa <workdir> <prompt-file>`, and follow it like any other run.
 
@@ -559,6 +560,18 @@ second QA pass happens only when the client asks.
 A QA run that ends with no report is one brief line to the client: the QA tried with
 <exact model name> and didn't work — the reason if the run's stderr names one, and if
 no reason is known, say that too.
+
+### Run a Claude Code agent
+
+When `haring-meta` says the worker is `claude-agent`, a task of any kind is a Claude
+Code subagent, not a `haring-worker` run. Start `haring-pulse` first, as for any worker:
+the pulse turns the subagent into a run. Then start it with the Agent tool as
+`subagent_type: "haring-<kind>"`, on the model `haring-meta` names; your prompt is the
+task alone. Steer it with SendMessage to its agent id, and stop it with TaskStop. Its
+run folder is read with the same haring commands as any other run.
+
+A `haring-worker` launch of this worker is refused: it has no `start` program, because
+the manager starts it with the Agent tool.
 
 ---
 
@@ -615,14 +628,16 @@ haring-session [dir] [-l|-n N]  what this manager session has cost so far
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state and a listing of the project
-haring-model [<model>] [--qa [<model>]] [--project]
+haring-model [<model>] [--qa [<model>]] [--worker [<name>]] [--project]
                                 the worker's model: prints it and where
                                 it came from with no argument, writes it
                                 with one — haring's own choice, or the
                                 project's override with --project.
                                 --qa reads or writes the QA model the
                                 same way: opus (the default), sonnet, or
-                                an OpenCode model
+                                an OpenCode model. --worker prints the
+                                settled worker and where it came from,
+                                or writes one the same way
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes

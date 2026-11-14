@@ -31,10 +31,6 @@ for d in "$HARING"/skills/*/; do
   link "${d%/}" "$HOME/.claude/skills/$(basename "$d")"
 done
 
-echo "claude code agent (the QA pass, on opus by default):"
-mkdir -p "$HOME/.claude/agents"
-link "$HARING/kinds/qa/claude.md" "$HOME/.claude/agents/haring-qa.md"
-
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do
   [ -f "$w" ] || continue

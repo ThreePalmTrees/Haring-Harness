@@ -5,6 +5,7 @@
 #   haring-model <model>
 #   haring-model --project <model>
 #   haring-model --qa [<model>]
+#   haring-model --worker [<name>]
 #
 # With no argument, prints the model a worker started here would run on, and where
 # that came from — the same order bin/haring-worker settles a fresh run's model
@@ -12,6 +13,11 @@
 # then <haring-root>/model, then the default named in that run's worker.conf. The
 # worker settles the same way: <project>/.haring/worker, then <haring-root>/worker,
 # then opencode.
+#
+# --worker reads or writes that worker choice. With no name it prints the settled
+# worker and where it came from. With a name it writes the name into
+# <haring-root>/worker, or <project>/.haring/worker with --project, and refuses a name
+# that has no folder under workers/.
 #
 # With one argument, writes that name into <haring-root>/model — haring's own
 # choice, in force everywhere unless a project overrides it — and prints what it
@@ -41,7 +47,7 @@ set -e
 WORKER_DEFAULT=opencode
 
 usage() {
-  echo "usage: haring-model [<model>] [--qa [<model>]] [--project]" >&2
+  echo "usage: haring-model [<model>] [--qa [<model>]] [--worker [<name>]] [--project]" >&2
   exit 2
 }
 
@@ -65,11 +71,13 @@ project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 # then the default. A file that is missing, empty, or holds only whitespace names nothing
 # and is passed over rather than treated as a choice.
 worker=$WORKER_DEFAULT
+worker_source=""
 for worker_file in "$project/.haring/worker" "$HARING/worker"; do
   [ -f "$worker_file" ] || continue
   candidate=$(tr -d '[:space:]' < "$worker_file")
   [ -n "$candidate" ] || continue
   worker=$candidate
+  worker_source=$worker_file
   break
 done
 
@@ -99,6 +107,8 @@ project_flag=""
 model=""
 qa_flag=""
 qa_write=""
+worker_flag=""
+worker_write=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) project_flag=1; shift ;;
@@ -108,6 +118,12 @@ while [ $# -gt 0 ]; do
             ''|-*) ;;
             *) qa_write=$1; shift ;;
           esac ;;
+    --worker) worker_flag=1; shift
+          # The name is optional: the next word is it unless it is another flag.
+          case "${1-}" in
+            ''|-*) ;;
+            *) worker_write=$1; shift ;;
+          esac ;;
     -*) echo "haring-model: unknown option: $1" >&2; usage ;;
     *) [ -z "$model" ] || { echo "haring-model: takes at most one model name" >&2; usage; }
        model=$1; shift ;;
@@ -116,6 +132,44 @@ done
 
 [ -z "$model" ] || [ -z "$qa_flag" ] || {
   echo "haring-model: a plain model name does not go with --qa" >&2; usage; }
+[ -z "$model" ] || [ -z "$worker_flag" ] || {
+  echo "haring-model: a plain model name does not go with --worker" >&2; usage; }
+[ -z "$qa_flag" ] || [ -z "$worker_flag" ] || {
+  echo "haring-model: --qa and --worker do not go together" >&2; usage; }
+
+if [ -n "$worker_flag" ]; then
+  if [ -n "$worker_write" ]; then
+    if [ ! -d "$HARING/workers/$worker_write" ]; then
+      worker_names=""
+      for worker_dir in "$HARING"/workers/*/; do
+        [ -d "$worker_dir" ] || continue
+        name=${worker_dir%/}
+        worker_names="$worker_names ${name##*/}"
+      done
+      echo "haring-model: unknown worker: $worker_write" >&2
+      echo "  the worker folders are:${worker_names}" >&2
+      exit 2
+    fi
+    if [ -n "$project_flag" ]; then
+      mkdir -p "$project/.haring" || { echo "haring-model: could not create $project/.haring" >&2; exit 1; }
+      dest="$project/.haring/worker"
+    else
+      dest="$HARING/worker"
+    fi
+    printf '%s\n' "$worker_write" > "$dest" || { echo "haring-model: could not write $dest" >&2; exit 1; }
+    echo "$worker_write -> $dest"
+    exit 0
+  fi
+  [ -z "$project_flag" ] || { echo "haring-model: --project needs a worker name to write" >&2; usage; }
+  # The same rule the model read applies: a file that is missing, empty, or holds only
+  # whitespace names nothing and is passed over rather than treated as a choice.
+  if [ -n "$worker_source" ]; then
+    echo "$worker ($worker_source)"
+  else
+    echo "$worker (default)"
+  fi
+  exit 0
+fi
 
 if [ -n "$qa_flag" ]; then
   if [ -n "$qa_write" ]; then

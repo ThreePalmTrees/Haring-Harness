@@ -81,9 +81,6 @@ echo
 echo "skill:"
 for name in "$HOME"/.claude/skills/*; do remove "$name" "$HARING/skills"; done
 
-echo "claude code agent (the QA pass, on opus by default):"
-for name in "$HOME"/.claude/agents/haring*; do remove "$name"; done
-
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do
   [ -f "$w" ] || continue
