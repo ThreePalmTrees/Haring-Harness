@@ -10,8 +10,9 @@ carrying the whole block, and the reasoning tokens a step spent.
 An event's shape belongs to the worker that wrote it, not here: the run's meta
 worker= line names a module under workers/<name>/ that says which event names the
 session, what one event adds, and what the stream sums to. No line means opencode,
-the worker haring runs. That split keeps this file the same whatever harness wrote
-the stream.
+the worker haring runs. The same directory holds that worker's programs — start,
+steer, stop — so nothing in bin/ or here runs a harness command itself. That split
+keeps these files the same whatever harness wrote the stream.
 
 The throwing-away stays out of here: folding a run of one tool drops the calls it
 counts, and keeping the tail of a thought drops the rest of the thought; both lose
@@ -27,16 +28,14 @@ import importlib.util, json, os, subprocess, time
 from datetime import datetime
 
 HARING_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-WORKERS = {}   # worker name -> its loaded events module
+WORKERS = {}   # events module path -> the loaded module
 
 
-def worker_events(run):
-    """The events module for a run's worker: workers/<name>/events.py under the haring
-    root, where <name> is what the run's meta worker= line says or opencode when it says
-    nothing. A name is imported once and kept, so a reader looking again at a run or
-    another run of the same worker gets the module it already has. A missing file is
-    named as it is, in place of a traceback that would not say which worker was asked
-    for."""
+def worker_dir(run):
+    """The directory a run's worker lives in: workers/<name> under the haring root,
+    where <name> is what the run's meta worker= line says or opencode when it says
+    nothing. Its events.py says what an event means; start, steer and stop are the
+    programs that run the harness and talk to it."""
     name = "opencode"
     try:
         with open(os.path.join(run, "meta")) as f:
@@ -46,15 +45,24 @@ def worker_events(run):
                     break
     except OSError:
         pass
-    if name not in WORKERS:
-        path = os.path.join(HARING_ROOT, "workers", name, "events.py")
+    return os.path.join(HARING_ROOT, "workers", name)
+
+
+def worker_events(run):
+    """The events module of a run's worker, from its worker_dir. A file is imported once
+    and kept, so a reader looking again at a run or another run of the same worker gets
+    the module it already has. A missing file is named as it is, in place of a traceback
+    that would not say which worker was asked for."""
+    path = os.path.join(worker_dir(run), "events.py")
+    name = os.path.basename(os.path.dirname(path))
+    if path not in WORKERS:
         if not os.path.isfile(path):
             raise SystemExit(f"haring: no events module for worker '{name}': {path} is missing")
         spec = importlib.util.spec_from_file_location(f"haring_worker_{name}", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        WORKERS[name] = module
-    return WORKERS[name]
+        WORKERS[path] = module
+    return WORKERS[path]
 
 
 def run_pid_alive(run, pid):
@@ -88,8 +96,10 @@ def run_pid_alive(run, pid):
 
 def live_session(run):
     """The session a run is working in: the first session id its events.jsonl names,
-    else the one its meta names. A fresh run's meta already holds it; a continued run
-    forks under an id the worker picks, which only the stream knows."""
+    else the id its start chose and wrote to the run's session file, else the one its
+    meta names (old runs). A fresh run's session file is written before the worker does
+    anything; a continued run forks under an id the worker picks, which only the stream
+    knows."""
     worker = worker_events(run)
     try:
         with open(os.path.join(run, "events.jsonl")) as f:
@@ -103,6 +113,13 @@ def live_session(run):
     except OSError:
         pass
     try:
+        with open(os.path.join(run, "session")) as f:
+            sid = f.read().strip()
+            if sid:
+                return sid
+    except OSError:
+        pass
+    try:
         with open(os.path.join(run, "meta")) as f:
             for line in f:
                 if line.startswith("session_id="):
@@ -111,20 +128,6 @@ def live_session(run):
         pass
     return ""
 
-
-def opencode_api(method, path, body=None):
-    """One request to the OpenCode server through `opencode api`, as (ok, text). The
-    server holds the session, so stopping or steering a worker goes through it."""
-    cmd = ["opencode", "api", method, path]
-    if body is not None:
-        cmd += ["-d", json.dumps(body)]
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                             stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return False, str(e)
-    text = (out.stdout + out.stderr).strip()
-    return out.returncode == 0 and "HTTP 4" not in text and "HTTP 5" not in text, text
 
 VALUE_LIMIT = 500  # most of one argument's value that is printed
 ARGS_LIMIT = 1000  # most of one call's whole argument text that is printed

@@ -4,9 +4,9 @@
     haring-kill <run-folder>
 
 Signals the worker's whole process group: the runner python, the shell running the
-run's run.sh, and the opencode client inside it — then interrupts the worker's session
-in the OpenCode server, because the session lives there and goes on working after its
-client dies. The chip's "x" on a background task does
+run's run.sh, and the harness client inside it — then asks the worker's own stop program
+to interrupt the session, because the session lives in a server and goes on working
+after its client dies. The chip's "x" on a background task does
 none of this — it kills the haring-wait watching the run, and the worker survives it,
 because haring-worker deliberately detached the worker into its own session so that it
 outlives whatever started it. That same detachment is why an ordinary kill cannot reach
@@ -100,7 +100,7 @@ if os.path.exists(marker):
 here = os.path.realpath(run)
 named = os.path.abspath(run)
 tail = os.path.basename(run)
-session = meta.get("session_id", "")
+session = haring_events.live_session(run)
 
 
 def names_run(command):
@@ -186,9 +186,12 @@ if left:
 
 # The client is gone and the session is not: measured, a session whose client was killed
 # is still running in the server three seconds later, and only an interrupt stops it.
-live_session = haring_events.live_session(run)
-interrupted, answer = (haring_events.opencode_api("POST", f"/api/session/{live_session}/interrupt")
-                       if live_session else (False, "no session id in events.jsonl or meta"))
+stop = os.path.join(haring_events.worker_dir(run), "stop")
+if session:
+    stopped = subprocess.run([stop, session], capture_output=True, text=True)
+    interrupted, answer = stopped.returncode == 0, stopped.stderr.strip()
+else:
+    interrupted, answer = False, "no session id in the stream, the session file or meta"
 
 now = time.strftime("%Y-%m-%dT%H:%M:%S")
 with open(marker, "w") as f:
@@ -196,7 +199,7 @@ with open(marker, "w") as f:
     f.write(f"user={os.environ.get('USER') or '?'}\n")
     f.write(f"pgid={group}\n")
     f.write(f"pids={' '.join(str(p) for p in members)}\n")
-    f.write(f"session={live_session}\n")
+    f.write(f"session={session}\n")
 
 kind = meta.get("kind", "?")
 inside = f", opencode was pid {', '.join(str(p) for p in client)}" if client else ""
@@ -205,9 +208,8 @@ print(f"  process group {group}: pids {' '.join(str(p) for p in members)}{inside
       file=sys.stderr)
 print(f"  recorded in {marker}", file=sys.stderr)
 if interrupted:
-    print(f"  session {live_session} interrupted in the OpenCode server", file=sys.stderr)
+    print(f"  the session {session} was interrupted", file=sys.stderr)
 else:
-    print(f"  !! session {live_session or '?'} was not interrupted, and may still be working "
-          f"in the OpenCode server: {answer[:300]}", file=sys.stderr)
-    print(f"     stop it with: opencode api POST /api/session/{live_session}/interrupt",
-          file=sys.stderr)
+    print(f"  !! the session {session or '?'} was not interrupted, and may still be "
+          f"working: {answer[:300]}", file=sys.stderr)
+    print(f"     stop it with: {stop} {session}", file=sys.stderr)

@@ -3,19 +3,19 @@
 
     haring-say <run-folder> "<message>"
 
-The message is posted into the worker's live OpenCode session with steer delivery, and
+The message is posted into the worker's live session with steer delivery, and
 the worker takes it at its next step and answers it before its run ends: steering is for a worker doing the right task by a
 wrong route, and it is worth a whole restart when the mistake is one sentence long.
 A worker on the wrong task is still a matter for haring-kill.
 
-Delivery is said only when it happened: when the OpenCode server has admitted the
+Delivery is said only when it happened: when the worker's own program has admitted the
 message into a session that is still working. Each delivered message is written to
 said.jsonl in the run folder, which haring-transcript joins with the stream.
 
 Exits 2 when called wrongly: no argument, a missing or empty message, or a path that
 is not a haring run folder. Exits 1 when called rightly but unable to deliver — the
-run has finished and reported, its session is no longer working, or the OpenCode
-server could not be reached. Exits 0 only
+run has finished and reported, its session is no longer working, or the worker's
+program could not be reached. Exits 0 only
 when the message was handed to the worker.
 """
 import sys, os, time, json, subprocess
@@ -98,25 +98,19 @@ while True:
         die(f"no worker is running for {run}", 1)
     time.sleep(0.2)
 
-# Only a session that is working is told anything. A message posted to an idle session
-# starts a turn of its own that nobody is reading — the run's client has already left —
-# so a run between its last answer and its report gets a refusal, not a message.
+# Only a session that is working is told anything, and whether it is, and whether the
+# worker took the message, is its own program's to answer: that program talks to the
+# server that holds the session, and only it knows which request the server wants.
 session = haring_events.live_session(run)
 if not session:
     die(f"the worker in {run} has not started its session yet; say it again in a moment.", 1)
-ok, active = haring_events.opencode_api("GET", "/api/session/active")
-if not ok:
-    die(f"could not reach the OpenCode server to deliver the message: {active[:300]}", 1)
-if session not in active:
-    die(f"the worker in {run} is not working any more; its run is ending. Read its "
-        f"report when it lands.", 1)
-
-# Steer is OpenCode's own delivery for a word to a session mid-run: the worker takes it
-# at its next step, inside the same run, and its answer arrives in the same stream.
-ok, answer = haring_events.opencode_api("POST", f"/api/session/{session}/prompt",
-                                        {"text": message, "delivery": "steer"})
-if not ok:
-    die(f"the OpenCode server refused the message: {answer[:300]}", 1)
+steer = os.path.join(haring_events.worker_dir(run), "steer")
+try:
+    sent = subprocess.run([steer, session, message], capture_output=True, text=True)
+except OSError as e:
+    die(f"could not deliver the message: {e}", 1)
+if sent.returncode != 0:
+    die(sent.stderr.strip() or f"the worker in {run} did not take the message", 1)
 
 # The stream shows what the worker did with the message, not the message itself, so it
 # is written to said.jsonl with the moment it landed, stamped the way the event stream's

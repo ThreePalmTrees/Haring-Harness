@@ -8,8 +8,8 @@
 #
 # kind is one of: check implement errand qa
 #
-# The worker is an OpenCode session, started with `opencode run`, on one of the models
-# in the table below. Absent --model, it settles from <project>/.haring/model, then
+# The worker is an OpenCode session, started by workers/opencode/start, on one of the
+# models in the table below. Absent --model, it settles from <project>/.haring/model, then
 # <haring-root>/model, then opencode-go/deepseek-v4.1-flash, read and written by
 # haring-model. The manager never chooses a model
 # on its own: --model exists only for when the person who asked for the work asks for it.
@@ -39,6 +39,9 @@ done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
 MODEL_DEFAULT=opencode-go/deepseek-v4.1-flash
+# The worker harness a fresh run uses. workers/<name>/ holds the programs that launch it
+# and talk to it; a continue keeps the worker of the run it continues.
+WORKER_DEFAULT=opencode
 
 # The models a worker may run on, written the way `opencode run -m` takes them. A model
 # this does not hold is refused once the model settles, before anything is created.
@@ -136,12 +139,15 @@ if [ "$1" = "continue" ]; then
   # shellcheck disable=SC1090
   . "$prev/meta"
   kind=$want_kind
+  # A run recorded before meta named its worker continues on the default one.
+  worker=${worker:-$WORKER_DEFAULT}
   shift 4
 else
   kind=$1; workdir=$2; promptfile=$3
   [ -n "$kind" ] && [ -n "$workdir" ] && [ -n "$promptfile" ] || usage
   shift 3
   model=""
+  worker=$WORKER_DEFAULT
 fi
 
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
@@ -259,8 +265,8 @@ case "$kind" in
   check|errand|implement|qa) agent="haring-$kind" ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
-model_arg=$model
-[ -n "$effort" ] && model_arg="$model#$effort"
+effort_arg=""
+[ -n "$effort" ] && effort_arg="--effort $effort"
 command -v opencode >/dev/null 2>&1 || {
   echo "haring-worker: opencode is not on PATH. Install it, then run ./install.sh again." >&2; exit 1; }
 [ -e "$HOME/.config/opencode/agents/$agent.md" ] || {
@@ -370,22 +376,14 @@ fi
 run="$project/.haring/runs/$(date +%Y-%m-%d-%H%M%S)-$kind-$$"
 mkdir -p "$run"
 
-# Name the session ourselves: `opencode run -s` creates a session under an id it has not
-# seen, so the run's meta names its session before the worker has done anything. The id
-# must start with ses_. A continued run cannot be named this way — --fork copies the
-# session it continues under an id OpenCode picks — so its meta names the session it
-# forked from, and every reader takes the live id from the first line of events.jsonl.
-if [ -z "$resume_id" ]; then
-  session=ses_haring$(python3 -c 'import uuid; print(uuid.uuid4().hex[:20])')
-else
-  session=$resume_id
-fi
-
+# The session is the worker's start program's to name: it chooses an id beginning ses_,
+# writes it to the run's session file, and launches the harness with it. A continued run
+# is resumed instead, and the id its fork picks is the stream's to name.
 {
   echo "kind=$kind"
   echo "workdir='$workdir'"
   echo "model=$model"
-  echo "session_id=$session"
+  echo "worker=$worker"
 } > "$run/meta"
 [ -n "$resume_id" ] && { echo "resumed_from='$prev'" >> "$run/meta"; echo "resumed_session='$resume_id'" >> "$run/meta"; }
 # The run that started this one, when the caller was a worker. It is what counts children
@@ -522,16 +520,23 @@ for l in open(sys.argv[1]):
     age=\$(( \$(date +%s) - \$(stat -f %m "$run/events.jsonl") ))
     [ "\$age" -ge "\$limit" ] || continue
     printf 'at=%s\nsilent=%s\n' "\$(date +%Y-%m-%dT%H:%M:%S)" "\$age" > "$run/stalled"
-    sid=\$(live_session); [ -n "\$sid" ] || sid=$session
-    opencode api POST "/api/session/\$sid/interrupt" </dev/null >/dev/null 2>&1
+    sid=\$(live_session)
+    [ -n "\$sid" ] || sid=\$(cat "$run/session" 2>/dev/null)
+    [ -n "\$sid" ] || sid=$resume_id
+    [ -z "\$sid" ] || "$HARING/workers/$worker/stop" "\$sid" </dev/null >/dev/null 2>&1
     kill -9 0
   done
 ) &
 watchdog=\$!
-fork_flag=''
-[ -n "$resume_id" ] && fork_flag=--fork
-opencode run --format json --thinking --agent $agent -m "$model_arg" -s "$session" \$fork_flag \
-  "\$(cat "$run/message.tmp")" </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+if [ -n "$resume_id" ]; then
+  "$HARING/workers/$worker/start" --kind "$kind" --model "$model" $effort_arg \
+    --resume "$resume_id" --fork "$run/message.tmp" \
+    </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+else
+  "$HARING/workers/$worker/start" --kind "$kind" --model "$model" $effort_arg \
+    --session-file "$run/session" "$run/message.tmp" \
+    </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+fi
 tries=0
 while :; do
   problem=\$(python3 "$HARING/lib/haring_report.py" "$run" "$schema")
@@ -546,12 +551,12 @@ for l in sys.stdin:
     try: s = json.loads(l).get("sessionID")
     except ValueError: continue
     if s: print(s); break')
-  opencode run --format json --thinking --agent $agent -m "$model_arg" -s "\$sid" \
-    "Your final message was not the report. What is wrong with it:
-\$problem
-
-Send the report again: one JSON object matching the schema you were given, and nothing else." \
+  printf 'Your final message was not the report. What is wrong with it:\n%s\n\nSend the report again: one JSON object matching the schema you were given, and nothing else.\n' \
+    "\$problem" > "$run/retry.tmp"
+  "$HARING/workers/$worker/start" --kind "$kind" --model "$model" $effort_arg \
+    --resume "\$sid" "$run/retry.tmp" \
     </dev/null >> "$run/events.jsonl" 2>> "$run/stderr.txt"
+  rm -f "$run/retry.tmp"
 done
 kill \$watchdog 2>/dev/null
 [ -s "$run/stderr.txt" ] || rm -f "$run/stderr.txt"

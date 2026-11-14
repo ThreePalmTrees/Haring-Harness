@@ -1,0 +1,56 @@
+#!/bin/sh
+# start — run one worker turn in the foreground and stream its events.
+#
+#   start --kind <kind> --model <model> [--effort <level>]
+#         [--resume <session> [--fork]] [--session-file <path>] <message-file>
+#
+# The message file is the whole prompt; its trailing newlines are dropped, as the shell
+# call that used to pass it did. A fresh turn names its own session before it launches and
+# writes the id to --session-file, so the run folder holds the session before the worker
+# has done anything. A resumed turn continues the session it is given, forked when asked,
+# and the id OpenCode picks is the stream's to name. The harness's own streams are left
+# alone: standard output is the event stream, standard error its errors, and the exit code
+# is the harness's.
+set -e
+
+usage() {
+  echo "usage: start --kind <kind> --model <model> [--effort <level>]" >&2
+  echo "       [--resume <session> [--fork]] [--session-file <path>] <message-file>" >&2
+  exit 2
+}
+
+kind=""; model=""; effort=""; resume=""; fork=""; session_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --kind) [ $# -ge 2 ] && [ -n "$2" ] || usage; kind=$2; shift 2 ;;
+    --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2 ;;
+    --effort) [ $# -ge 2 ] && [ -n "$2" ] || usage; effort=$2; shift 2 ;;
+    --resume) [ $# -ge 2 ] && [ -n "$2" ] || usage; resume=$2; shift 2 ;;
+    --fork) fork=1; shift ;;
+    --session-file) [ $# -ge 2 ] && [ -n "$2" ] || usage; session_file=$2; shift 2 ;;
+    -*) echo "start: unknown option: $1" >&2; usage ;;
+    *) break ;;
+  esac
+done
+[ $# -eq 1 ] && [ -n "$kind" ] && [ -n "$model" ] || usage
+message_file=$1
+[ -f "$message_file" ] || { echo "start: no such message file: $message_file" >&2; exit 2; }
+if [ -z "$resume" ] && [ -n "$fork" ]; then usage; fi
+
+# An effort level is the model's OpenCode variant, written after a hash on the model name.
+model_arg=$model
+[ -n "$effort" ] && model_arg="$model#$effort"
+session=$resume
+fork_flag=""
+if [ -z "$resume" ]; then
+  # The id must start with ses_. Naming it here means the session is known before the
+  # worker has written a single event.
+  session=ses_haring$(python3 -c 'import uuid; print(uuid.uuid4().hex[:20])')
+  [ -n "$session_file" ] && printf '%s\n' "$session" > "$session_file"
+else
+  [ -n "$fork" ] && fork_flag=--fork
+fi
+
+message=$(cat "$message_file")
+exec opencode run --format json --thinking --agent "haring-$kind" -m "$model_arg" \
+  -s "$session" $fork_flag "$message" </dev/null

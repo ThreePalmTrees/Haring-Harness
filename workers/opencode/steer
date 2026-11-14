@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""steer — deliver a message into a live OpenCode session.
+
+    steer <session> <message>
+
+A message is told only to a session that is working: one posted to an idle session starts
+a turn of its own that nobody is reading, and the run's client has already left. Exits 0
+when the server admitted the message with steer delivery, 1 when it did not, with the
+reason on standard error, and 2 when called wrongly.
+"""
+import sys
+import api
+
+if len(sys.argv) != 3:
+    print("usage: steer <session> <message>", file=sys.stderr)
+    sys.exit(2)
+session, message = sys.argv[1], sys.argv[2]
+
+ok, active = api.opencode_api("GET", "/api/session/active")
+if not ok:
+    print(f"could not reach the OpenCode server to deliver the message: {active[:300]}",
+          file=sys.stderr)
+    sys.exit(1)
+if session not in active:
+    print(f"the session {session} is not working any more; its run is ending. "
+          f"Read its report when it lands.", file=sys.stderr)
+    sys.exit(1)
+
+# Steer is OpenCode's own delivery for a word to a session mid-run: the worker takes it
+# at its next step, inside the same run, and its answer arrives in the same stream.
+ok, answer = api.opencode_api("POST", f"/api/session/{session}/prompt",
+                              {"text": message, "delivery": "steer"})
+if not ok:
+    print(f"the OpenCode server refused the message: {answer[:300]}", file=sys.stderr)
+    sys.exit(1)
