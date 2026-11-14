@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""haring-stats — one line of numbers from a worker's result JSON.
+"""haring-stats — one line of numbers from a worker's report.
 
     haring-stats <run-folder>
 
@@ -133,52 +133,24 @@ try:
 except Exception as e:
     die(f"unreadable report: {e}", 1)
 
-# report.json is the last result event alone, and every message said to a running worker
-# produces a result event of its own — so on a steered run these fields describe only that
-# last turn, in the direction that flatters. The stream holds all of them, so turns,
-# seconds and the token counts are summed over every result event. What the run ended with
-# still comes from report.json, which is the event that says how it ended. A stream with no
-# readable result event falls back to report.json's own numbers, which is what an unsteered
-# run sums to anyway.
-totals, ms, turns, denials, found = {}, 0, 0, 0, 0
-try:
-    for line in open(os.path.join(run, "events.jsonl")):
-        try:
-            e = json.loads(line)
-        except ValueError:
-            continue
-        if e.get("type") != "result":
-            continue
-        found += 1
-        ms += e.get("duration_ms") or 0
-        turns += e.get("num_turns") or 0
-        denials += len(e.get("permission_denials") or [])
-        for name, u in (e.get("modelUsage") or {}).items():
-            t = totals.setdefault(name, {})
-            for k in ("inputTokens", "outputTokens", "cacheReadInputTokens"):
-                t[k] = t.get(k, 0) + (u.get(k) or 0)
-except OSError:
-    pass
-
+# The run's numbers come from report.json: the stream carries one event per finished
+# part and holds no totals, so turns, seconds and the token counts are the report's own.
 mu = d.get("modelUsage") or {}
-# The run's own model, taken from its meta file, because modelUsage holds more than the
-# worker: Claude Code bills its own side work — naming a session, for one — to a small
-# model of its own choosing, and that entry can come first. Measured on one Sonnet run:
-# claude-haiku-4-5 at 12 output tokens sat ahead of claude-sonnet-5 at 28,185, so the
-# first key named the wrong model and its numbers. A run whose meta names a model that
-# never billed falls back to the busiest entry, which is the worker in every real run.
+# The run's own model, taken from its meta file, so a report whose modelUsage names more
+# than one model still reports the worker's. A run whose meta names a model the report
+# does not carry falls back to the busiest entry.
 try:
     model = dict(l.strip().split("=", 1)
                  for l in open(os.path.join(run, "meta")) if "=" in l).get("model") or ""
 except OSError:
     model = ""
-if model not in mu and model not in totals:
+if model not in mu:
     model = max(mu, key=lambda k: (mu[k] or {}).get("outputTokens") or 0, default="?")
-m = totals[model] if model in totals else mu.get(model, {})
-if not found:
-    ms = d.get("duration_ms", 0)
-    turns = d.get("num_turns", 0)
+m = mu.get(model, {})
+ms = d.get("duration_ms", 0)
+turns = d.get("num_turns", 0)
 secs = round(ms / 1000)
+denials = len(d.get("permission_denials") or [])
 print(
     f"model={model} "
     f"in={m.get('inputTokens', 0)} "
@@ -189,9 +161,7 @@ print(
     f"error={d.get('is_error')} "
     f"ended={d.get('terminal_reason') or d.get('stop_reason')}"
 )
-# Counted across every result event for the same reason the turns are: a denial in an
-# earlier turn of a steered run is still a denial the manager has to know about.
-if not found:
-    denials = len(d.get("permission_denials") or [])
+# A denial the manager has to know about is still a denial whether it happened in the
+# run's last turn or an earlier one.
 if denials:
     print(f"denials={denials}")
