@@ -59,12 +59,11 @@ that ends this when the workers end. A pass that has nothing new for a run still
 so once the run's last step is more than QUIET_AFTER seconds old: one line naming the
 run as ever, saying the worker is thinking, how long since that step, how many thinking
 tokens the run has accumulated, and how long since anything at all was written to
-events.jsonl. That last age comes from the file's modification time, not from event
-timestamps: the stream's thinking_tokens events carry no timestamp, and a worker
-generating a long thought writes many of them without moving one, so a gap between
-timestamped events says nothing about whether the worker is alive, and whether the file
-is being written says everything. The elapsed times in the line grow, so no two of
-these lines are the same — which is the point, because a worker deep in a long thought
+events.jsonl. That last age comes from the file's modification time, because the
+stream stamps only finished parts: a timestamp says when a part ended, not that the
+worker is still going, so the file's own age is what the line reads. The elapsed
+times in the line grow, so no two of these lines are the same — which is the point,
+because a worker deep in a long thought
 must not read as one that has died. If the file has gone unwritten for longer
 than SILENT_AFTER seconds, the line changes its words instead: the stream itself has
 stopped, which a worker in a long thought never lets happen, and the worker may have
@@ -458,8 +457,8 @@ try:
                     # long thought looks, from here, like a dead one, and this is what
                     # keeps the two apart. The elapsed times in each line grow, so each
                     # pass's line is new under the rule every line here answers to. The
-                    # age of the file comes from its modification time, because the
-                    # thinking_tokens a generating worker writes carry no timestamp.
+                    # age of the file comes from its modification time, because a stamp
+                    # says when a part finished, not that the worker is still going.
                     written = (os.path.getmtime(events) if os.path.exists(events)
                                else os.path.getmtime(meta_path))
                     if time.time() - written >= SILENT_AFTER:

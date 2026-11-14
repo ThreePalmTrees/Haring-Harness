@@ -3,9 +3,15 @@
 A run's event stream is the one record haring owns, and more than one command reads
 it: haring-wait renders the whole stream live, and anything that wants a single
 detail out of a run reads the same file. This module holds what they share — how one
-tool call's arguments become a line of text, and how the stream becomes labelled
-entries: one per tool call, one per thinking or speech block carrying the whole
-block, and the reasoning tokens a step spent.
+tool call's arguments become a line of text, the clock a step is timed by, and how the
+stream becomes labelled entries: one per tool call, one per thinking or speech block
+carrying the whole block, and the reasoning tokens a step spent.
+
+An event's shape belongs to the worker that wrote it, not here: the run's meta
+worker= line names a module under workers/<name>/ that says which event names the
+session, what one event adds, and what the stream sums to. No line means opencode,
+the worker haring runs. That split keeps this file the same whatever harness wrote
+the stream.
 
 The throwing-away stays out of here: folding a run of one tool drops the calls it
 counts, and keeping the tail of a thought drops the rest of the thought; both lose
@@ -17,8 +23,38 @@ numbers and this module is where the shared numbers live.
 More than one command also asks whether a run's worker is still going, and the answer
 takes the pid's command as well as the signal, so that test lives here too.
 """
-import json, os, subprocess, time
+import importlib.util, json, os, subprocess, time
 from datetime import datetime
+
+HARING_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+WORKERS = {}   # worker name -> its loaded events module
+
+
+def worker_events(run):
+    """The events module for a run's worker: workers/<name>/events.py under the haring
+    root, where <name> is what the run's meta worker= line says or opencode when it says
+    nothing. A name is imported once and kept, so a reader looking again at a run or
+    another run of the same worker gets the module it already has. A missing file is
+    named as it is, in place of a traceback that would not say which worker was asked
+    for."""
+    name = "opencode"
+    try:
+        with open(os.path.join(run, "meta")) as f:
+            for line in f:
+                if line.startswith("worker="):
+                    name = line.strip().split("=", 1)[1].strip("'") or name
+                    break
+    except OSError:
+        pass
+    if name not in WORKERS:
+        path = os.path.join(HARING_ROOT, "workers", name, "events.py")
+        if not os.path.isfile(path):
+            raise SystemExit(f"haring: no events module for worker '{name}': {path} is missing")
+        spec = importlib.util.spec_from_file_location(f"haring_worker_{name}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        WORKERS[name] = module
+    return WORKERS[name]
 
 
 def run_pid_alive(run, pid):
@@ -51,14 +87,15 @@ def run_pid_alive(run, pid):
 
 
 def live_session(run):
-    """The OpenCode session a run is working in: the first session id its events.jsonl
-    names, else the one its meta names. A fresh run's meta already holds it; a continued
-    run forks under an id OpenCode picks, which only the stream knows."""
+    """The session a run is working in: the first session id its events.jsonl names,
+    else the one its meta names. A fresh run's meta already holds it; a continued run
+    forks under an id the worker picks, which only the stream knows."""
+    worker = worker_events(run)
     try:
         with open(os.path.join(run, "events.jsonl")) as f:
             for line in f:
                 try:
-                    sid = json.loads(line).get("sessionID")
+                    sid = worker.session(json.loads(line))
                 except ValueError:
                     continue
                 if sid:
@@ -98,12 +135,6 @@ SKIP_ARGS = ("content", "oldString", "newString", "patchText")
 # one that says what the call was, and the rest follow it as name=value. OpenCode names
 # the file `path` or `filePath`.
 MAIN_ARGS = ("command", "filePath", "path", "pattern")
-# OpenCode's tool names, under the labels every reader and the manager's skill already
-# use. haring-report's evidence list counts Read, Glob, Grep and Bash by these labels,
-# so a worker's shell call has to arrive as Bash to count as evidence at all.
-TOOL_LABELS = {"read": "Read", "glob": "Glob", "grep": "Grep", "shell": "Bash",
-               "edit": "Edit", "write": "Write", "patch": "Patch",
-               "todowrite": "TodoWrite"}
 
 BLOCK_LINES = 10  # how much of a finished thought is worth reading
 BLOCK_LINES_WORKING = 3  # while the worker acts, the steps need the rest of the panel
@@ -153,13 +184,6 @@ def ts_value(ts):
     return time.time()
 
 
-def iso(ms):
-    """An OpenCode event's epoch milliseconds in the ISO 8601 form every reader and
-    said.jsonl already order by."""
-    secs, frac = divmod(ms / 1000, 1)
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(secs)) + ".%03dZ" % (frac * 1000)
-
-
 class RunReader:
     """Reads one run's events.jsonl and returns the entries added since the last read.
 
@@ -172,24 +196,29 @@ class RunReader:
     gets only what it has not seen; it is the caller that prints, formats, clips and
     trims.
 
+    What one event means is its worker module's to say; this class owns the file
+    position, the seen set, the clock and the retry count.
+
     Four attributes a caller reads to know how the worker is doing:
       when     the last time a step was seen, on the caller's own clock, which is what
                "the worker has done nothing" is measured from
       when_ts  the same moment on the events' own clock. It advances with every tool
-               call, in the order the entries come back, so a caller walking the list
-               rebuilds it in step — which is how haring-wait judges a block's length
-               against the silence before it
+               call and every retry line, in the order the entries come back, so a
+               caller walking the list rebuilds it in step — which is how haring-wait
+               judges a block's length against the silence before it
       seen_at  the last time the stream produced anything at all, thinking included,
                which separates a worker that is generating from one that is silent
-      last     "step" once a tool call has been seen
+      last     whether the latest progress was a "step" or a "retry"
       thinking_tokens  the reasoning tokens the stream has accumulated, summed from the
-                       steps that finished, which carry the count without producing an
-                       entry — the cost of a long thought that no entry shows
+                       counts its worker's finished steps hand back, which carry the
+                       count without producing an entry — the cost of a long thought
+                       that no entry shows
     """
 
     def __init__(self, when_ts=0.0):
         self.pos = 0        # where this reader stopped in the file last time
         self.seen = set()   # tool-call ids already reported
+        self.worker = None  # the run's worker module, loaded on the first read
         self.retries = 0    # haring-wait's api_retry line reads these two
         self.retry_next = 1
         self.thinking_tokens = 0
@@ -200,6 +229,8 @@ class RunReader:
 
     def read(self, path):
         """Every entry the stream has added since the last read, oldest first."""
+        if self.worker is None:
+            self.worker = worker_events(os.path.dirname(path))
         out = []
         with open(path) as f:
             f.seek(self.pos)
@@ -209,51 +240,40 @@ class RunReader:
                 except ValueError:
                     continue
                 self.seen_at = time.time()
-                # An OpenCode worker's stream: one event per finished part, the part
-                # under "part" and the moment in epoch milliseconds. Any other line —
-                # a run's error event, say — carries no entry.
-                if isinstance(d.get("part"), dict) and d.get("type") in (
-                        "tool_use", "text", "reasoning", "step_start", "step_finish"):
-                    out.extend(self.opencode(d))
+                for e in self.worker.entries(d, self.seen):
+                    entry = self.entry(e)
+                    if entry is not None:
+                        out.append(entry)
             self.pos = f.tell()
         return out
 
-    def opencode(self, d):
-        """The entries one OpenCode event adds: a tool call is a step, a thought or a
-        line of speech feeds seen_at only."""
-        part = d["part"]
-        ms = d.get("timestamp")
-        ts = iso(ms) if isinstance(ms, (int, float)) else None
-        kind = d["type"]
-        if kind == "step_finish":
-            # The reasoning a step spent arrives with the step's end, not as its own
-            # event, so this is where the run's thinking count grows.
-            key = part.get("id")
-            if key not in self.seen:
-                self.seen.add(key)
-                self.thinking_tokens += (part.get("tokens") or {}).get("reasoning") or 0
-            return []
-        if kind in ("text", "reasoning"):
-            key = part.get("id")
-            if key in self.seen:
-                return []
-            self.seen.add(key)
+    def entry(self, e):
+        """One entry the worker module named, as the label, text and timestamp a reader
+        prints; None when it carries no line and only feeds a counter."""
+        kind = e.get("kind")
+        ts = e.get("ts")
+        if kind == "thinking_tokens":
+            self.thinking_tokens += e.get("count") or 0
+            return None
+        if kind == "tool":
+            arg = render_args(e.get("args") or {})
+            if "error" in e:
+                arg = (arg + " — refused: "
+                       + " ".join(str(e.get("error") or "").split()))[:ARGS_LIMIT]
+            self.when = time.time()
+            self.when_ts = ts_value(ts)
+            self.last = "step"
+            return (e.get("name", "?"), arg, ts)
+        if kind in ("thinking", "says"):
             rows = [l for l in (" ".join(x.split())
-                                for x in (part.get("text") or "").splitlines()) if l]
-            return [("thinking" if kind == "reasoning" else "says", "\n".join(rows), ts)] if rows else []
-        if kind != "tool_use":
-            return []
-        key = part.get("id") or part.get("partID")
-        if key in self.seen:
-            return []
-        self.seen.add(key)
-        tool = part.get("tool", "?")
-        name = TOOL_LABELS.get(tool, tool)
-        state = part.get("state") or {}
-        arg = render_args(state.get("input") or {})
-        if state.get("status") == "error":
-            arg = (arg + " — refused: " + " ".join(str(state.get("error") or "").split()))[:ARGS_LIMIT]
-        self.when = time.time()
-        self.when_ts = ts_value(ts)
-        self.last = "step"
-        return [(name, arg, ts)]
+                                for x in (e.get("text") or "").splitlines()) if l]
+            return (kind, "\n".join(rows), ts) if rows else None
+        if kind == "retry":
+            self.retries += 1
+            self.last = "retry"
+            self.when = time.time()
+            self.when_ts = ts_value(ts)
+            if self.retries >= self.retry_next:
+                self.retry_next = self.retries * 2
+                return ("api_retry", f"x{self.retries} waiting on the endpoint", ts)
+        return None

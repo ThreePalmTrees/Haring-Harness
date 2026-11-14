@@ -4,10 +4,9 @@
 
 OpenCode has no flag that holds a run to a schema, so the worker is told the schema in
 its first message, and its final message is the report. This reads that message back,
-parses it as JSON and checks it against the schema. The report.json it writes keeps
-the shape the readers were written for — the last result event of a Claude Code
-stream — so haring-report, haring-wait, haring-stats and haring-kill read it unchanged:
-structured_output, result, session_id, is_error, num_turns, duration_ms, modelUsage.
+parses it as JSON and checks it against the schema. The report.json it writes has the
+shape haring-report, haring-wait, haring-stats and haring-kill read: structured_output,
+result, session_id, is_error, num_turns, duration_ms, modelUsage.
 
 Exits 0 with report.json written when the report parsed and matched. Exits 1 with the
 problem on standard output, and nothing written, when it did not and --final is not
@@ -19,6 +18,7 @@ one stopped before it said anything — which leaves report.json empty, the sign
 haring-wait and haring-kill already read as "no report".
 """
 import json, os, sys
+import haring_events
 
 TYPES = {
     "string": str, "boolean": bool, "object": dict, "array": list,
@@ -94,50 +94,6 @@ def read_events(path):
     return rows
 
 
-def summary(rows):
-    """What the stream says about the run: the session it ended in, the final message,
-    the error if it ended on one, and the numbers."""
-    session, error, reason = None, None, None
-    texts = {}       # messageID -> its text parts in order
-    order = []       # messageIDs that carried text, oldest first
-    steps = 0
-    tokens = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
-    cost = 0.0
-    first = last = None
-    for d in rows:
-        ts = d.get("timestamp")
-        if isinstance(ts, (int, float)):
-            first = ts if first is None else first
-            last = ts
-        session = d.get("sessionID") or session
-        part = d.get("part") or {}
-        kind = d.get("type")
-        if kind == "text":
-            mid = part.get("messageID")
-            if mid not in texts:
-                texts[mid] = []
-                order.append(mid)
-            texts[mid].append(part.get("text") or "")
-        elif kind == "step_finish":
-            steps += 1
-            reason = part.get("reason") or reason
-            t = part.get("tokens") or {}
-            cache = t.get("cache") or {}
-            tokens["input"] += t.get("input") or 0
-            tokens["output"] += t.get("output") or 0
-            tokens["reasoning"] += t.get("reasoning") or 0
-            tokens["cache_read"] += cache.get("read") or 0
-            tokens["cache_write"] += cache.get("write") or 0
-            cost += part.get("cost") or 0
-        elif kind == "error":
-            err = d.get("error")
-            error = (err.get("message") if isinstance(err, dict) else err) or d.get("message") \
-                or json.dumps(d)[:500]
-    final = "".join(texts[order[-1]]) if order else ""
-    return {"session": session, "final": final, "error": error, "reason": reason,
-            "steps": steps, "tokens": tokens, "cost": cost, "first": first, "last": last}
-
-
 def main():
     args = [a for a in sys.argv[1:] if a != "--final"]
     final = "--final" in sys.argv[1:]
@@ -148,7 +104,7 @@ def main():
     with open(schema_path) as f:
         schema = json.load(f)
     rows = read_events(os.path.join(run, "events.jsonl"))
-    s = summary(rows)
+    s = haring_events.worker_events(run).summary(rows)
     if not s["final"] and not s["error"]:
         sys.exit(2)
 
