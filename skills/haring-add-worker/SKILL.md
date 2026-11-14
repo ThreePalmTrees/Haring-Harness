@@ -42,6 +42,9 @@ Find these facts.
   Find whether it carries the harness's thinking.
 - Session resume and fork. The command or option that continues a session, and the one
   that starts a copy under a new id. Find the new id and where it appears.
+- Preset session id. Whether the harness accepts a session id chosen before it starts.
+  haring can use one to reach the session before the first event, but the session file is
+  optional.
 - Per-run permissions. How to run one turn with no edits, and one with no shell. The
   four kinds are `check`, `implement`, `errand` and `qa`. `check` and `qa` are read
   only. `errand` has no shell. Enforce this in the harness's own configuration or
@@ -91,11 +94,12 @@ tool names to the labels haring uses where they match: `Read`, `Glob`, `Grep`, `
 and `Bash` as evidence. Use the harness's own name for a tool that has no match. Do not
 invent a tool call that the stream does not contain.
 
-`start`: accept the arguments in `WORKERS.md` section 4. For a fresh run, choose the
-session id and write it to the `--session-file` path before the harness starts. For a
-continue, resume the session, and fork only when `--fork` is given. Write one JSON
-object per line to standard output and nothing else. Write errors to standard error.
-Pass the harness's exit code through. Never read standard input.
+`start`: accept the arguments in `WORKERS.md` section 4. For a fresh run, write the
+session id to the `--session-file` path only when the harness accepts an id chosen up
+front, and never write an id that is not the real session. For a continue, resume the
+session, and fork only when `--fork` is given. Write one JSON object per line to standard
+output and nothing else. Write errors to standard error. Pass the harness's exit code
+through. Never read standard input.
 
 `steer` and `stop`: use the exact arguments and exit codes in `WORKERS.md` section 4.
 Return 0 only when the harness accepted the request.
@@ -130,9 +134,10 @@ cannot steer. The run itself still works. Only `haring-say` is unavailable.
 No stop. `haring-kill` can still kill the run's process group, but it cannot interrupt
 the session inside the harness. The session may keep working with nobody reading it.
 The watchdog has the same limit. Do not write a `stop` that exits 0 without
-interrupting. Either leave `stop` out, so `haring-kill` ends with a traceback before it
-writes the `stopped` marker, or write one that exits 1 with the reason. In both cases
-the process group is still killed.
+interrupting. Write one that exits 1 with the reason instead of leaving `stop` out:
+`haring-kill` then reports that reason and still writes the `stopped` marker. A missing
+program is caught too, but its reason is only the operating system error. The process
+group is still killed either way.
 
 No machine-readable event stream. Stop. haring has nothing to read, so `events.py`
 cannot be built and the run cannot report. Tell the user this harness cannot be a

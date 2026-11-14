@@ -108,10 +108,6 @@ def names_run(command):
         bool(session) and session in command)
 
 
-def is_worker(command):
-    return bool(command.split()) and os.path.basename(command.split()[0]) == "opencode"
-
-
 def rows():
     """Every live process as (pid, pgid, command).
 
@@ -132,10 +128,11 @@ def rows():
 def worker_group():
     """The process group the worker itself runs in, or None when it is not running.
 
-    The anchor is the shell meta names, then the opencode client. A haring-wait watching
-    this run names the run folder on its own command line, and so does any command the
-    manager runs that mentions the folder; taking one of those for the worker would
-    signal its group instead and leave the worker alive.
+    The anchor is the shell meta names, then a live process whose command line carries
+    the run's session id. A haring-wait watching this run names the run folder on its own
+    command line, and so does any command the manager runs that mentions the folder;
+    taking one of those for the worker would signal its group instead and leave the
+    worker alive.
     """
     live = rows()
     by_pid = {p: (p, g, c) for p, g, c in live}
@@ -145,13 +142,13 @@ def worker_group():
         if names_run(command):
             return pgid
     for _, pgid, command in live:
-        if is_worker(command) and session and session in command:
+        if session and session in command:
             return pgid
     return None
 
 
 # One group holds the whole run: haring-worker's setsid made it, and nothing the run
-# starts afterwards leaves it. Signalling the group is what reaches the opencode client —
+# starts afterwards leaves it. Signalling the group is what reaches the harness client —
 # the pid in meta is its shell, and killing that alone would orphan the client mid-run.
 group = worker_group()
 if group is None:
@@ -167,7 +164,7 @@ def still_there():
 
 live = rows()
 members = sorted(p for p, g, _ in live if g == group)
-client = sorted(p for p, g, c in live if g == group and is_worker(c))
+client = sorted(p for p, g, c in live if g == group and session and session in c)
 
 for sig in (signal.SIGTERM, signal.SIGKILL):
     try:
@@ -188,8 +185,11 @@ if left:
 # is still running in the server three seconds later, and only an interrupt stops it.
 stop = os.path.join(haring_events.worker_dir(run), "stop")
 if session:
-    stopped = subprocess.run([stop, session], capture_output=True, text=True)
-    interrupted, answer = stopped.returncode == 0, stopped.stderr.strip()
+    try:
+        stopped = subprocess.run([stop, session], capture_output=True, text=True)
+        interrupted, answer = stopped.returncode == 0, stopped.stderr.strip()
+    except OSError as e:
+        interrupted, answer = False, str(e)
 else:
     interrupted, answer = False, "no session id in the stream, the session file or meta"
 
@@ -202,7 +202,7 @@ with open(marker, "w") as f:
     f.write(f"session={session}\n")
 
 kind = meta.get("kind", "?")
-inside = f", opencode was pid {', '.join(str(p) for p in client)}" if client else ""
+inside = f", the harness client was pid {', '.join(str(p) for p in client)}" if client else ""
 print(f"stopped {kind} run {os.path.basename(run)}", file=sys.stderr)
 print(f"  process group {group}: pids {' '.join(str(p) for p in members)}{inside}",
       file=sys.stderr)

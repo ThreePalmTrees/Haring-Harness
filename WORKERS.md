@@ -273,7 +273,7 @@ The arguments are:
 - `--kind`: one of `check`, `implement`, `errand` or `qa`.
 - `--model`: one model name from `worker.conf`.
 - `--effort`: `low`, `high` or `max`, only when the caller asked for one.
-- `--session-file`: the path where a fresh run records its session id.
+- `--session-file`: the path where a fresh run may record its session id.
 - `--resume`: the session to continue.
 - `--fork`: start a new session as a copy of the resumed one.
 - the last argument: the path of a file that holds the whole message.
@@ -291,9 +291,11 @@ The exit code is the harness's own. The core does not branch on it. When `start`
 fails, the run normally writes no events and no report, and the run folder is left
 with an empty `report.json`.
 
-A fresh `start` must choose a session id and write it to the `--session-file` path
-before it launches the harness. The core reads that file to know the session while the
-run is still going.
+A fresh `start` may write the session id to the `--session-file` path before it launches
+the harness. This is optional. Write it only when the harness accepts a session id chosen
+up front, and never write an id that is not the real session. The core reads the event
+stream first and the file second. Without the file, `haring-say` and `haring-kill` cannot
+reach the session until the first event names it.
 
 A continued `start` must continue the session given with `--resume`. When `--fork` is
 present, it must put the continued work in a new session. The core does not pass
@@ -371,7 +373,8 @@ A missing `events.py` stops every command that reads the run's stream. The core 
 The affected commands are `haring-wait`, `haring-pulse`, `haring-transcript`,
 `haring-report`, `haring-kill` and `haring-say`. `haring-stats` does not load the
 module, so it still reports what it can. A missing module stops `haring-kill` before
-it signals anything.
+it signals anything. On a run, a worker with no `events.py` makes `lib/haring_report.py`
+exit 1, which the launcher reads as a bad report and retries twice before `--final`.
 
 A module that exists but fails to import raises its own traceback. The core names only
 a missing file. A module without `session`, `entries` or `summary` raises
@@ -382,9 +385,9 @@ A missing `start` makes the runner write a "not found" error to the run's
 `report.json`. The run looks like a worker that stopped without reporting.
 
 A missing `steer` makes `haring-say` exit 1 with the text of the operating system
-error. A missing `stop` makes `haring-kill` end with a traceback before it writes the
-`stopped` marker. The watchdog ignores a missing `stop` and still kills the run's
-process group.
+error. A missing `stop` makes `haring-kill` report that the session was not interrupted,
+with the operating system error as the reason, and it still writes the `stopped` marker.
+The watchdog ignores a missing `stop` and still kills the run's process group.
 
 A missing or unusable `agents-config` stops a fresh launch with exit 1. `install.sh`
 and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.sh
