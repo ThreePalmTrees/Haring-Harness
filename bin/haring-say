@@ -80,19 +80,18 @@ meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if 
 report = os.path.join(run, "report.json")
 
 
-def alive(pid):
-    return haring_events.run_pid_alive(run, pid)
+def alive():
+    return haring_events.run_alive(run, meta)
 
 
 if os.path.exists(report) and os.path.getsize(report):
     die("this run already finished and reported. There is no worker to say anything to.", 1)
 
 # A run started moments ago may not have its runner up yet; one whose runner is gone
-# will never answer, and is told apart by the pid in meta rather than by waiting.
+# will never answer, and is told apart by the shared liveness test rather than by waiting.
 deadline = time.time() + STARTUP_WAIT
 while True:
-    pid = meta.get("pid", "")
-    if pid.isdigit() and alive(pid):
+    if alive():
         break
     if time.time() > deadline:
         die(f"no worker is running for {run}", 1)

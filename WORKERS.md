@@ -114,7 +114,8 @@ The two hints never stop a run. The model list does.
 
 `events.py` is loaded from the run's worker folder by file path. It is loaded once per
 process and kept for later reads of the same path. The module must define three
-functions with these names.
+functions with these names. A worker whose runs carry no pid in `meta` may also define
+`alive(run, meta)`, described after the three.
 
 ### session(event)
 
@@ -184,6 +185,16 @@ The core uses `final` and `error` to build `report.json`. When both are empty,
 the report's counts: `session` becomes `session_id`, `steps` becomes `num_turns`,
 `reason` becomes `stop_reason`, `tokens` becomes `usage`, `cost` becomes `costUSD`,
 and `first` and `last` become the duration.
+
+### alive(run, meta)
+
+A run's `meta` names a pid when the core started the worker as a process of its own.
+When it does not, the core asks the run's worker module whether the run is still going:
+a module that defines `alive(run, meta)` answers, and the run is alive only when that
+function returns True. A module without the function cannot say a pid-less run is alive,
+so the run reads as ended. `workers/claude-agent/events.py` answers from the sidecar
+meta file Claude Code writes beside a subagent transcript, which carries `"finished":
+true` once the subagent has ended.
 
 ### Real examples
 
@@ -371,8 +382,9 @@ A missing `events.py` stops every command that reads the run's stream. The core 
     haring: no events module for worker '<name>': <path> is missing
 
 The affected commands are `haring-wait`, `haring-pulse`, `haring-transcript`,
-`haring-report`, `haring-kill` and `haring-say`. `haring-stats` does not load the
-module, so it still reports what it can. A missing module stops `haring-kill` before
+`haring-report`, `haring-kill` and `haring-say`. `haring-stats` loads the module only for
+a run with no pid and no report, because a pid-less live run is the one its worker has to
+answer for; a run with a pid is read without the module and still reports what it can. A missing module stops `haring-kill` before
 it signals anything. On a run, a worker with no `events.py` makes `lib/haring_report.py`
 exit 1, which the launcher reads as a bad report and retries twice before `--final`.
 

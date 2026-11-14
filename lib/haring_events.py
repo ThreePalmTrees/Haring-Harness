@@ -5,7 +5,8 @@ it: haring-wait renders the whole stream live, and anything that wants a single
 detail out of a run reads the same file. This module holds what they share — how one
 tool call's arguments become a line of text, the clock a step is timed by, and how the
 stream becomes labelled entries: one per tool call, one per thinking or speech block
-carrying the whole block, and the reasoning tokens a step spent.
+carrying the whole block, one per message the manager sent into a running worker, and the
+reasoning tokens a step spent.
 
 An event's shape belongs to the worker that wrote it, not here: the run's meta
 worker= line names a module under workers/<name>/ that says which event names the
@@ -117,6 +118,28 @@ def run_pid_alive(run, pid):
     return out.returncode == 0 and os.path.basename(run.rstrip("/")) in out.stdout
 
 
+def run_alive(run, meta=None):
+    """Whether a run's worker is still going.
+
+    A run whose meta carries a pid is tested by run_pid_alive, as every run haring starts
+    as a process of its own is. A run with no pid — a Claude Code subagent the manager
+    started with the Agent tool — has no process haring launched, so its worker module
+    answers instead: alive(run, meta) when it defines one. A module with no such function
+    cannot say a pid-less run is alive, and the run reads as ended.
+    """
+    if meta is None:
+        try:
+            with open(os.path.join(run, "meta")) as f:
+                meta = dict(l.strip().split("=", 1) for l in f if "=" in l)
+        except OSError:
+            return False
+    pid = str(meta.get("pid") or "").strip()
+    if pid:
+        return run_pid_alive(run, pid)
+    test = getattr(worker_events(run), "alive", None)
+    return bool(test and test(run, meta))
+
+
 def live_session(run):
     """The session a run is working in: the first session id its events.jsonl names,
     else the id its start chose and wrote to the run's session file, else the one its
@@ -214,13 +237,13 @@ class RunReader:
     """Reads one run's events.jsonl and returns the entries added since the last read.
 
     Each entry is a triple: the label that goes in the tool-name column — the tool's
-    own name for a call, "thinking" or "says" for the worker's blocks — the text that
-    follows it, and the event's timestamp. A tool call is one entry with its arguments
-    rendered. A thinking or speech block is one entry whose text is the whole block,
-    its lines joined with newlines, so a caller that prints line by line splits it and
-    one that wants the block whole has it. A reader keeps reading the same path and
-    gets only what it has not seen; it is the caller that prints, formats, clips and
-    trims.
+    own name for a call, "thinking", "says" or "manager" for the worker's blocks — the
+    text that follows it, and the event's timestamp. A tool call is one entry with its
+    arguments rendered. A thinking or speech block is one entry whose text is the whole
+    block, its lines joined with newlines, so a caller that prints line by line splits
+    it and one that wants the block whole has it. A reader keeps reading the same path
+    and gets only what it has not seen; it is the caller that prints, formats, clips
+    and trims.
 
     What one event means is its worker module's to say; this class owns the file
     position, the seen set, the clock and the retry count.
@@ -296,7 +319,7 @@ class RunReader:
             self.when_ts = ts_value(ts)
             self.last = "step"
             return (e.get("name", "?"), arg, ts)
-        if kind in ("thinking", "says"):
+        if kind in ("thinking", "says", "manager"):
             if kind == "thinking":
                 self.has_thought = True
             rows = [l for l in (" ".join(x.split())

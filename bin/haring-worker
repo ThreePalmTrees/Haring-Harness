@@ -214,6 +214,16 @@ if [ ! -d "$HARING/workers/$worker" ]; then
   exit 2
 fi
 
+# A worker folder with no start program cannot be launched from here. Claude Code
+# subagents are one such worker: the manager starts them with the Agent tool, and haring
+# only reads the transcript the subagent writes. Refused before the run folder or
+# anything else is created.
+if [ ! -x "$HARING/workers/$worker/start" ]; then
+  echo "haring-worker: the $worker worker has no start program: $HARING/workers/$worker/start" >&2
+  echo "  This worker is started by the manager with the Agent tool." >&2
+  exit 2
+fi
+
 # The models a worker may run on, written the way `opencode run -m` takes them, live in
 # the worker's own worker.conf: default_model= names the default and models= lists what
 # may be chosen. A model outside the list is refused once the model settles, before

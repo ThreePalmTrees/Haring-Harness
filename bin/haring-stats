@@ -61,17 +61,18 @@ def resolve_run(arg):
 # folder. A run folder is known by its meta file, the same marker `haring-worker
 # continue` uses; the argument may also be a bare run name under the current project.
 run = resolve_run(sys.argv[1])
-# The same liveness test haring-wait uses: the pid answers signal 0 and its command
-# names this run's folder, because a pid handed to an unrelated process is not a worker
-# still going. The report file alone cannot tell a run in flight from a dead one — a run
-# that was killed leaves the same empty file a running one has not filled yet.
-def live_pid(run):
+# The same liveness test haring-wait uses, from the run's meta: a run whose meta names a
+# pid is tested by the pid answering signal 0 and its command naming this run's folder,
+# because a pid handed to an unrelated process is not a worker still going. A run with
+# no pid lets its worker module say whether it is still alive. The report file alone
+# cannot tell a run in flight from a dead one — a run that was killed leaves the same
+# empty file a running one has not filled yet.
+def live_worker(run):
     try:
         meta = dict(l.strip().split("=", 1) for l in open(os.path.join(run, "meta")) if "=" in l)
     except OSError:
         return None
-    pid = meta.get("pid", "")
-    return pid if haring_events.run_pid_alive(run, pid) else None
+    return meta if haring_events.run_alive(run, meta) else None
 
 
 # The pulse is the one watcher a still-running answer can name without guessing: it
@@ -104,16 +105,18 @@ def watching_pulse(run):
 path = os.path.join(run, "report.json")
 landed = os.path.exists(path) and os.path.getsize(path) > 0
 if not landed:
-    pid = live_pid(run)
-    if pid:
-        # Elapsed is measured from the meta file, as haring-wait measures it: the worker
-        # records its pid there when it starts, so its mtime is the moment the run began.
+    worker = live_worker(run)
+    if worker:
+        # Elapsed is measured from the meta file, as haring-wait measures it: the meta
+        # file is last written when the worker begins, so its mtime is that moment.
         secs = max(0, int(time.time() - os.path.getmtime(os.path.join(run, "meta"))))
+        pid = str(worker.get("pid") or "").strip()
+        state = f"pid {pid} alive" if pid else "the worker reports itself alive"
         # Standard output carries the numbers and nothing else, so this goes to standard
         # error and gets an exit of its own. A caller that captured this on stdout with a
         # success code would read a sentence where it expected `model=... in=...`, and a
         # run still working would be indistinguishable from one that had reported.
-        print(f"still running: pid {pid} alive, {secs // 60}m{secs % 60:02d}s in, "
+        print(f"still running: {state}, {secs // 60}m{secs % 60:02d}s in, "
               f"no report yet at {path}", file=sys.stderr)
         print("Asking again can show you nothing but this line and the minutes going by; "
               "the news, when it comes, is the report replacing this line or word that the "

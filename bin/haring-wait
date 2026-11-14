@@ -98,10 +98,9 @@ run = resolve_run(argv[0])
 meta_path = os.path.join(run, "meta")
 meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
 # Time is measured from the worker, not from this wait, because the two can start minutes
-# apart. The meta file is last written when the worker's runner records its own pid, so its
-# modification time is the moment the worker began.
+# apart. The meta file is last written when the worker begins, so its modification time
+# is the moment the worker began.
 started = os.path.getmtime(meta_path)
-pid = int(meta["pid"]) if meta.get("pid", "").isdigit() else None
 report = os.path.join(run, "report.json")
 progress = os.path.join(run, "PROGRESS.md")
 # Written by haring-kill when a person stopped this run on purpose. It is the only thing
@@ -132,7 +131,7 @@ rid = "-".join(parts[4:]) if len(parts) > 5 else os.path.basename(run)
 
 
 def alive():
-    return pid is not None and haring_events.run_pid_alive(run, pid)
+    return haring_events.run_alive(run, meta)
 
 
 def landed():
