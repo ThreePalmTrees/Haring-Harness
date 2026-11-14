@@ -376,7 +376,7 @@ def adopt_subagents():
                 f.write(f"kind={kind}\n")
                 f.write(f"workdir='{facts['cwd']}'\n")
                 f.write(f"model={facts['model']}\n")
-                f.write("worker=claude-agent\n")
+                f.write("worker=claude\n")
                 f.write(f"agent_id={agent_id}\n")
                 f.write(f"agent_type={state.get('agentType') or ''}\n")
                 f.write(f"transcript={transcript}\n")
@@ -407,7 +407,7 @@ def finish_subagents():
             meta = dict(l.strip().split("=", 1) for l in open(meta_path) if "=" in l)
         except OSError:
             continue
-        if not meta.get("agent_id") or meta.get("worker") != "claude-agent":
+        if not meta.get("agent_id") or meta.get("worker") != "claude":
             continue
         report = os.path.join(run, "report.json")
         if os.path.exists(report) and os.path.getsize(report):

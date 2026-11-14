@@ -14,7 +14,7 @@ names the manager's own route instead.
 The core calls the worker folder by path. It does not import the harness and does not
 read the harness's own configuration. This file describes what a worker folder must
 provide and what the core does with it today. `workers/opencode/` is the worked
-example for a worker with its own programs; `workers/claude-agent/` is the worked
+example for a worker with its own programs; `workers/claude/` is the worked
 example for one the manager starts.
 
 ## 1. What a worker folder is
@@ -69,15 +69,15 @@ The OpenCode example has this shape.
 The Claude Code example has this shape. The manager starts it with Claude Code's Agent
 tool, and haring reads the transcript the subagent writes.
 
-- `workers/claude-agent/worker.conf` names `default_model=sonnet`, the models opus,
+- `workers/claude/worker.conf` names `default_model=sonnet`, the models opus,
   sonnet and haiku, `thinking=yes`, `fork=no`, and the two route texts
   `steer_with=SendMessage to agent {agent_id}` and
   `stop_with=TaskStop on agent {agent_id}`.
-- `workers/claude-agent/events.py` reads a subagent transcript and turns its user and
+- `workers/claude/events.py` reads a subagent transcript and turns its user and
   assistant turns into haring's entries and summary.
-- `workers/claude-agent/agents-config` links `agents/<kind>.md` into `~/.claude/agents`
+- `workers/claude/agents-config` links `agents/<kind>.md` into `~/.claude/agents`
   as `haring-<kind>.md`.
-- `workers/claude-agent/agents/check.md`, `errand.md`, `implement.md` and `qa.md` are
+- `workers/claude/agents/check.md`, `errand.md`, `implement.md` and `qa.md` are
   the four Claude Code agents, one for each kind.
 - It has no `start`, `steer` or `stop`. The manager starts the subagent with the Agent
   tool, steers it with SendMessage and stops it with TaskStop. `haring-pulse` adopts
@@ -230,7 +230,7 @@ A run's `meta` names a pid when the core started the worker as a process of its 
 When it does not, the core asks the run's worker module whether the run is still going:
 a module that defines `alive(run, meta)` answers, and the run is alive only when that
 function returns True. A module without the function cannot say a pid-less run is alive,
-so the run reads as ended. `workers/claude-agent/events.py` answers from the sidecar
+so the run reads as ended. `workers/claude/events.py` answers from the sidecar
 meta file Claude Code writes beside a subagent transcript, which carries `"finished":
 true` once the subagent has ended.
 
@@ -402,7 +402,7 @@ The watchdog ignores both output and exit code.
 ### A worker the manager starts
 
 Some harnesses run inside the manager's own session. The manager starts the work with
-the harness's tool, and haring only reads the transcript. `workers/claude-agent/` is the
+the harness's tool, and haring only reads the transcript. `workers/claude/` is the
 example.
 
 Such a worker leaves out `start`, `steer` and `stop`. `haring-worker` refuses to launch
@@ -422,7 +422,7 @@ id it adopts nothing and says so once.
 
 For each subagent the pulse creates
 `<project>/.haring/runs/<stamp>-<kind>-<agent id>/`. Its `meta` holds `kind`,
-`workdir`, `model`, `worker=claude-agent`, `agent_id`, `agent_type`, `transcript` and
+`workdir`, `model`, `worker=claude`, `agent_id`, `agent_type`, `transcript` and
 `started`. Its `prompt.md` holds the first user message. Its `events.jsonl` is a link to
 the transcript. A subagent still going is reported like any other live run.
 

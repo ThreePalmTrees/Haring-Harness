@@ -16,7 +16,7 @@ My personal setup is:
 **Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
 
 This is the supported setup: a Claude Code manager with OpenCode workers, or with
-Claude Code subagents as workers (`haring-model --worker claude-agent`). Another worker
+Claude Code subagents as workers (`haring-model --worker claude`). Another worker
 harness can be added with the `haring-add-worker` skill and `WORKERS.md`. Other harnesses
 are not maintained here.
 
@@ -138,7 +138,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
 | | `haring_run.py` | the numbers a run's report holds, shared by `haring-stats` and `haring-stats-page` |
-| `workers/claude-agent/` | `worker.conf` | the default model and the models a Claude Code worker may run on |
+| `workers/claude/` | `worker.conf` | the default model and the models a Claude Code worker may run on |
 | | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
 | | `agents/<kind>.md` | one Claude Code agent per kind |
@@ -159,7 +159,7 @@ A fresh run settles its worker from the worker file `<project>/.haring/worker`, 
 `meta`. `WORKERS.md` section 6 gives the full rule.
 
 A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
-agent `haring-qa` (`workers/claude-agent/agents/qa.md`, linked into `~/.claude/agents`). A project, or
+agent `haring-qa` (`workers/claude/agents/qa.md`, linked into `~/.claude/agents`). A project, or
 haring itself, can hold a `qa-model` file naming `sonnet` or an OpenCode model instead;
 the project's overrides haring's own, and an OpenCode model runs as a `haring-worker qa`
 run.

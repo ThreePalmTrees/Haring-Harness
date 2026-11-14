@@ -27,7 +27,7 @@ changes. The way of working does not.
 
 By default a worker is an OpenCode session, started with `opencode run`, on a model from
 `workers/opencode/worker.conf`; today's default is `opencode-go/deepseek-v4.1-flash`. When
-the worker is `claude-agent`, it is a Claude Code subagent started with the Agent tool —
+the worker is `claude`, it is a Claude Code subagent started with the Agent tool —
 see "Run a Claude Code agent". Otherwise a worker is started with `haring-worker`, never
 with the Agent tool. The choice of model is the client's. `haring-model` reads it and sets it;
 `--model` on `haring-worker` exists for the same reason, when the client asks for a
@@ -563,7 +563,7 @@ no reason is known, say that too.
 
 ### Run a Claude Code agent
 
-When `haring-meta` says the worker is `claude-agent`, a task of any kind is a Claude
+When `haring-meta` says the worker is `claude`, a task of any kind is a Claude
 Code subagent, not a `haring-worker` run. Start `haring-pulse` first, as for any worker:
 the pulse turns the subagent into a run. Then start it with the Agent tool as
 `subagent_type: "haring-<kind>"`, on the model `haring-meta` names; your prompt is the
