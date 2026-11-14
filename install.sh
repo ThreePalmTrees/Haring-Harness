@@ -26,7 +26,10 @@ echo "haring: $HARING"
 echo
 echo "skill:"
 mkdir -p "$HOME/.claude/skills"
-link "$HARING/skills/haring" "$HOME/.claude/skills/haring"
+for d in "$HARING"/skills/*/; do
+  [ -d "$d" ] || continue
+  link "${d%/}" "$HOME/.claude/skills/$(basename "$d")"
+done
 
 echo "claude code agent (the QA pass, on opus by default):"
 mkdir -p "$HOME/.claude/agents"
