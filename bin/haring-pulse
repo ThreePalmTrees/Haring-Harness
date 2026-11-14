@@ -338,6 +338,7 @@ def agent_kind(agent_type):
 # found within a second.
 known_runs = {}
 settled = set()
+PID_GRACE = 60   # seconds a fresh haring-worker meta may go without its pid= line
 known_agents = set()
 stopping = False   # set by the signal handler, so a signal's SystemExit is not swallowed
 
@@ -378,6 +379,18 @@ def scan_runs():
         if landed(run):
             settled.add(run)
             continue
+        # haring-worker writes the meta first and the runner adds pid= a moment later.
+        # A run caught in that gap would read as ended and be settled for good, so its
+        # meta is not kept and it is looked at again next pass. A meta with no pid after
+        # PID_GRACE seconds belongs to a launch that died before it ran, and is ended.
+        if not meta.get("pid") and not meta.get("agent_id"):
+            try:
+                young = time.time() - os.path.getmtime(meta_path) < PID_GRACE
+            except OSError:
+                young = False
+            if young:
+                known_runs.pop(run, None)
+                continue
         try:
             going = haring_events.run_alive(run, meta)
         except SystemExit:
