@@ -15,6 +15,10 @@ My personal setup is:
 **Manager:** `Opus` via Claude Code.<br/>
 **Worker:** `opencode-go/deepseek-v4.1-flash` via `OpenCode`.
 
+This is the supported setup: a Claude Code manager with OpenCode workers. Another worker
+harness can be added with the `haring-add-worker` skill and `WORKERS.md`. Other harnesses
+are not maintained here.
+
 ## Why Haring
 
 Using one subscription for everything consumes it quickly.<br/>
@@ -37,11 +41,28 @@ _(you can exit opencode)_
 ```
 cd haring-harness && ./install.sh
 ```
-> It links the skill into `~/.claude/skills`<br/>
+> It links the skills into `~/.claude/skills`<br/>
 > Haring scripts into `~/.local/bin`<br/>
 > And OpenCode agents into `~/.config/opencode/agents`.
 
+To remove haring, run:
 
+```
+./uninstall.sh
+```
+
+It removes every link that points into this repository: the skill links, the Claude QA
+agent, each worker's agent links and the `haring-*` scripts in `~/.local/bin`. It leaves
+plain files and links to other places alone, and lists plain `haring*` files to delete by
+hand. It does not touch a project's `.haring` folder or `.gitignore`.
+
+To remove only one worker's agent links, run:
+
+```
+./uninstall.sh --worker <name>
+```
+
+It removes that worker's agent links and leaves every other link in place.
 
 ## Use Haring
 
@@ -76,6 +97,8 @@ Nothing in there needs maintaining. It is a record, not a document.
 
 | Folder | File | What it does |
 |---|---|---|
+| `WORKERS.md` | | the contract a worker harness must meet, and how a run chooses its worker |
+| `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
 | | `haring-model` | read the worker's model, or write it — haring's own choice, or the project's with `--project`; `--qa` reads or writes the QA model the same way |
 | | `haring-wait` | follow a run, then print its report |
@@ -90,14 +113,28 @@ Nothing in there needs maintaining. It is a record, not a document.
 | | `haring-prompt` | build a worker's system prompt |
 | | `haring-root` | print where haring is installed |
 | `skills/haring/` | `SKILL.md` | everything the manager needs, in one file |
+| `skills/haring-add-worker/` | `SKILL.md` | how to add another worker harness |
 | `kinds/` | `rules.md` | the rules every worker gets |
 | | `<kind>/rules.md` | one file per kind of task, added to `rules.md` |
 | | `<kind>/schema.json` | the shape of that kind's report |
-| | `qa/claude.md` | the Claude Code agent for the QA pass |
+| `kinds/qa/` | `claude.md` | the Claude Code agent for the QA pass |
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
-| `workers/opencode/` | `agents/<kind>.md` | one OpenCode agent per kind; its deny rules are what that kind may not do |
-| | `worker.conf` | the default model and the models a worker may run on |
+| `workers/opencode/` | `worker.conf` | the default model and the models a worker may run on |
+| | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
+| | `start` | run one worker turn and write the event stream |
+| | `steer` | send a message into a live session |
+| | `stop` | interrupt a live session |
+| | `agents-config` | install, remove and check the OpenCode agent links |
+| | `api.py` | one request to the OpenCode server, used by `steer` and `stop` |
+| | `workers/opencode/agents/check.md` | the read-only OpenCode agent for check runs |
+| | `workers/opencode/agents/errand.md` | the OpenCode agent for errands; it has no shell |
+| | `workers/opencode/agents/implement.md` | the OpenCode agent for implement runs |
+| | `workers/opencode/agents/qa.md` | the read-only OpenCode agent for QA runs |
+
+A fresh run settles its worker from the worker file `<project>/.haring/worker`, then
+`<haring-root>/worker`, then `opencode`. A continue keeps the worker recorded in the run's
+`meta`. `WORKERS.md` section 6 gives the full rule.
 
 A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
 agent `haring-qa` (`kinds/qa/claude.md`, linked into `~/.claude/agents`). A project, or

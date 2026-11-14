@@ -25,8 +25,8 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-A worker is an OpenCode session, started with `opencode run`, on one of two models:
-`opencode-go/deepseek-v4.1-flash` (the default) or `opencode-go/glm-5.3-flash`. You are
+A worker is an OpenCode session, started with `opencode run`, on a model from
+`workers/opencode/worker.conf`; today's default is `opencode-go/deepseek-v4.1-flash`. You are
 a Claude Code session; the worker is not, so a worker is never started with the Agent
 tool — always with `haring-worker`. The choice of model is the client's. `haring-model` reads it and sets it;
 `--model` on `haring-worker` exists for the same reason, when the client asks for a
