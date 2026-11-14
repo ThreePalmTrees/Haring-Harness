@@ -166,7 +166,10 @@ def row_for(run, name):
         "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)),
         "day": time.strftime("%Y-%m-%d", time.localtime(started)),
         "kind": meta.get("kind") or kind_from_name(name),
-        "worker": meta.get("worker") or "opencode",
+        # Runs from before worker= was recorded: an opencode-go model ran on OpenCode,
+        # anything else on the Claude Code CLI worker haring used before OpenCode.
+        "worker": meta.get("worker") or ("opencode" if str(meta.get("model") or "").startswith("opencode-go/")
+                                         else "claude-cli"),
         "model": model,
         "durationSecs": nums["secs"] if nums is not None else None,
         "turns": nums["turns"] if nums is not None else None,
