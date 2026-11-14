@@ -8,11 +8,13 @@
 #
 # kind is one of: check implement errand qa
 #
-# The worker is an OpenCode session, started by workers/opencode/start, on one of the
-# models named in the worker's worker.conf. Absent --model, it settles from <project>/.haring/model, then
-# <haring-root>/model, then the default in workers/opencode/worker.conf, read and
-# written by haring-model. The manager never chooses a model
-# on its own: --model exists only for when the person who asked for the work asks for it.
+# The worker is the folder under workers/<name>/: its start program runs one turn, and
+# its worker.conf names the models. A fresh run settles <name> from
+# <project>/.haring/worker, then <haring-root>/worker, then WORKER_DEFAULT below; a
+# continue keeps the worker recorded in the run it continues. Absent --model, the model
+# settles from <project>/.haring/model, then <haring-root>/model, then the default in
+# that worker's worker.conf, read and written by haring-model. The manager never chooses
+# a model on its own: --model exists only when the person who asked for the work asks.
 # A qa run settles differently: a QA pass runs on opus as the Claude Code agent
 # haring-qa unless the client chose an OpenCode model for it, so a fresh qa run takes
 # its model from <project>/.haring/qa-model, then <haring-root>/qa-model, both read and
@@ -20,7 +22,7 @@
 # names an OpenCode model. --model overrides with the same warning as any kind; a
 # continue keeps the run's own model.
 # --effort lowers or raises how hard the worker thinks — low, high or max, the model's
-# OpenCode variant — and exists only for when the person who asked for the work asks
+# harness variant — and exists only for when the person who asked for the work asks
 # for it. No kind sets it: see the comment above the kind table.
 # --no-pulse starts a run without a live haring-pulse watching the project, which
 # otherwise is refused. It is consumed here and never reaches the worker.
@@ -38,8 +40,8 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
-# The worker harness a fresh run uses. workers/<name>/ holds the programs that launch it
-# and talk to it; a continue keeps the worker of the run it continues.
+# The last fallback for a fresh run's worker. workers/<name>/ holds the programs that
+# launch it and talk to it; a continue keeps the worker of the run it continues.
 WORKER_DEFAULT=opencode
 
 # The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
@@ -127,42 +129,18 @@ if [ "$1" = "continue" ]; then
   [ -n "$resume_id" ] || { echo "no session_id in $prev/report.json" >&2; exit 1; }
   # workdir and model come from the run being continued; the kind comes from the caller.
   want_kind=$kind
+  worker=""
   # shellcheck disable=SC1090
   . "$prev/meta"
   kind=$want_kind
-  # A run recorded before meta named its worker continues on the default one.
-  worker=${worker:-$WORKER_DEFAULT}
   shift 4
 else
   kind=$1; workdir=$2; promptfile=$3
   [ -n "$kind" ] && [ -n "$workdir" ] && [ -n "$promptfile" ] || usage
   shift 3
   model=""
-  worker=$WORKER_DEFAULT
+  worker=""
 fi
-
-# The models a worker may run on, written the way `opencode run -m` takes them, live in
-# the worker's own worker.conf: default_model= names the default and models= lists what
-# may be chosen. A model outside the list is refused once the model settles, before
-# anything is created. A worker with no readable list is refused here rather than left
-# running on a name nothing checked.
-worker_conf="$HARING/workers/$worker/worker.conf"
-MODEL_DEFAULT=""
-MODELS=""
-if [ -r "$worker_conf" ]; then
-  MODEL_DEFAULT=$(sed -n 's/^default_model=//p' "$worker_conf" | sed -n 1p)
-  MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
-fi
-if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
-  echo "haring-worker: the $worker worker has no model list: $worker_conf is missing or unreadable." >&2
-  exit 1
-fi
-is_model() {
-  case " $MODELS " in
-    *" $1 "*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
@@ -193,6 +171,71 @@ done
 
 # The project is the git top level of the workdir when there is one, else the workdir.
 project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
+
+# The worker a fresh run uses settles the way the model does: the project's own
+# choice, then haring's, then the default. A continue keeps the worker recorded in
+# the run it continues. A file that is missing, empty, or holds only whitespace names
+# nothing and is passed over rather than treated as a choice.
+if [ -z "$resume_id" ]; then
+  worker_source=""
+  for worker_file in "$project/.haring/worker" "$HARING/worker"; do
+    [ -f "$worker_file" ] || continue
+    candidate=$(tr -d '[:space:]' < "$worker_file")
+    [ -n "$candidate" ] || continue
+    worker=$candidate
+    worker_source=$worker_file
+    break
+  done
+  if [ -z "$worker_source" ]; then
+    worker=$WORKER_DEFAULT
+    worker_source="the default: $WORKER_DEFAULT"
+  fi
+else
+  if [ -z "$worker" ]; then
+    worker=$WORKER_DEFAULT
+    worker_source="the default: $WORKER_DEFAULT"
+  else
+    worker_source=$prev/meta
+  fi
+fi
+
+# A worker with no folder cannot run: its events.py, worker.conf and every program
+# live there. Refused before the run folder or anything else is created.
+if [ ! -d "$HARING/workers/$worker" ]; then
+  worker_names=""
+  for worker_dir in "$HARING"/workers/*/; do
+    [ -d "$worker_dir" ] || continue
+    name=${worker_dir%/}
+    worker_names="$worker_names ${name##*/}"
+  done
+  echo "haring-worker: unknown worker: $worker" >&2
+  echo "  (from $worker_source)" >&2
+  echo "  the worker folders are:${worker_names}" >&2
+  exit 2
+fi
+
+# The models a worker may run on, written the way `opencode run -m` takes them, live in
+# the worker's own worker.conf: default_model= names the default and models= lists what
+# may be chosen. A model outside the list is refused once the model settles, before
+# anything is created. A worker with no readable list is refused here rather than left
+# running on a name nothing checked.
+worker_conf="$HARING/workers/$worker/worker.conf"
+MODEL_DEFAULT=""
+MODELS=""
+if [ -r "$worker_conf" ]; then
+  MODEL_DEFAULT=$(sed -n 's/^default_model=//p' "$worker_conf" | sed -n 1p)
+  MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
+fi
+if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
+  echo "haring-worker: the $worker worker has no model list: $worker_conf is missing or unreadable." >&2
+  exit 1
+fi
+is_model() {
+  case " $MODELS " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # The model settles from four places, the first that names one winning: --model above,
 # then the project's own choice, then haring's, then the default. A continue never

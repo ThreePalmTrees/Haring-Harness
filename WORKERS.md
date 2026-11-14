@@ -16,9 +16,10 @@ example for every part.
 
 ## 1. What a worker folder is
 
-A worker folder lives at `workers/<name>/` under the haring root. The name is the
-value of the `worker=` line in a run's `meta` file, or `opencode` when the run names
-none.
+A worker folder lives at `workers/<name>/` under the haring root. A fresh run settles
+its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `opencode`.
+A continued run uses the `worker=` line in the run it continues, or `opencode` when
+that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
 
@@ -393,8 +394,9 @@ A missing or unreadable `worker.conf` stops a launch and `haring-model` with exi
 because the worker has no model list. `haring-meta` prints `none` with the path when
 it cannot find a default model. The run's hints read as false.
 
-A missing worker folder behaves the same way: no model list, no event module, no
-programs.
+A missing worker folder makes `haring-worker` stop with exit 2 before it creates the
+run folder. A run whose `meta` names a worker folder that has since been removed has no
+event module and no programs, so its readers fail on the missing `events.py`.
 
 A `start` that exits non-zero is not detected as a failure. The core records the exit
 code nowhere. A `steer` or `stop` that exits non-zero is reported by the command that
@@ -402,23 +404,34 @@ called it.
 
 ## 6. How the core chooses the worker
 
-A fresh run always uses the default worker. The default is the line
-`WORKER_DEFAULT=opencode` in `bin/haring-worker`. No command-line option and no
-configuration file chooses another worker for a fresh run. `haring-worker` writes the
-chosen name as `worker=<name>` in the run's `meta` file before it launches anything.
+A fresh run settles its worker the way it settles its model. It reads the first of
+`<project>/.haring/worker` and `<haring-root>/worker` that names one. A file that is
+missing, empty or holds only whitespace names nothing and is passed over. When neither
+file names a worker, `haring-worker` uses `WORKER_DEFAULT`, which is `opencode`.
+
+The settled name must be a folder under `workers/`. When it is not, `haring-worker`
+stops before it creates the run folder. It exits 2, prints where the name came from,
+and lists the worker folders that exist. A default name with no folder is refused the
+same way.
+
+`haring-worker` writes the chosen name as `worker=<name>` in the run's `meta` file
+before it launches anything.
 
 A continued run uses the worker recorded in the run it continues. If that `meta` has
 no `worker=` line, it uses the default worker. The new run records the same name in
-its own `meta`.
+its own `meta`. A missing worker folder is refused the same way, with the run's `meta`
+named as the source.
 
 Every command that reads the event stream finds the worker from the run's `meta`. It
 reads the `worker=` line, or uses `opencode` when the line is absent. It then loads
 `workers/<name>/events.py`. The commands that need a program call it in
 `workers/<name>/`.
 
-`haring-model` and `haring-meta` are the exception. They read the model list from
-`workers/opencode/worker.conf` directly, because they answer before a run exists. They
-do not use the `worker=` line.
+`haring-model` and `haring-meta` answer before a run exists. They settle the worker the
+same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
+then `opencode`. They read that worker's `worker.conf`. When the worker is not
+`opencode`, `haring-meta` names it in the model line, as
+`Worker model (<name>): ...`. For `opencode` the line is unchanged.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program

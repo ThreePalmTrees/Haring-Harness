@@ -9,7 +9,9 @@
 # With no argument, prints the model a worker started here would run on, and where
 # that came from — the same order bin/haring-worker settles a fresh run's model
 # from, minus --model, which only a launch itself can give: <project>/.haring/model,
-# then <haring-root>/model, then the default named in workers/opencode/worker.conf.
+# then <haring-root>/model, then the default named in that run's worker.conf. The
+# worker settles the same way: <project>/.haring/worker, then <haring-root>/worker,
+# then opencode.
 #
 # With one argument, writes that name into <haring-root>/model — haring's own
 # choice, in force everywhere unless a project overrides it — and prints what it
@@ -22,7 +24,7 @@
 # Claude Code agent haring-qa, and the read says so. opus and sonnet run as that
 # agent on that model; an OpenCode model runs as a haring-worker qa run.
 #
-# The worker model is one of those listed in workers/opencode/worker.conf, the same
+# The worker model is one of those listed in the settled worker's worker.conf, the same
 # ones bin/haring-worker accepts; the QA model is one of those, opus or sonnet. A name
 # outside the list is refused.
 #
@@ -35,7 +37,7 @@
 # directory could not be found, or the file could not be written.
 set -e
 
-# The worker whose model list this reads. workers/<name>/worker.conf holds it.
+# The last fallback for the worker whose model list this reads.
 WORKER_DEFAULT=opencode
 
 usage() {
@@ -55,11 +57,27 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd) || { echo "haring-model: could not find haring's own directory" >&2; exit 1; }
 
+# The project is the git top level of the current directory, resolved the same way
+# bin/haring-worker resolves a workdir.
+project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# The worker a fresh run here uses settles from the project's own choice, then haring's,
+# then the default. A file that is missing, empty, or holds only whitespace names nothing
+# and is passed over rather than treated as a choice.
+worker=$WORKER_DEFAULT
+for worker_file in "$project/.haring/worker" "$HARING/worker"; do
+  [ -f "$worker_file" ] || continue
+  candidate=$(tr -d '[:space:]' < "$worker_file")
+  [ -n "$candidate" ] || continue
+  worker=$candidate
+  break
+done
+
 # The models a worker may run on, written the way `opencode run -m` takes them, live in
 # the worker's own worker.conf: default_model= names the default and models= lists what
 # may be chosen. A worker with no readable list is refused here rather than validating
 # names against nothing.
-worker_conf="$HARING/workers/$WORKER_DEFAULT/worker.conf"
+worker_conf="$HARING/workers/$worker/worker.conf"
 MODEL_DEFAULT=""
 MODELS=""
 if [ -r "$worker_conf" ]; then
@@ -67,7 +85,7 @@ if [ -r "$worker_conf" ]; then
   MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
 fi
 if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
-  echo "haring-model: the $WORKER_DEFAULT worker has no model list: $worker_conf is missing or unreadable." >&2
+  echo "haring-model: the $worker worker has no model list: $worker_conf is missing or unreadable." >&2
   exit 1
 fi
 is_model() {
@@ -98,8 +116,6 @@ done
 
 [ -z "$model" ] || [ -z "$qa_flag" ] || {
   echo "haring-model: a plain model name does not go with --qa" >&2; usage; }
-
-project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 
 if [ -n "$qa_flag" ]; then
   if [ -n "$qa_write" ]; then

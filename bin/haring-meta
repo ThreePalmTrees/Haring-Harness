@@ -49,7 +49,7 @@ MAXD = 4       # how deep the listing goes
 PERDIR = 50    # how many entries of one directory are listed
 NAMEMAX = 50   # a longer file or directory name is cut, with the count of what was cut
 
-# The worker whose default model this reports. Only one exists today.
+# The last fallback for a fresh run's worker.
 WORKER_DEFAULT = "opencode"
 
 
@@ -105,7 +105,23 @@ def ignored(root, path, git):
     return r.returncode == 0
 
 
-def worker_model(root):
+def worker_name(root):
+    # The same order bin/haring-worker settles a fresh run's worker from: the project's
+    # own choice, then haring's, then the default. A file that is missing, empty, or
+    # holds only whitespace names nothing and is passed over.
+    haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    for path in (os.path.join(root, ".haring", "worker"), os.path.join(haring, "worker")):
+        try:
+            with open(path) as f:
+                candidate = "".join(f.read().split())
+        except OSError:
+            continue
+        if candidate:
+            return candidate
+    return WORKER_DEFAULT
+
+
+def worker_model(root, worker):
     # The same order bin/haring-worker settles a fresh run's model from, minus
     # --model, which only a launch itself can give: the project's own choice, then
     # haring's, then the worker's own default. A file that is missing, empty, or holds
@@ -119,7 +135,7 @@ def worker_model(root):
             continue
         if candidate:
             return candidate
-    conf = os.path.join(haring, "workers", WORKER_DEFAULT, "worker.conf")
+    conf = os.path.join(haring, "workers", worker, "worker.conf")
     try:
         with open(conf) as f:
             for line in f:
@@ -192,7 +208,9 @@ def build(root):
     L.append(f"Now: {datetime.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}")
     L.append(f"Operating system: {os_name()}")
     L.append(f"Git-tracked: {'Yes' if git else 'No'}")
-    L.append(f"Worker model: {worker_model(root)}")
+    worker = worker_name(root)
+    label = "Worker model" if worker == WORKER_DEFAULT else f"Worker model ({worker})"
+    L.append(f"{label}: {worker_model(root, worker)}")
     L.append("")
     L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")
