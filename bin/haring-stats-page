@@ -308,14 +308,15 @@ section {
   grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
   gap: 1rem;
 }
-.group-grid section { margin: 0; }
+.group-grid section { margin: 0; min-width: 0; }
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 th, td { padding: .38rem .45rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 th { color: var(--muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: color-mix(in srgb, var(--bar) 9%, transparent); }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.name { min-width: 8rem; }
+.name { min-width: 8rem; overflow-wrap: anywhere; }
 .bar { height: 6px; max-width: 220px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: .3rem; }
 .bar span { display: block; height: 100%; background: var(--bar); }
 .sort {
@@ -495,7 +496,7 @@ noscript { display: block; margin: 1rem 0; color: var(--muted); }
       return;
     }
     var max = Math.max.apply(null, rows.map(function (r) { return r.runs; }).concat([1]));
-    host.innerHTML = "<table><thead><tr><th>" + esc(label) +
+    host.innerHTML = '<div class="table-wrap"><table><thead><tr><th>' + esc(label) +
       '</th><th class="num">Runs</th><th class="num">Time</th>' +
       '<th class="num">Input tokens</th><th class="num">Output tokens</th>' +
       '<th class="num">Cache reads</th></tr></thead><tbody>' +
@@ -508,7 +509,7 @@ noscript { display: block; margin: 1rem 0; color: var(--muted); }
           '<td class="num">' + num(r.tokensIn) + '</td>' +
           '<td class="num">' + num(r.tokensOut) + '</td>' +
           '<td class="num">' + num(r.cacheRead) + '</td></tr>';
-      }).join("") + "</tbody></table>";
+      }).join("") + "</tbody></table></div>";
   }
   function byDay() {
     var rows = grouped("day");
