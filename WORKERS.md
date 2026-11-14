@@ -517,7 +517,7 @@ reads the `worker=` line, or uses `opencode` when the line is absent. It then lo
 same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
 then `opencode`. Each kind's model is the `model:` line of
 `workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled worker's check,
-errand and implement models with their files, and the QA worker with its `qa` model.
+errand and implement models, and the QA worker with its `qa` model.
 
 `haring-model --worker` prints the settled worker and where it came from. Given a name,
 it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with

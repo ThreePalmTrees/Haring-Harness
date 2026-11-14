@@ -130,7 +130,8 @@ QA_WORKER_DEFAULT = "claude"
 
 def agent_model(haring, worker, kind):
     # Every kind's model is the model: line of its agent file, the only place a model
-    # is named. The line is read from column 1, the rest of the line is the model, and
+    # is named. The meta line names the file only when the model is missing, because
+    # the block goes into every worker's prompt; haring-model names every file. The line is read from column 1, the rest of the line is the model, and
     # surrounding whitespace is not part of it. A missing file or empty line returns
     # None; the caller prints none with the path.
     path = os.path.join(haring, "workers", worker, "agents", kind + ".md")
@@ -209,12 +210,12 @@ def build(root):
     models = []
     for kind in KINDS:
         model, path = agent_model(haring, worker, kind)
-        models.append(f"{kind} {model or 'none'} ({path})")
+        models.append(f"{kind} {model}" if model else f"{kind} none ({path})")
     L.append(f"Worker models ({worker}): " + ", ".join(models))
     qa_worker, qa_source = settle(root, haring, "qa-worker", QA_WORKER_DEFAULT)
     qa_model, qa_path = agent_model(haring, qa_worker, "qa")
     L.append(f"QA worker ({qa_worker}, {qa_source or 'default'}): "
-             f"qa {qa_model or 'none'} ({qa_path})")
+             + (f"qa {qa_model}" if qa_model else f"qa none ({qa_path})"))
     L.append("")
     L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")
