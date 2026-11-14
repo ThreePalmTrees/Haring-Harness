@@ -767,7 +767,7 @@ its own run folder and its own session, so the run it came from stays whole and 
 continued again.
 
 Every kind runs in the project itself, as its own OpenCode agent,
-`kinds/<kind>/opencode.md`, and a kind's limits are that agent's deny rules: a
+`workers/opencode/agents/<kind>.md`, and a kind's limits are that agent's deny rules: a
 denied tool is not in the session at all. `check` gets `Read`, `Glob`, `Grep` and a shell
 as well — reading a codebase needs one — and has no write or edit tool, so a check cannot
 change a file by ignoring its rules. `errand` gets the same three without the shell. A

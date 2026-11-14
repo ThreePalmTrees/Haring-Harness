@@ -1,0 +1,91 @@
+#!/bin/sh
+# agents-config — install, remove or check this worker's OpenCode agent files.
+#
+#   agents-config install
+#   agents-config remove
+#   agents-config check <kind>
+#
+# The agent files live in agents/<kind>.md beside this script. OpenCode names an agent
+# after the link it is found under, so each one is linked into
+# ~/.config/opencode/agents as haring-<kind>.md. The link rules and messages are the
+# ones install.sh uses for every link: same, moved, new, and SKIP when a plain file is
+# in the way.
+#
+# remove deletes only the links that point into this directory's agents/, so a plain
+# file and a link to somewhere else are left alone. check exits 0 when opencode is on
+# PATH and the kind's link is installed, and 1 with the reason when either is missing.
+set -e
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HARING=$(CDPATH= cd -- "$HERE/../.." && pwd)
+AGENTS=$HOME/.config/opencode/agents
+
+usage() {
+  echo "usage: agents-config install|remove|check <kind>" >&2
+  exit 2
+}
+
+link() {  # link <target> <linkname>
+  target=$1; name=$2
+  if [ -L "$name" ]; then
+    old=$(readlink "$name")
+    if [ "$old" = "$target" ]; then printf '  same    %s\n' "$name"; return; fi
+    ln -sfn "$target" "$name"; printf '  moved   %s\n            was %s\n' "$name" "$old"; return
+  fi
+  if [ -e "$name" ]; then
+    printf '  SKIP    %s exists and is not a link. Move it aside, then run this again.\n' "$name" >&2
+    failed=1; return
+  fi
+  ln -sfn "$target" "$name"; printf '  new     %s\n' "$name"
+}
+
+# The OpenCode service does not see an edit made through these links, so it is told to
+# read its configuration again; without this an agent's changed rules do nothing.
+reload() {
+  if command -v opencode >/dev/null 2>&1; then
+    opencode reload </dev/null >/dev/null 2>&1 && echo "  reloaded the OpenCode service's configuration" \
+      || echo "  note    could not reach the OpenCode service to reload it; run: opencode reload"
+  else
+    echo "warning: opencode is not on your PATH. Workers run in OpenCode; install it, then" >&2
+    echo "  sign in to OpenCode Go with: opencode auth login" >&2
+  fi
+}
+
+do_install() {
+  mkdir -p "$AGENTS"
+  failed=0
+  for f in "$HERE"/agents/*.md; do
+    [ -f "$f" ] || continue
+    kind=$(basename "$f" .md)
+    link "$f" "$AGENTS/haring-$kind.md"
+  done
+  reload
+  [ "$failed" = 0 ] || exit 1
+}
+
+do_remove() {
+  for name in "$AGENTS"/*; do
+    [ -L "$name" ] || continue
+    case "$(readlink "$name")" in
+      "$HERE"/agents/*) rm -f "$name"; printf '  removed %s\n' "$name" ;;
+    esac
+  done
+  reload
+}
+
+do_check() {  # do_check <kind>
+  kind=$1
+  command -v opencode >/dev/null 2>&1 || {
+    echo "haring-worker: opencode is not on PATH. Install it, then run ./install.sh again." >&2; exit 1; }
+  [ -e "$AGENTS/haring-$kind.md" ] || {
+    echo "haring-worker: the haring-$kind agent is not installed in ~/.config/opencode/agents." >&2
+    echo "  Run ./install.sh in $HARING, which links it there." >&2; exit 1; }
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+  install) [ $# -eq 1 ] || usage; do_install ;;
+  remove)  [ $# -eq 1 ] || usage; do_remove ;;
+  check)   [ $# -eq 2 ] && [ -n "$2" ] || usage; do_check "$2" ;;
+  *) usage ;;
+esac

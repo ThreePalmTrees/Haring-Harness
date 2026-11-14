@@ -32,18 +32,11 @@ echo "claude code agent (the QA pass, on opus by default):"
 mkdir -p "$HOME/.claude/agents"
 link "$HARING/kinds/qa/claude.md" "$HOME/.claude/agents/haring-qa.md"
 
-echo "opencode agents (one per kind of worker):"
-mkdir -p "$HOME/.config/opencode/agents"
-for f in "$HARING"/kinds/*/opencode.md; do
-  link "$f" "$HOME/.config/opencode/agents/haring-$(basename "$(dirname "$f")").md"
+echo "worker agents:"
+for w in "$HARING"/workers/*/agents-config; do
+  [ -f "$w" ] || continue
+  "$w" install || failed=1
 done
-
-# The OpenCode service does not see an edit made through these links, so it is told to
-# read its configuration again; without this an agent's changed rules do nothing.
-if command -v opencode >/dev/null 2>&1; then
-  opencode reload </dev/null >/dev/null 2>&1 && echo "  reloaded the OpenCode service's configuration" \
-    || echo "  note    could not reach the OpenCode service to reload it; run: opencode reload"
-fi
 
 echo "scripts:"
 mkdir -p "$HOME/.local/bin"
@@ -67,11 +60,6 @@ case ":$PATH:" in
   *":$HOME/.local/bin:"*) : ;;
   *) echo "warning: $HOME/.local/bin is not on your PATH. Add it, or the manager cannot find haring-root." >&2 ;;
 esac
-
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "warning: opencode is not on your PATH. Workers run in OpenCode; install it, then" >&2
-  echo "  sign in to OpenCode Go with: opencode auth login" >&2
-fi
 
 [ "$failed" = 0 ] || { echo "Nothing else to do until the lines marked SKIP are dealt with." >&2; exit 1; }
 

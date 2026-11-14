@@ -93,10 +93,11 @@ Nothing in there needs maintaining. It is a record, not a document.
 | `kinds/` | `rules.md` | the rules every worker gets |
 | | `<kind>/rules.md` | one file per kind of task, added to `rules.md` |
 | | `<kind>/schema.json` | the shape of that kind's report |
-| | `<kind>/opencode.md` | one OpenCode agent per kind; its deny rules are what that kind may not do |
 | | `qa/claude.md` | the Claude Code agent for the QA pass |
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
+| `workers/opencode/` | `agents/<kind>.md` | one OpenCode agent per kind; its deny rules are what that kind may not do |
+| | `worker.conf` | the default model and the models a worker may run on |
 
 A QA pass runs only when you ask for one. By default it runs on Opus as the Claude Code
 agent `haring-qa` (`kinds/qa/claude.md`, linked into `~/.claude/agents`). A project, or
@@ -105,7 +106,7 @@ the project's overrides haring's own, and an OpenCode model runs as a `haring-wo
 run.
 
 Everything is linked, not copied, so editing a file here takes effect at once — except an
-agent in `kinds/<kind>/opencode.md`: the OpenCode service does not notice that edit, so run
+agent in `workers/opencode/agents/<kind>.md`: the OpenCode service does not notice that edit, so run
 `opencode reload` (or `./install.sh`) after one, or its old rules stay in force. Editing a
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh
 Claude Code session. Run `./install.sh` again only when you add a script to `bin/` or move

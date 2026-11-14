@@ -9,9 +9,9 @@
 # kind is one of: check implement errand qa
 #
 # The worker is an OpenCode session, started by workers/opencode/start, on one of the
-# models in the table below. Absent --model, it settles from <project>/.haring/model, then
-# <haring-root>/model, then opencode-go/deepseek-v4.1-flash, read and written by
-# haring-model. The manager never chooses a model
+# models named in the worker's worker.conf. Absent --model, it settles from <project>/.haring/model, then
+# <haring-root>/model, then the default in workers/opencode/worker.conf, read and
+# written by haring-model. The manager never chooses a model
 # on its own: --model exists only for when the person who asked for the work asks for it.
 # A qa run settles differently: a QA pass runs on opus as the Claude Code agent
 # haring-qa unless the client chose an OpenCode model for it, so a fresh qa run takes
@@ -38,20 +38,9 @@ while [ -L "$self" ]; do
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
-MODEL_DEFAULT=opencode-go/deepseek-v4.1-flash
 # The worker harness a fresh run uses. workers/<name>/ holds the programs that launch it
 # and talk to it; a continue keeps the worker of the run it continues.
 WORKER_DEFAULT=opencode
-
-# The models a worker may run on, written the way `opencode run -m` takes them. A model
-# this does not hold is refused once the model settles, before anything is created.
-# Adding one is one line here and one in bin/haring-model.
-is_model() {
-  case "$1" in
-    opencode-go/deepseek-v4.1-flash | opencode-go/glm-5.3-flash) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 # The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
 # is set. The number is the plan's concurrency limit — the most requests the model provider
@@ -150,6 +139,29 @@ else
   worker=$WORKER_DEFAULT
 fi
 
+# The models a worker may run on, written the way `opencode run -m` takes them, live in
+# the worker's own worker.conf: default_model= names the default and models= lists what
+# may be chosen. A model outside the list is refused once the model settles, before
+# anything is created. A worker with no readable list is refused here rather than left
+# running on a name nothing checked.
+worker_conf="$HARING/workers/$worker/worker.conf"
+MODEL_DEFAULT=""
+MODELS=""
+if [ -r "$worker_conf" ]; then
+  MODEL_DEFAULT=$(sed -n 's/^default_model=//p' "$worker_conf" | sed -n 1p)
+  MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
+fi
+if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
+  echo "haring-worker: the $worker worker has no model list: $worker_conf is missing or unreadable." >&2
+  exit 1
+fi
+is_model() {
+  case " $MODELS " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 [ -f "$promptfile" ] || { echo "no such prompt file: $promptfile" >&2; exit 2; }
 
 no_pulse=""
@@ -235,21 +247,21 @@ fi
 if ! is_model "$model"; then
   echo "haring-worker: unknown model: $model" >&2
   [ -n "$model_source" ] && echo "  (from $model_source)" >&2
-  echo "  haring-worker takes one of: opencode-go/deepseek-v4.1-flash," >&2
-  echo "  opencode-go/glm-5.3-flash." >&2
+  echo "  haring-worker takes one of: $MODELS" >&2
   exit 2
 fi
 
-# Each kind runs as its own OpenCode agent, kinds/<kind>/opencode.md, linked
-# into ~/.config/opencode/agents by install.sh. The agent is where a kind's limits
-# live: a deny rule there removes the tool from the session outright, so a read-only
-# kind has no write tool to be talked out of. check and qa are denied edit (which
-# covers write and patch too), errand is denied the shell as well, and every kind is
-# denied question, subagent, skill, webfetch and websearch. The private paths every
-# worker is refused are refused twice: to the read and edit tools by the global
-# ~/.config/opencode/opencode.jsonc, and to the shell by the agents' own shell rules,
-# which match the text of each command. Anything else outside the project is open to
-# every tool — OpenCode allows external directories to these agents by default.
+# Each kind runs as its own OpenCode agent, workers/opencode/agents/<kind>.md, linked
+# into ~/.config/opencode/agents by workers/opencode/agents-config, which install.sh
+# runs. The agent is where a kind's limits live: a deny rule there removes the tool
+# from the session outright, so a read-only kind has no write tool to be talked out of.
+# check and qa are denied edit (which covers write and patch too), errand is denied the
+# shell as well, and every kind is denied question, subagent, skill, webfetch and
+# websearch. The private paths every worker is refused are refused twice: to the read
+# and edit tools by the global ~/.config/opencode/opencode.jsonc, and to the shell by
+# the agents' own shell rules, which match the text of each command. Anything else
+# outside the project is open to every tool — OpenCode allows external directories to
+# these agents by default.
 #
 # No kind sets --effort. Measured: at --effort low a single-fact extraction ran twice as
 # fast and stayed correct, but a multi-part task came back in 179 characters where the
@@ -262,16 +274,12 @@ fi
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
 case "$kind" in
-  check|errand|implement|qa) agent="haring-$kind" ;;
+  check|errand|implement|qa) ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 effort_arg=""
 [ -n "$effort" ] && effort_arg="--effort $effort"
-command -v opencode >/dev/null 2>&1 || {
-  echo "haring-worker: opencode is not on PATH. Install it, then run ./install.sh again." >&2; exit 1; }
-[ -e "$HOME/.config/opencode/agents/$agent.md" ] || {
-  echo "haring-worker: the $agent agent is not installed in ~/.config/opencode/agents." >&2
-  echo "  Run ./install.sh in $HARING, which links it there." >&2; exit 1; }
+"$HARING/workers/$worker/agents-config" check "$kind" || exit 1
 
 # A run nobody is watching is a run the manager hears nothing about: haring-pulse prints
 # one line per live worker, and starting it is the rule the manager was told to follow

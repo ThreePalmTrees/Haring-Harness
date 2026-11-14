@@ -49,6 +49,9 @@ MAXD = 4       # how deep the listing goes
 PERDIR = 50    # how many entries of one directory are listed
 NAMEMAX = 50   # a longer file or directory name is cut, with the count of what was cut
 
+# The worker whose default model this reports. Only one exists today.
+WORKER_DEFAULT = "opencode"
+
 
 def die(message, code):
     # A wrongly-called command gets the reason and the usage line.
@@ -105,8 +108,8 @@ def ignored(root, path, git):
 def worker_model(root):
     # The same order bin/haring-worker settles a fresh run's model from, minus
     # --model, which only a launch itself can give: the project's own choice, then
-    # haring's, then the default. A file that is missing, empty, or holds only
-    # whitespace names nothing and is passed over.
+    # haring's, then the worker's own default. A file that is missing, empty, or holds
+    # only whitespace names nothing and is passed over.
     haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     for path in (os.path.join(root, ".haring", "model"), os.path.join(haring, "model")):
         try:
@@ -116,7 +119,18 @@ def worker_model(root):
             continue
         if candidate:
             return candidate
-    return "opencode-go/deepseek-v4.1-flash"
+    conf = os.path.join(haring, "workers", WORKER_DEFAULT, "worker.conf")
+    try:
+        with open(conf) as f:
+            for line in f:
+                if line.startswith("default_model="):
+                    default = line.split("=", 1)[1].strip()
+                    if default:
+                        return default
+                    break
+    except OSError:
+        pass
+    return f"none ({conf} is missing or unreadable: the worker has no model list)"
 
 
 def count(p):

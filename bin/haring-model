@@ -9,7 +9,7 @@
 # With no argument, prints the model a worker started here would run on, and where
 # that came from — the same order bin/haring-worker settles a fresh run's model
 # from, minus --model, which only a launch itself can give: <project>/.haring/model,
-# then <haring-root>/model, then the default, opencode-go/deepseek-v4.1-flash.
+# then <haring-root>/model, then the default named in workers/opencode/worker.conf.
 #
 # With one argument, writes that name into <haring-root>/model — haring's own
 # choice, in force everywhere unless a project overrides it — and prints what it
@@ -22,9 +22,9 @@
 # Claude Code agent haring-qa, and the read says so. opus and sonnet run as that
 # agent on that model; an OpenCode model runs as a haring-worker qa run.
 #
-# The worker model is one of opencode-go/deepseek-v4.1-flash and
-# opencode-go/glm-5.3-flash, the same ones bin/haring-worker accepts; the QA model
-# is one of those, opus or sonnet. A name outside the list is refused.
+# The worker model is one of those listed in workers/opencode/worker.conf, the same
+# ones bin/haring-worker accepts; the QA model is one of those, opus or sonnet. A name
+# outside the list is refused.
 #
 # project is the git top level of the current directory, resolved the same way
 # bin/haring-worker resolves a workdir.
@@ -35,18 +35,12 @@
 # directory could not be found, or the file could not be written.
 set -e
 
-MODEL_DEFAULT=opencode-go/deepseek-v4.1-flash
+# The worker whose model list this reads. workers/<name>/worker.conf holds it.
+WORKER_DEFAULT=opencode
 
 usage() {
   echo "usage: haring-model [<model>] [--qa [<model>]] [--project]" >&2
   exit 2
-}
-
-is_model() {
-  case "$1" in
-    opencode-go/deepseek-v4.1-flash | opencode-go/glm-5.3-flash) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 # Resolve our own real location, following symlinks, so this keeps working when
@@ -60,6 +54,28 @@ while [ -L "$self" ]; do
   esac
 done
 HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd) || { echo "haring-model: could not find haring's own directory" >&2; exit 1; }
+
+# The models a worker may run on, written the way `opencode run -m` takes them, live in
+# the worker's own worker.conf: default_model= names the default and models= lists what
+# may be chosen. A worker with no readable list is refused here rather than validating
+# names against nothing.
+worker_conf="$HARING/workers/$WORKER_DEFAULT/worker.conf"
+MODEL_DEFAULT=""
+MODELS=""
+if [ -r "$worker_conf" ]; then
+  MODEL_DEFAULT=$(sed -n 's/^default_model=//p' "$worker_conf" | sed -n 1p)
+  MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
+fi
+if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
+  echo "haring-model: the $WORKER_DEFAULT worker has no model list: $worker_conf is missing or unreadable." >&2
+  exit 1
+fi
+is_model() {
+  case " $MODELS " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 project_flag=""
 model=""
@@ -89,8 +105,7 @@ if [ -n "$qa_flag" ]; then
   if [ -n "$qa_write" ]; then
     if ! is_model "$qa_write" && [ "$qa_write" != opus ] && [ "$qa_write" != sonnet ]; then
       echo "haring-model: unknown QA model: $qa_write" >&2
-      echo "  haring-model --qa takes one of: opus, sonnet," >&2
-      echo "  opencode-go/deepseek-v4.1-flash, opencode-go/glm-5.3-flash." >&2
+      echo "  haring-model --qa takes one of: opus, sonnet, $MODELS." >&2
       exit 2
     fi
     if [ -n "$project_flag" ]; then
@@ -121,8 +136,7 @@ fi
 if [ -n "$model" ]; then
   if ! is_model "$model"; then
     echo "haring-model: unknown model: $model" >&2
-    echo "  haring-model takes one of: opencode-go/deepseek-v4.1-flash," >&2
-    echo "  opencode-go/glm-5.3-flash." >&2
+    echo "  haring-model takes one of: $MODELS" >&2
     exit 2
   fi
   if [ -n "$project_flag" ]; then
