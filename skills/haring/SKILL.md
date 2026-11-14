@@ -628,6 +628,8 @@ haring-stats-page [project] [--out file]
                                 one self-contained HTML page of every
                                 run, openable from disk with no server
 haring-session [dir] [-l|-n N]  what this manager session has cost so far
+haring-stats-page [dir]         every run of the project on one page,
+                                written to .haring/stats.html
 haring-kill <run-folder>        stop a running worker on purpose
 haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state and a listing of the project

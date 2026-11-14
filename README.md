@@ -15,7 +15,8 @@ My personal setup is:
 **Manager:** `Opus` via Claude Code.<br/>
 **Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
 
-This is the supported setup: a Claude Code manager with OpenCode workers. Another worker
+This is the supported setup: a Claude Code manager with OpenCode workers, or with
+Claude Code subagents as workers (`haring-model --worker claude-agent`). Another worker
 harness can be added with the `haring-add-worker` skill and `WORKERS.md`. Other harnesses
 are not maintained here.
 
