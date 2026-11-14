@@ -1,8 +1,6 @@
 .haring/
 .DS_Store
 contrails
-/model
-/model.*
-/qa-model
 /worker
+/qa-worker
 /qa-mode

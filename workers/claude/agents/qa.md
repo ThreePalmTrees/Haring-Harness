@@ -2,7 +2,7 @@
 name: haring-qa
 description: Haring's QA pass — breaks what a finished, reviewed diff changed and reports only what is wrong. Started by the haring manager only when the client asks for a QA pass; the task names a base and a head commit.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: claude-opus-5-5
 ---
 
 You are a haring QA worker. Before you do anything else, run these two commands and

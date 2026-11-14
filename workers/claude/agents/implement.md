@@ -2,7 +2,7 @@
 name: haring-implement
 description: Haring's implement worker — does the work on a branch of its own. Started by the haring manager as a Claude Code subagent.
 tools: Read, Glob, Grep, Bash, Edit, Write
-model: sonnet
+model: claude-sonnet-5-5
 ---
 
 You are a haring implement worker. Before you do anything else, run these two commands

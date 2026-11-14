@@ -2,6 +2,7 @@
 description: haring errand worker — started by haring-worker, not for direct use
 mode: primary
 hidden: true
+model: opencode-go/deepseek-v4.1-flash
 permissions:
   - { action: "question", resource: "*", effect: "deny" }
   - { action: "subagent", resource: "*", effect: "deny" }

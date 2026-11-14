@@ -6,10 +6,10 @@
 project-dir defaults to the current directory, resolved to its git top level the
 same way haring-worker resolves a workdir. The block hands a worker what it would
 otherwise spend turns finding out: the project's own name, the date and time with
-timezone, the operating system, whether the project is in git, the model its own
-workers run on, and a listing of the files and directories under the limits the
-block itself names — four levels deep, fifty entries per directory, names cut at
-fifty characters. Two kinds of directory
+timezone, the operating system, whether the project is in git, each kind's model for
+the settled worker and the QA worker with its model, and a listing of the files and
+directories under the limits the block itself names — four levels deep, fifty entries
+per directory, names cut at fifty characters. Two kinds of directory
 are named and never walked, each with the reason beside its name: anything
 `git check-ignore` calls ignored, and anything on a fixed list of dependency and
 tooling directories. Nothing else is special-cased.
@@ -105,67 +105,44 @@ def ignored(root, path, git):
     return r.returncode == 0
 
 
-def worker_name(root):
-    # The same order bin/haring-worker settles a fresh run's worker from: the project's
-    # own choice, then haring's, then the default. A file that is missing, empty, or
-    # holds only whitespace names nothing and is passed over.
-    haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    for path in (os.path.join(root, ".haring", "worker"), os.path.join(haring, "worker")):
+def settle(root, haring, filename, default):
+    # A worker choice settles from the project's own file, then haring's, then the
+    # default. A file that is missing, empty, or holds only whitespace names nothing
+    # and is passed over. The source is the file that named the worker, or None when
+    # the default did.
+    for path in (os.path.join(root, ".haring", filename), os.path.join(haring, filename)):
         try:
             with open(path) as f:
                 candidate = "".join(f.read().split())
         except OSError:
             continue
         if candidate:
-            return candidate
-    return WORKER_DEFAULT
+            return candidate, path
+    return default, None
 
 
-def worker_model(root, worker):
-    # The same order bin/haring-worker settles a fresh run's model from, minus
-    # --model, which only a launch itself can give: the project's
-    # <project>/.haring/model.<worker>, then <haring-root>/model.<worker>, then the
-    # worker's own default. For the opencode worker only, the plain model file is read
-    # after model.opencode in the same folder, so older projects keep their choice. A
-    # file that is missing, empty, or holds only whitespace names nothing and is passed
-    # over. A file whose model is outside this worker's list is refused, not replaced.
-    haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    conf = os.path.join(haring, "workers", worker, "worker.conf")
-    default = ""
-    models = []
-    default_seen = models_seen = False
+# The kinds the settled worker runs, in the order the model line names them. Each one
+# has an agent file under workers/<worker>/agents/. The qa kind has a worker of its
+# own, settled from qa-worker, so it is named separately.
+KINDS = ("check", "errand", "implement")
+QA_WORKER_DEFAULT = "claude"
+
+
+def agent_model(haring, worker, kind):
+    # Every kind's model is the model: line of its agent file, the only place a model
+    # is named. The line is read from column 1, the rest of the line is the model, and
+    # surrounding whitespace is not part of it. A missing file or empty line returns
+    # None; the caller prints none with the path.
+    path = os.path.join(haring, "workers", worker, "agents", kind + ".md")
     try:
-        with open(conf) as f:
+        with open(path) as f:
             for line in f:
-                if not default_seen and line.startswith("default_model="):
-                    default = line.split("=", 1)[1].strip()
-                    default_seen = True
-                elif not models_seen and line.startswith("models="):
-                    models = line.split("=", 1)[1].split()
-                    models_seen = True
+                if line.startswith("model:"):
+                    model = line.split(":", 1)[1].strip()
+                    return (model or None), path
     except OSError:
         pass
-    candidates = [os.path.join(root, ".haring", "model." + worker)]
-    if worker == WORKER_DEFAULT:
-        candidates.append(os.path.join(root, ".haring", "model"))
-    candidates.append(os.path.join(haring, "model." + worker))
-    if worker == WORKER_DEFAULT:
-        candidates.append(os.path.join(haring, "model"))
-    for path in candidates:
-        try:
-            with open(path) as f:
-                candidate = f.read().strip()
-        except OSError:
-            continue
-        if not candidate:
-            continue
-        if models and candidate not in models:
-            return (f"none ({path} names {candidate}, which is not in this worker's "
-                    f"models)")
-        return candidate
-    if default:
-        return default
-    return f"none ({conf} is missing or unreadable: the worker has no model list)"
+    return None, path
 
 
 def count(p):
@@ -227,9 +204,17 @@ def build(root):
     L.append(f"Now: {datetime.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}")
     L.append(f"Operating system: {os_name()}")
     L.append(f"Git-tracked: {'Yes' if git else 'No'}")
-    worker = worker_name(root)
-    label = "Worker model" if worker == WORKER_DEFAULT else f"Worker model ({worker})"
-    L.append(f"{label}: {worker_model(root, worker)}")
+    haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    worker, _ = settle(root, haring, "worker", WORKER_DEFAULT)
+    models = []
+    for kind in KINDS:
+        model, path = agent_model(haring, worker, kind)
+        models.append(f"{kind} {model or 'none'} ({path})")
+    L.append(f"Worker models ({worker}): " + ", ".join(models))
+    qa_worker, qa_source = settle(root, haring, "qa-worker", QA_WORKER_DEFAULT)
+    qa_model, qa_path = agent_model(haring, qa_worker, "qa")
+    L.append(f"QA worker ({qa_worker}, {qa_source or 'default'}): "
+             f"qa {qa_model or 'none'} ({qa_path})")
     L.append("")
     L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")

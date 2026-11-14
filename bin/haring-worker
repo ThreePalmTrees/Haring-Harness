@@ -8,19 +8,17 @@
 #
 # kind is one of: check implement errand qa
 #
-# The worker is the folder under workers/<name>/: its start program runs one turn, and
-# its worker.conf names the models. A fresh run settles <name> from
-# <project>/.haring/worker, then <haring-root>/worker, then WORKER_DEFAULT below; a
-# continue keeps the worker recorded in the run it continues. Absent --model, the model
-# settles from <project>/.haring/model, then <haring-root>/model, then the default in
-# that worker's worker.conf, read and written by haring-model. The manager never chooses
-# a model on its own: --model exists only when the person who asked for the work asks.
-# A qa run settles differently: a QA pass runs on opus as the Claude Code agent
-# haring-qa unless the client chose an OpenCode model for it, so a fresh qa run takes
-# its model from <project>/.haring/qa-model, then <haring-root>/qa-model, both read and
-# written by haring-model --qa, and refuses — pointing at the agent — when neither
-# names an OpenCode model. --model overrides with the same warning as any kind; a
-# continue keeps the run's own model.
+# The worker is the folder under workers/<name>/: its start program runs one turn. A
+# fresh run settles <name> from <project>/.haring/worker, then <haring-root>/worker, then
+# WORKER_DEFAULT below; a continue keeps the worker recorded in the run it continues.
+# A qa run settles a worker of its own: <project>/.haring/qa-worker, then
+# <haring-root>/qa-worker, then claude, never the worker files.
+# A fresh run's model is the model: line of the worker's agent file for the kind,
+# workers/<worker>/agents/<kind>.md — one place for every worker, every kind and every
+# project. A missing agent file or model line stops the launch with exit 2 and names the
+# file. --model is a one-run override and is passed through unchecked; it exists only
+# when the person who asked for the work asks for it. A continue keeps the model of the
+# run it continues, recorded in that run's meta.
 # --effort lowers or raises how hard the worker thinks — low, high or max, the model's
 # harness variant — and exists only for when the person who asked for the work asks
 # for it. No kind sets it: see the comment above the kind table.
@@ -164,21 +162,32 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Checked here, before the model settles, because the project's own file is one of the
-# places the model can come from: in continue mode the workdir comes out of the
-# previous run's meta, and in a fresh run it is the caller's own argument.
+# Checked here, before the worker and its model settle and before anything is created:
+# in continue mode the workdir comes out of the previous run's meta, and in a fresh run
+# it is the caller's own argument.
 [ -d "$workdir" ] || { echo "no such workdir: $workdir" >&2; usage; }
 
 # The project is the git top level of the workdir when there is one, else the workdir.
 project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
 
-# The worker a fresh run uses settles the way the model does: the project's own
-# choice, then haring's, then the default. A continue keeps the worker recorded in
-# the run it continues. A file that is missing, empty, or holds only whitespace names
-# nothing and is passed over rather than treated as a choice.
+# The worker a fresh run uses settles from the project's own choice, then haring's,
+# then the default. A continue keeps the worker recorded in the run it continues. A
+# file that is missing, empty, or holds only whitespace names nothing and is passed
+# over rather than treated as a choice. A qa run has a worker of its own: it reads
+# <project>/.haring/qa-worker, then <haring-root>/qa-worker, then defaults to claude,
+# and never reads the worker files.
 if [ -z "$resume_id" ]; then
+  if [ "$kind" = qa ]; then
+    first_worker_file="$project/.haring/qa-worker"
+    second_worker_file="$HARING/qa-worker"
+    worker_default=claude
+  else
+    first_worker_file="$project/.haring/worker"
+    second_worker_file="$HARING/worker"
+    worker_default=$WORKER_DEFAULT
+  fi
   worker_source=""
-  for worker_file in "$project/.haring/worker" "$HARING/worker"; do
+  for worker_file in "$first_worker_file" "$second_worker_file"; do
     [ -f "$worker_file" ] || continue
     candidate=$(tr -d '[:space:]' < "$worker_file")
     [ -n "$candidate" ] || continue
@@ -187,8 +196,8 @@ if [ -z "$resume_id" ]; then
     break
   done
   if [ -z "$worker_source" ]; then
-    worker=$WORKER_DEFAULT
-    worker_source="the default: $WORKER_DEFAULT"
+    worker=$worker_default
+    worker_source="the default: $worker_default"
   fi
 else
   if [ -z "$worker" ]; then
@@ -220,104 +229,38 @@ fi
 # anything else is created.
 if [ ! -x "$HARING/workers/$worker/start" ]; then
   echo "haring-worker: the $worker worker has no start program: $HARING/workers/$worker/start" >&2
-  echo "  This worker is started by the manager with the Agent tool." >&2
-  exit 2
-fi
-
-# The models a worker may run on, written the way `opencode run -m` takes them, live in
-# the worker's own worker.conf: default_model= names the default and models= lists what
-# may be chosen. A model outside the list is refused once the model settles, before
-# anything is created. A worker with no readable list is refused here rather than left
-# running on a name nothing checked.
-worker_conf="$HARING/workers/$worker/worker.conf"
-MODEL_DEFAULT=""
-MODELS=""
-if [ -r "$worker_conf" ]; then
-  MODEL_DEFAULT=$(sed -n 's/^default_model=//p' "$worker_conf" | sed -n 1p)
-  MODELS=$(sed -n 's/^models=//p' "$worker_conf" | sed -n 1p)
-fi
-if [ -z "$MODEL_DEFAULT" ] || [ -z "$MODELS" ]; then
-  echo "haring-worker: the $worker worker has no model list: $worker_conf is missing or unreadable." >&2
-  exit 1
-fi
-is_model() {
-  case " $MODELS " in
-    *" $1 "*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-# The saved model is per worker. Only the opencode worker also reads the plain model
-# file, in the same folder and after model.opencode. A missing or empty file names
-# nothing; a model outside this worker's list is refused by the check below.
-try_model_file() {  # try_model_file <file>
-  if [ -n "$model" ]; then return 0; fi
-  [ -f "$1" ] || return 0
-  candidate=$(tr -d '[:space:]' < "$1")
-  [ -n "$candidate" ] || return 0
-  model=$candidate
-  model_source=$1
-}
-
-# The model settles from four places, the first that names one winning: --model above,
-# then the project's own choice, then haring's, then the default. A continue never
-# reaches here with an empty model — it already has one from the run it continues,
-# sourced from "$prev/meta" above — so this is only for a fresh run without --model.
-# A file that is missing, empty, or holds only whitespace names nothing and is passed
-# over rather than treated as a choice or an error. A saved model is per worker; only
-# opencode also reads the plain model file, after model.opencode in the same folder.
-model_source=""
-if [ "$kind" = qa ]; then
-  # A QA pass runs only when the client asks for one, and by default on opus as the
-  # Claude Code agent haring-qa, which the manager starts with its Agent tool — not
-  # here. This script runs a QA only when the client chose an OpenCode model for it:
-  # --model, or the qa-model files, the project's then haring's, read under the same
-  # whitespace rule as the plain settle. Unset, opus or sonnet is the agent's to run,
-  # and is refused with where to go instead. It sits here, before anything is created
-  # and above the pulse check and the one-worker check, so it fires whatever else is
-  # true about the project. A continue keeps the model of the run it continues.
-  if [ -z "$model" ]; then
-    for model_file in "$project/.haring/qa-model" "$HARING/qa-model"; do
-      [ -f "$model_file" ] || continue
-      candidate=$(tr -d '[:space:]' < "$model_file")
-      [ -n "$candidate" ] || continue
-      model=$candidate
-      model_source=$model_file
-      break
-    done
+  if [ "$kind" = qa ]; then
+    echo "  Start it with the Agent tool (subagent_type haring-qa)." >&2
+  else
+    echo "  This worker is started by the manager with the Agent tool." >&2
   fi
-  case "$model" in
-    ''|opus|sonnet)
-      echo "haring-worker: this QA runs on ${model:-opus}, as the Claude Code agent haring-qa." >&2
-      echo "  Start it with the Agent tool (subagent_type haring-qa${model:+, model $model})." >&2
-      echo "  haring-worker runs a QA only on an OpenCode model: haring-model --qa <model>." >&2
-      exit 1 ;;
-  esac
-elif [ -z "$model" ]; then
-  try_model_file "$project/.haring/model.$worker"
-  if [ "$worker" = opencode ]; then try_model_file "$project/.haring/model"; fi
-  try_model_file "$HARING/model.$worker"
-  if [ "$worker" = opencode ]; then try_model_file "$HARING/model"; fi
-fi
-: "${model:=$MODEL_DEFAULT}"
-
-# A model the table above does not hold is refused here and now, before anything is
-# created: OpenCode's own refusal to an unknown name arrives only after it has
-# started, which here means after the run folder exists and the worker is launched —
-# a dead run for a mistyped model. Like a bad kind, it is a wrongly written command,
-# so it is answered before the environment is examined at all: above the pulse check
-# and the one-worker check, which would each refuse first for its own reason and say
-# nothing about the model.
-if ! is_model "$model"; then
-  echo "haring-worker: unknown model: $model" >&2
-  [ -n "$model_source" ] && echo "  (from $model_source)" >&2
-  echo "  haring-worker takes one of: $MODELS" >&2
   exit 2
+fi
+
+# Every kind's model lives in one place: the model: line in the frontmatter of
+# workers/<worker>/agents/<kind>.md, the same file that sets the kind's tools and
+# limits. It is read after the worker settles and before anything is created; a missing
+# file or line is refused here. --model above is a one-run override and is passed
+# through unchecked, and a continue already carries the model from its run's meta.
+case "$kind" in
+  check|errand|implement|qa) ;;
+  *) echo "unknown kind: $kind" >&2; usage ;;
+esac
+if [ -z "$model" ]; then
+  agent_file="$HARING/workers/$worker/agents/$kind.md"
+  if [ -f "$agent_file" ]; then
+    model=$(sed -n 's/^model:[[:space:]]*//p' "$agent_file" | sed -n 1p | tr -d '[:space:]')
+  fi
+  if [ -z "$model" ]; then
+    echo "haring-worker: the $kind kind has no model: $agent_file is missing or has no model: line." >&2
+    exit 2
+  fi
 fi
 
 # Each kind runs as its own OpenCode agent, workers/opencode/agents/<kind>.md, linked
 # into ~/.config/opencode/agents by workers/opencode/agents-config, which install.sh
-# runs. The agent is where a kind's limits live: a deny rule there removes the tool
+# runs. The agent file also names the kind's model, in its model: line above. The agent
+# is where a kind's limits live: a deny rule there removes the tool
 # from the session outright, so a read-only kind has no write tool to be talked out of.
 # check and qa are denied edit (which covers write and patch too), errand is denied the
 # shell as well, and every kind is denied question, subagent, skill, webfetch and
@@ -337,10 +280,6 @@ fi
 # There is no spending limit. A limit that fires returns NO REPORT AT ALL: the work is on
 # disk, unverified, with no account of itself, which is worse than any run it would have
 # stopped. A run that goes wrong is caught by reading its progress file, not by killing it.
-case "$kind" in
-  check|errand|implement|qa) ;;
-  *) echo "unknown kind: $kind" >&2; usage ;;
-esac
 effort_arg=""
 [ -n "$effort" ] && effort_arg="--effort $effort"
 "$HARING/workers/$worker/agents-config" check "$kind" || exit 1

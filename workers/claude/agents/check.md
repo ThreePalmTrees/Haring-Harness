@@ -2,7 +2,7 @@
 name: haring-check
 description: Haring's check worker — one claim, answered true, false, partly or could_not_check, with evidence. Started by the haring manager as a Claude Code subagent.
 tools: Read, Glob, Grep, Bash
-model: sonnet
+model: claude-sonnet-5-5
 ---
 
 You are a haring check worker. Before you do anything else, run these two commands and

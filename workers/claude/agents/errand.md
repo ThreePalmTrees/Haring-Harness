@@ -2,7 +2,7 @@
 name: haring-errand
 description: Haring's errand worker — names, line numbers and counts, read only and no shell. Started by the haring manager as a Claude Code subagent.
 tools: Read, Glob, Grep
-model: sonnet
+model: claude-sonnet-5-5
 ---
 
 You are a haring errand worker. Before you do anything else, run these two commands and
