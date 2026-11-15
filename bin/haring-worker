@@ -94,10 +94,10 @@ usage() {
 # differ from the one the run started as: a worker that checked a claim can be continued
 # as one that implements, and it keeps everything it learned while checking.
 #
-# A continued run resumes the previous conversation. When its worker's worker.conf says
-# fork=yes it does so under a session id of its own, so the run it came from keeps its
-# transcript whole and can be continued again; otherwise it resumes the same session, and
-# the two runs share that transcript. fork is a hint, so a missing line resumes.
+# A continued run resumes the previous conversation under a session id of its own, so
+# the run it came from keeps its transcript whole and can be continued again. A start
+# program that cannot fork resumes the same session instead, and the two runs share
+# that transcript.
 resume_id=""
 if [ "$1" = "continue" ]; then
   kind=$2; prev=$3; promptfile=$4
@@ -208,8 +208,8 @@ else
   fi
 fi
 
-# A worker with no folder cannot run: its events.py, worker.conf and every program
-# live there. Refused before the run folder or anything else is created.
+# A worker with no folder cannot run: its events.py and every program live there.
+# Refused before the run folder or anything else is created.
 if [ ! -d "$HARING/workers/$worker" ]; then
   worker_names=""
   for worker_dir in "$HARING"/workers/*/; do
@@ -389,8 +389,8 @@ mkdir -p "$run"
 
 # The session is the worker's start program's to name: it chooses an id beginning ses_,
 # writes it to the run's session file, and launches the harness with it. A continued run
-# is resumed instead, forked when the worker's worker.conf says fork=yes, and only then
-# is the id its fork picks the stream's to name.
+# is resumed under a new session id, and the id its fork picks is the stream's to name.
+# A start program that cannot fork resumes the same session instead.
 {
   echo "kind=$kind"
   echo "workdir='$workdir'"
@@ -402,14 +402,11 @@ mkdir -p "$run"
 # against MAX_NESTED_WORKERS; a run the manager started records nothing, having no parent.
 [ -n "$HARING_NESTED" ] && echo "started_by='$HARING_NESTED'" >> "$run/meta"
 
-# A continue asks its worker's start program to fork only when the worker.conf says it
-# can. The line is a hint, so anything but yes — a missing file, a missing line, another
-# value — resumes the same session rather than asking for a fork the harness may not have.
+# A continue always asks its worker's start program to fork, so the run it continues
+# keeps its own transcript. A start program that cannot fork resumes the same session
+# instead.
 fork_arg=""
-if [ -n "$resume_id" ] && python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import haring_events
-sys.exit(0 if haring_events.worker_conf(sys.argv[2]).get("fork") else 1)' "$HARING/lib" "$run"; then
-  fork_arg=--fork
-fi
+[ -n "$resume_id" ] && fork_arg=--fork
 
 # The prompt the worker actually receives: the task, and — for every kind but errand —
 # where to write progress and what the first line of it must be. The method line is what

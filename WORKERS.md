@@ -8,8 +8,8 @@ reports, watches live runs, steers them and stops them.
 A worker is everything under `workers/<name>/`. It knows one coding-agent harness:
 how to start it, how to send a message to it, how to stop it, and what its event
 stream means. A worker the manager starts with its own tools may leave out the start,
-steer and stop programs; the core then reads the transcript those tools write and
-names the manager's own route instead.
+steer and stop programs; the core then reads the transcript those tools write and tells
+the manager to use its own tools.
 
 The core calls the worker folder by path. It does not import the harness and does not
 read the harness's own configuration. This file describes what a worker folder must
@@ -26,8 +26,6 @@ that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
 
-- `worker.conf` holds the hints. Every line is a hint, so a missing or unreadable file
-  leaves the safe defaults and stops nothing.
 - `events.py` is a Python module with three functions. Every command that reads a
   run's event stream loads it.
 - `start` is optional. When present, it runs one worker turn and writes the event
@@ -49,7 +47,6 @@ A program that is present must be executable. `events.py` must be readable.
 
 The OpenCode example has this shape.
 
-- `workers/opencode/worker.conf` names the values `thinking=yes` and `fork=yes`.
 - `workers/opencode/events.py` reads OpenCode part events and maps its tool names to
   the labels haring's readers show.
 - `workers/opencode/start` names a new session, writes its id to the file given with
@@ -68,9 +65,6 @@ The OpenCode example has this shape.
 The Claude Code example has this shape. The manager starts it with Claude Code's Agent
 tool, and haring reads the transcript the subagent writes.
 
-- `workers/claude/worker.conf` names `thinking=yes`, `fork=no`, and the two route texts
-  `steer_with=SendMessage to agent {agent_id}` and
-  `stop_with=TaskStop on agent {agent_id}`.
 - `workers/claude/events.py` reads a subagent transcript and turns its user and
   assistant turns into haring's entries and summary.
 - `workers/claude/agents-config` links `agents/<kind>.md` into `~/.claude/agents`
@@ -82,44 +76,26 @@ tool, and haring reads the transcript the subagent writes.
   the subagent as a run, and the run has no pid, so its liveness comes from the
   module's `alive()` function.
 
-## 2. worker.conf
+## 2. Thinking, fork and steering
 
-`worker.conf` is plain text. The core reads one `key=value` pair per line. It has no
-sections, no quotes and no comment syntax. A line the core does not recognise is
-ignored.
+The core decides these from the worker folder's programs and from the run's event stream.
+No file in the worker folder configures them.
 
-The core reads four keys.
+`thinking`: a reader claims the worker is thinking only when the stream has carried a
+thought — a `thinking` entry, or a reasoning-token count above 0. `haring-wait` and
+`haring-pulse` print their thinking line on that evidence alone. A worker whose stream
+has not carried a thought yet gets the plain "nothing new" line instead, with no claim
+about thinking.
 
-`thinking` is a hint that the harness can put a thought in the event stream. When it
-is true, `haring-pulse` may say that a quiet worker is thinking and `haring-wait` may
-print a thinking line. When it is false, those commands say only that nothing new has
-arrived.
+`fork`: a continued run always asks the worker's `start` program to fork, passing
+`--fork`. A `start` program that cannot fork resumes the same session instead, so the
+run it continues and the new run share that transcript.
 
-`fork` is a hint that a continued run may start a copy of the session under a new
-session id. When it is true, `haring-worker` passes `--fork` to `start` on a continue.
-When it is false, a continue resumes the same session.
-
-`steer_with` is the text `haring-say` prints when the worker folder has no `steer`
-program: the route that does work instead. `stop_with` is the same for `haring-kill`
-and a missing `stop` program. `{agent_id}` in either text is replaced by the run's
-`agent_id` from `meta`.
-
-The reading rules are exact.
-
-- `thinking`, `fork`, `steer_with` and `stop_with` are read from any line with `=` in
-  it. Spaces around the key and around the value are removed. `thinking` and `fork` are
-  true only when the value is exactly `yes`; every other value is false. The other two
-  are the rest of the line. If a key appears more than once, the last line wins.
-
-The safe value when a line is missing or wrong:
-
-- a missing or wrong `thinking` is false.
-- a missing or wrong `fork` is false.
-- a missing `steer_with` or `stop_with` makes the command say only that the run cannot
-  be steered or stopped.
-- a missing or unreadable `worker.conf` leaves all four at those values.
-
-The hints never stop a run.
+`steer` and `stop`: a worker the manager starts with its own tools has neither program.
+`haring-say` and `haring-kill` then reach nothing. They exit 1 with one line, the same
+for every worker, saying this worker has no steer (or stop) program and the manager
+steers (or stops) it with its own tools. When the run's `meta` has an `agent_id`, the
+line ends with that id in parentheses.
 
 ## 3. events.py
 
@@ -320,7 +296,8 @@ The arguments are:
 - `--effort`: `low`, `high` or `max`, only when the caller asked for one.
 - `--session-file`: the path where a fresh run may record its session id.
 - `--resume`: the session to continue.
-- `--fork`: start a new session as a copy of the resumed one.
+- `--fork`: start a new session as a copy of the resumed one; a `start` that cannot
+  fork ignores it and resumes the session.
 - the last argument: the path of a file that holds the whole message.
 
 The core gives `start` no input on standard input. Standard input is `/dev/null`.
@@ -343,7 +320,8 @@ stream first and the file second. Without the file, `haring-say` and `haring-kil
 reach the session until the first event names it.
 
 A continued `start` must continue the session given with `--resume`. When `--fork` is
-present, it must put the continued work in a new session. The core does not pass
+present, it must put the continued work in a new session; a `start` that cannot fork
+ignores `--fork` and resumes the same session. The core does not pass
 `--session-file` on a continue, because only the stream knows the new id.
 
 ### steer
@@ -394,9 +372,9 @@ and creates no run folder. The manager starts the run with Claude Code's Agent t
 steers it with SendMessage and stops it with TaskStop.
 
 When a worker has no `steer` or `stop`, `haring-say` and `haring-kill` do not try to
-reach it. They print the worker's `steer_with` or `stop_with` text and exit 1. With no
-such text they say only that the run cannot be steered or stopped. `{agent_id}` in the
-text is replaced by the run's `agent_id` from `meta`.
+reach it. They exit 1 with one line, the same for every worker: this worker has no
+steer (or stop) program, and the manager steers (or stops) it with its own tools. When
+the run's `meta` has an `agent_id`, the same line ends with that id in parentheses.
 
 `haring-pulse` records the subagents of its own Claude Code session as runs. It looks
 only in the session named by `CLAUDE_CODE_SESSION_ID`, under the folder named by
@@ -474,19 +452,18 @@ A missing `start` stops a launch before the run folder exists: `haring-worker` e
 and names the path. A worker the manager starts with its own tools has no `start`
 program; the manager starts it with the Agent tool instead.
 
-A missing `steer` makes `haring-say` exit 1 before waiting, with the worker's
-`steer_with` text when `worker.conf` names one and `this run cannot be steered` when it
-does not. A missing `stop` makes `haring-kill` exit 1 before it signals anything, with
-the worker's `stop_with` text when `worker.conf` names one and `this run cannot be
-stopped` when it does not; it writes no `stopped` marker. The watchdog ignores a missing
-`stop`'s output and exit code and still kills the run's process group.
+A missing `steer` makes `haring-say` exit 1 before waiting, with the line that says this
+worker has no steer program and the manager steers it with its own tools, followed by
+the run's `agent_id` from `meta` when there is one. A missing `stop` makes `haring-kill`
+exit 1 before it signals anything, with the same line for stop; it writes no `stopped`
+marker. The watchdog ignores a missing `stop`'s output and exit code and still kills the
+run's process group.
 
 A missing or unusable `agents-config` stops a fresh launch with exit 1. `install.sh`
 and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.sh
 --worker <name>` does not list that folder and refuses the name with exit 2.
 
-A missing or unreadable `worker.conf` leaves the hints false and the two route texts
-empty, so it stops nothing. A missing `agents/<kind>.md`, or one with no `model:` line,
+A missing `agents/<kind>.md`, or one with no `model:` line,
 stops a fresh launch with exit 2 and names the file. `haring-meta` prints `none` with
 the path when it cannot find a kind's model.
 

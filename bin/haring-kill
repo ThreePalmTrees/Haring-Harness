@@ -93,14 +93,13 @@ if os.path.exists(marker):
 
 # A worker with no stop program cannot be interrupted by haring, and the manager needs
 # the route that does work rather than a process-group search that cannot find a run
-# haring never started as a process. The route is the worker's to name in worker.conf.
+# haring never started as a process.
 worker_dir = haring_events.worker_dir(run)
 stop = os.path.join(worker_dir, "stop")
 if not (os.path.isfile(stop) and os.access(stop, os.X_OK)):
-    advice = haring_events.worker_conf(run).get("stop_with") or ""
-    if advice:
-        die(advice.replace("{agent_id}", meta.get("agent_id") or ""), 1)
-    die("this run cannot be stopped", 1)
+    agent = meta.get("agent_id") or ""
+    die("this worker has no stop program; the manager stops it with its own tools"
+        + (f" (agent {agent})" if agent else ""), 1)
 
 # The pid in meta belongs to the shell, and is not trusted on its own: pids are reused,
 # and a stale one can name a process with nothing to do with this run, whose process

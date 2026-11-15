@@ -88,15 +88,13 @@ if os.path.exists(report) and os.path.getsize(report):
     die("this run already finished and reported. There is no worker to say anything to.", 1)
 
 # A worker with no steer program cannot take a message, and saying so before waiting for
-# a liveness answer gives the manager the route that does work instead of a timeout. The
-# route is the worker's to name in its worker.conf, so the core learns no harness name.
+# a liveness answer gives the manager the route that does work instead of a timeout.
 worker_dir = haring_events.worker_dir(run)
 steer = os.path.join(worker_dir, "steer")
 if not (os.path.isfile(steer) and os.access(steer, os.X_OK)):
-    advice = haring_events.worker_conf(run).get("steer_with") or ""
-    if advice:
-        die(advice.replace("{agent_id}", meta.get("agent_id") or ""), 1)
-    die("this run cannot be steered", 1)
+    agent = meta.get("agent_id") or ""
+    die("this worker has no steer program; the manager steers it with its own tools"
+        + (f" (agent {agent})" if agent else ""), 1)
 
 # A run started moments ago may not have its runner up yet; one whose runner is gone
 # will never answer, and is told apart by the shared liveness test rather than by waiting.

@@ -67,7 +67,6 @@ or `lib/`.
 
 Use these files:
 
-- `worker.conf`
 - `events.py`
 - `start`
 - `steer`
@@ -76,18 +75,6 @@ Use these files:
 - `agents/<kind>.md`, one per kind
 
 Add helper modules only if the harness needs them.
-
-`worker.conf` holds hints only:
-
-- `thinking=yes` only when the event stream really carries the harness's thinking.
-  Otherwise leave the line out.
-- `fork=yes` only when a continue can start a copy of the session under a new id.
-  Otherwise leave the line out.
-- `steer_with=` and `stop_with=` when the manager starts this worker with its own tool
-  and there is no `steer` or `stop` program to call.
-
-Never set a hint to `yes` to make output look better. A false hint makes haring claim
-something the stream does not support.
 
 `agents/<kind>.md` names the kind's model on its `model:` line. That line is the only
 place a model is named, and `haring-worker` reads it before a fresh launch and passes it
@@ -124,27 +111,29 @@ them.
 Do not fake a capability. `WORKERS.md` and the core define what happens when it is
 absent.
 
-No thinking. Leave `thinking` out, or set it to a value other than `yes`. Do not emit
-`thinking` or `thinking_tokens` entries. haring still shows the tool calls and the
-worker's speech. `haring-wait` and `haring-pulse` do not claim the worker is thinking.
-They say only that nothing new has arrived.
+No thinking. Do not emit `thinking` or `thinking_tokens` entries. haring still shows the
+tool calls and the worker's speech. `haring-wait` and `haring-pulse` claim a worker is
+thinking only when its stream has carried a thought, so a stream without one gets the
+plain line that nothing new has arrived.
 
-No fork. Leave `fork` out, or set it to a value other than `yes`. A continue resumes
-the same session. The old run and the continued run share that transcript. Do not pass
-`--fork` to `start`.
+No fork. A continue always passes `--fork` to `start`. A `start` that cannot fork
+resumes the same session instead, and the old run and the continued run share that
+transcript.
 
 No steering. `haring-say` cannot deliver a message into a running session. Do not write
 a `steer` that exits 0 without delivering. Either leave `steer` out, so `haring-say`
-exits 1 with the operating system error, or write one that exits 1 and says the harness
-cannot steer. The run itself still works. Only `haring-say` is unavailable.
+exits 1 saying this worker has no steer program and the manager steers it with its own
+tools, or write one that exits 1 and says the harness cannot steer. The run itself still
+works. Only `haring-say` is unavailable.
 
 No stop. `haring-kill` can still kill the run's process group, but it cannot interrupt
 the session inside the harness. The session may keep working with nobody reading it.
 The watchdog has the same limit. Do not write a `stop` that exits 0 without
-interrupting. Write one that exits 1 with the reason instead of leaving `stop` out:
-`haring-kill` then reports that reason and still writes the `stopped` marker. A missing
-program is caught too, but its reason is only the operating system error. The process
-group is still killed either way.
+interrupting. Either leave `stop` out, so `haring-kill` exits 1 saying this worker has
+no stop program and the manager stops it with its own tools, or write one that exits 1
+with the reason the harness cannot stop. A `stop` that runs is called after the process
+group is signalled, so the group is killed and the `stopped` marker written; a missing
+program exits before either.
 
 No machine-readable event stream. Stop. haring has nothing to read, so `events.py`
 cannot be built and the run cannot report. Tell the user this harness cannot be a
@@ -162,11 +151,12 @@ Use a small scratch project under `/tmp`. Do not test in the user's project.
    one file. `haring-worker` prints the run folder. Watch it with `haring-pulse`, or
    pass `--no-pulse` for one test run.
 4. Read the run with `haring-transcript <run-folder>`. Check that the tool calls, the
-   speech and the thinking (if you claimed it) appear in the order they happened.
+   speech and the thinking the stream carries appear in the order they happened.
 5. Read `report.json` in the run folder. Check that the final message is a report and
    that the counts and the session id are real.
-6. Continue the run once. Check that a resume resumes, and that `fork=yes` starts a new
-   session. Check that the old run still reads.
+6. Continue the run once. Check that the old conversation is there. A forking `start`
+   puts the continued work in a new session id; a `start` that cannot fork resumes the
+   same session. Check that the old run still reads.
 7. If you implemented steering or stopping, test each on a run that is still working.
    A request that returns 0 must have reached the harness.
 

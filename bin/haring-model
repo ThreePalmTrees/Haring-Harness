@@ -8,8 +8,8 @@
 # With no argument, prints the settled worker and, for each kind, the model in the
 # model: line of workers/<worker>/agents/<kind>.md, with that file. The qa kind has a
 # worker of its own, so the output also names the QA worker and its model from that
-# worker's agents/qa.md. The agent file is the only place a model is named: worker.conf,
-# the saved model files and qa-model are not read. A missing file or model line prints
+# worker's agents/qa.md. The agent file is the only place a model is named: the saved
+# model files and qa-model are not read. A missing file or model line prints
 # none with the file path.
 #
 # --worker reads or writes the worker choice. It settles from <project>/.haring/worker,

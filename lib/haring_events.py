@@ -66,36 +66,6 @@ def worker_events(run):
     return WORKERS[path]
 
 
-def worker_conf(run):
-    """The hints a run's worker declares for its harness, from workers/<name>/worker.conf
-    beside the module worker_events loads.
-
-    The file is written by hand when a worker is added, so every line is a hint and never
-    a promise. thinking says the harness can show a thought in the stream, and fork says a
-    continued run may fork its session. Each one is true only for the exact value yes; a
-    missing file, a missing line or any other value is the safe default, False, so a wrong
-    file cannot break a run.
-
-    steer_with and stop_with are the words a command prints when the worker has no steer
-    or stop program: the route that does work instead. A missing line is an empty string,
-    and the command then says only that the run cannot be steered or stopped.
-    """
-    hints = {"thinking": False, "fork": False, "steer_with": "", "stop_with": ""}
-    try:
-        with open(os.path.join(worker_dir(run), "worker.conf")) as f:
-            for line in f:
-                key, sep, value = line.partition("=")
-                key = key.strip()
-                if sep and key in hints:
-                    if key in ("thinking", "fork"):
-                        hints[key] = value.strip() == "yes"
-                    else:
-                        hints[key] = value.strip()
-    except OSError:
-        pass
-    return hints
-
-
 def run_pid_alive(run, pid):
     """Whether a run's worker is still going: its pid answering signal 0, and the
     command that pid carries naming the run's folder.

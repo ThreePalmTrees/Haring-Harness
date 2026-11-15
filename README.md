@@ -138,12 +138,10 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
 | | `haring_run.py` | the numbers a run's report holds, shared by `haring-stats` and `haring-stats-page` |
-| `workers/claude/` | `worker.conf` | the hints and route texts a Claude Code worker declares |
-| | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
+| `workers/claude/` | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
 | | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is that kind's model |
-| `workers/opencode/` | `worker.conf` | the hints a worker declares |
-| | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
+| `workers/opencode/` | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
 | | `start` | run one worker turn and write the event stream |
 | | `steer` | send a message into a live session |
 | | `stop` | interrupt a live session |

@@ -58,11 +58,10 @@ wait for a pass: it is surfaced the moment it lands, from the same one-second lo
 that ends this when the workers end. A pass that has nothing new for a run still says
 so once the run's last step is more than QUIET_AFTER seconds old: one line naming the
 run as ever, saying how long since that step and how long since anything at all was
-written to events.jsonl. When the worker's worker.conf says thinking=yes and the stream
-has carried a thought — a thinking entry or a reasoning-token count — the line also
-says the worker is thinking and how many thinking tokens the run has accumulated; a
-harness that does not show thinking, and a run that has not thought yet, get "no action"
-for that long instead, with no claim about thinking or its tokens. That last age comes
+written to events.jsonl. When the stream has carried a thought — a thinking entry or a
+reasoning-token count — the line also says the worker is thinking and how many thinking
+tokens the run has accumulated; a run that has not thought yet gets "no action" for that
+long instead, with no claim about thinking or its tokens. That last age comes
 from the file's modification time, because the
 stream stamps only finished parts: a timestamp says when a part ended, not that the
 worker is still going, so the file's own age is what the line reads. The elapsed
@@ -743,8 +742,7 @@ try:
                               f"events.jsonl; a thought shows only when it ends, so the "
                               f"worker may still be thinking",
                               flush=True)
-                    elif (haring_events.worker_conf(run).get("thinking")
-                          and reader.has_thought):
+                    elif reader.has_thought:
                         print(f"{prefix}thinking, no step for {elapsed(reader.when)}, "
                               f"{reader.thinking_tokens:,} thinking tokens, "
                               f"events.jsonl written {elapsed(written)} ago",
