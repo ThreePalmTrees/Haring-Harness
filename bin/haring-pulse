@@ -2,7 +2,7 @@
 """haring-pulse — each live worker's stream since the last pass, opening fast and
 then at a pace the manager can retune while it runs.
 
-    haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]
+    haring-pulse [project-dir] [--every SECONDS] [--first SECONDS] [--once]
 
 project-dir defaults to the current directory, resolved to its git top level the same
 way haring-worker resolves a workdir. --every is the gap between passes once something
@@ -96,6 +96,22 @@ and says so once. An adopted subagent still going is reported like any run; one 
 has ended is finished with a copy of its transcript, a report from
 lib/haring_report.py and stats.txt.
 
+When the environment names a Copilot CLI session in COPILOT_AGENT_SESSION_ID, every
+subagent of that session is adopted the same way, beside the Claude Code adoption. The
+session log is $HARING_COPILOT_STATE/<session>/events.jsonl, and HARING_COPILOT_STATE
+defaults to $COPILOT_HOME/session-state or ~/.copilot/session-state. A subagent is made a
+run once its subagent.started and user.message lines are both in the log. The meta names
+worker=copilot-agent, the agent id, its type, model and transcript, and prompt.md holds
+the user.message. events.jsonl is a real file holding only that agent's lines, appended
+in log order as the log grows. An ended Copilot run is finished with a report from
+lib/haring_report.py and stats.txt, with no copy of the transcript.
+
+With --once the pulse is a poll. It exits 0 after the first pass that printed anything,
+and immediately when no worker it would take on is live. It writes each live run's
+reader byte position to <run>/pulse.pos on exit, and a later --once starts its reader
+there, so a restarted poll prints only what is new. Without --once nothing about cadence,
+output or exit changes.
+
 Exits 0 once no worker it took on is live any more, or after about 120 seconds if no
 worker ever appears at all — how long this waits for a first worker is what keeps a
 pulse started against a project where nothing is ever launched from sitting there
@@ -108,7 +124,7 @@ refusal exits 1.
 import sys, os, time, json, glob, subprocess, signal, shutil
 from datetime import datetime
 
-USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS]"
+USAGE = "usage: haring-pulse [project-dir] [--every SECONDS] [--first SECONDS] [--once]"
 HARING = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 FIRST_LIVE_DEADLINE = 120  # a first worker appearing within this keeps the pulse alive
 QUIET_AFTER = 60     # a run whose last step is this old has gone quiet and says so
@@ -137,6 +153,16 @@ PULSE_FILE = "pulse"       # <project>/.haring/pulse, the watching pulse's pid
 CLAUDE_PROJECTS = (os.environ.get("HARING_CLAUDE_PROJECTS")
                    or os.path.expanduser("~/.claude/projects"))
 CLAUDE_SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+# The Copilot CLI session this pulse belongs to. Its subagents are started by the
+# manager's task tool, and haring adopts each one as a run so the same readers see it.
+# HARING_COPILOT_STATE overrides the session-state root for a fixture, and points
+# nowhere near the real one in a test.
+COPILOT_HOME = os.path.expanduser(os.environ.get("COPILOT_HOME") or "~/.copilot")
+COPILOT_STATE = os.environ.get("HARING_COPILOT_STATE") or os.path.join(
+    COPILOT_HOME, "session-state")
+COPILOT_SESSION = os.environ.get("COPILOT_AGENT_SESSION_ID") or ""
+COPILOT_LOG = (os.path.join(COPILOT_STATE, COPILOT_SESSION, "events.jsonl")
+               if COPILOT_SESSION else "")
 KINDS = ("check", "errand", "implement", "qa")
 
 # Turning the event stream into lines lives in lib/, shared with the other commands
@@ -173,6 +199,7 @@ def limited(flag, value, ceiling):
 
 argv = sys.argv[1:]
 project_arg, every, first = None, 300, 180
+once = False
 i = 0
 while i < len(argv):
     a = argv[i]
@@ -186,6 +213,8 @@ while i < len(argv):
         if i >= len(argv):
             die("--first needs a number of seconds", 2)
         first = limited("--first", whole_seconds("--first", argv[i]), FIRST_CEILING)
+    elif a == "--once":
+        once = True
     elif a.startswith("-") and a != "-":
         die(f"unknown option: {a}", 2)
     elif project_arg is None:
@@ -342,6 +371,146 @@ known_agents = set()
 stopping = False   # set by the signal handler, so a signal's SystemExit is not swallowed
 
 
+def agent_log_lines(log, agent_id):
+    """The lines in a Copilot session log that carry this agent id, in log order."""
+    try:
+        with open(log, errors="replace") as f:
+            for line in f:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("agentId") == agent_id:
+                    yield line
+    except OSError:
+        return
+
+
+def agent_line_count(path):
+    """How many lines a mirrored events.jsonl already holds."""
+    try:
+        with open(path, errors="replace") as f:
+            return sum(1 for _ in f)
+    except OSError:
+        return 0
+
+
+def append_agent_lines(log, agent_id, events):
+    """Append this agent's log lines that events.jsonl does not already hold.
+
+    The file only grows, because haring-wait reads it by byte position. Counting its
+    lines is how a pulse that arrives after an earlier one skips what that pulse wrote.
+    """
+    held = agent_line_count(events)
+    lines = list(agent_log_lines(log, agent_id))
+    if len(lines) <= held:
+        return
+    with open(events, "a") as f:
+        for line in lines[held:]:
+            f.write(line if line.endswith("\n") else line + "\n")
+
+
+def mirror_copilot_run(run, meta):
+    """Bring one Copilot run's events.jsonl up to the manager log's current end."""
+    transcript = str(meta.get("transcript") or "").strip().strip("'")
+    agent_id = str(meta.get("agent_id") or "").strip().strip("'")
+    if not transcript or not agent_id or not os.path.isfile(transcript):
+        return
+    try:
+        append_agent_lines(transcript, agent_id, os.path.join(run, "events.jsonl"))
+    except OSError:
+        pass
+
+
+def mirror_copilot_runs():
+    """Mirror every live Copilot run before this look decides what is alive."""
+    if not COPILOT_SESSION:
+        return
+    for meta_path in sorted(glob.glob(os.path.join(project, ".haring", "runs", "*", "meta"))):
+        run = os.path.dirname(meta_path)
+        if run in settled or landed(run):
+            continue
+        try:
+            with open(meta_path) as f:
+                meta = dict(l.strip().split("=", 1) for l in f if "=" in l)
+        except OSError:
+            continue
+        if meta.get("worker") == "copilot-agent":
+            mirror_copilot_run(run, meta)
+
+
+def adopt_copilot_subagents():
+    """Create a run for every Copilot subagent of this session that has none.
+
+    The log is the manager's own, and a subagent becomes a run only once its
+    subagent.started and user.message lines are both there. The run starts at the
+    started event's time, and events.jsonl is a real file holding only that agent's
+    lines, so the pulse can append to it and the run keeps its own evidence.
+    """
+    if not COPILOT_SESSION or not os.path.isfile(COPILOT_LOG):
+        return
+    starts, prompts = {}, {}
+    try:
+        with open(COPILOT_LOG, errors="replace") as f:
+            for line in f:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                agent_id = event.get("agentId")
+                if not agent_id:
+                    continue
+                if event.get("type") == "subagent.started":
+                    starts[agent_id] = event
+                elif event.get("type") == "user.message" and agent_id not in prompts:
+                    prompts[agent_id] = event
+    except OSError:
+        return
+    for agent_id, started in starts.items():
+        if agent_id in known_agents:
+            continue
+        prompt_event = prompts.get(agent_id)
+        if prompt_event is None:
+            continue
+        data = started.get("data") if isinstance(started.get("data"), dict) else {}
+        agent_type = data.get("agentType") or ""
+        kind = agent_kind(agent_type)
+        began = epoch_seconds(started.get("timestamp"))
+        if began is None:
+            continue
+        stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(began))
+        run = os.path.join(project, ".haring", "runs", f"{stamp}-{kind}-{agent_id}")
+        if os.path.exists(run) or glob.glob(os.path.join(
+                project, ".haring", "runs", f"*-{agent_id}")):
+            known_agents.add(agent_id)
+            continue
+        prompt_data = (prompt_event.get("data")
+                       if isinstance(prompt_event.get("data"), dict) else {})
+        prompt = message_text(prompt_data.get("content"))
+        if not prompt:
+            continue
+        try:
+            os.makedirs(run)
+            with open(os.path.join(run, "meta"), "w") as f:
+                f.write(f"kind={kind}\n")
+                f.write(f"workdir='{project}'\n")
+                f.write(f"model={data.get('model') or ''}\n")
+                f.write("worker=copilot-agent\n")
+                f.write(f"agent_id={agent_id}\n")
+                f.write(f"agent_type={agent_type}\n")
+                f.write(f"transcript={COPILOT_LOG}\n")
+                f.write(f"started={began:.3f}\n")
+            with open(os.path.join(run, "prompt.md"), "w") as f:
+                f.write(prompt)
+            append_agent_lines(COPILOT_LOG, agent_id, os.path.join(run, "events.jsonl"))
+        except OSError:
+            shutil.rmtree(run, ignore_errors=True)
+            continue
+        known_agents.add(agent_id)
+
+
 def warn_unloadable(run):
     """Say once that a run's worker events module cannot be loaded, naming both."""
     path = os.path.join(haring_events.worker_dir(run), "events.py")
@@ -406,7 +575,7 @@ def scan_runs():
     return live, ended
 
 
-def adopt_subagents():
+def adopt_claude_subagents():
     """Create a run for every subagent of this session that has none.
 
     A run is created at the moment the transcript's first line was written, so its
@@ -462,28 +631,36 @@ def adopt_subagents():
 def finish_subagents(ended):
     """Finish every ended adopted run that scan_runs handed over and has no report yet.
 
-    The link to a transcript is replaced by a copy, so the run keeps its own evidence
-    after Claude Code has moved on. A known kind is written with its schema and a
-    mismatch keeps the raw text with --final; an agent has no schema, so its report is a
-    success carrying the final text and no structured_output. A run with no answer at
-    all gets one report saying so, so it is not looked at again. stats.txt is what
-    haring-stats printed for the finished run. A run whose transcript is unavailable is
-    set aside with the other ended runs rather than looked at again.
+    A Claude Code run's link to its transcript is replaced by a copy, so the run keeps its
+    own evidence after Claude Code has moved on. A Copilot run already owns its
+    events.jsonl, so its last lines are appended rather than copied. A known kind is
+    written with its schema and a mismatch keeps the raw text with --final; an agent has
+    no schema, so its report is a success carrying the final text and no
+    structured_output. A run with no answer at all gets one report saying so, so it is
+    not looked at again. stats.txt is what haring-stats printed for the finished run. A
+    run whose transcript is unavailable is set aside with the other ended runs rather
+    than looked at again.
     """
     for run, meta, meta_path in ended:
         settled.add(run)
-        if not meta.get("agent_id") or meta.get("worker") != "claude":
+        worker = meta.get("worker")
+        if not meta.get("agent_id") or worker not in ("claude", "copilot-agent"):
             continue
         transcript = str(meta.get("transcript") or "").strip().strip("'")
         events = os.path.join(run, "events.jsonl")
-        if not transcript or not os.path.isfile(transcript):
-            continue
-        try:
-            if os.path.islink(events) or os.path.exists(events):
-                os.remove(events)
-            shutil.copyfile(transcript, events)
-        except OSError:
-            continue
+        if worker == "claude":
+            if not transcript or not os.path.isfile(transcript):
+                continue
+            try:
+                if os.path.islink(events) or os.path.exists(events):
+                    os.remove(events)
+                shutil.copyfile(transcript, events)
+            except OSError:
+                continue
+        else:
+            mirror_copilot_run(run, meta)
+            if not os.path.isfile(events):
+                continue
         kind = meta.get("kind") or "agent"
         script = os.path.join(HARING, "lib", "haring_report.py")
         if kind in KINDS:
@@ -514,6 +691,32 @@ def live_runs(live):
 # before. The first pass on a run reads its stream from where the run began: the start
 # its meta records, or the meta file's own time when it records none.
 readers = {}
+
+
+def new_reader(run, started):
+    """A reader for one run, starting at its saved poll position under --once."""
+    reader = haring_events.RunReader(when_ts=started)
+    if once:
+        try:
+            with open(os.path.join(run, "pulse.pos")) as f:
+                saved = int(f.read().strip())
+        except (OSError, ValueError):
+            saved = 0
+        if saved > 0:
+            reader.pos = saved
+    return reader
+
+
+def save_positions():
+    """Under --once, leave each reader's byte position for the next poll."""
+    if not once:
+        return
+    for run, reader in readers.items():
+        try:
+            with open(os.path.join(run, "pulse.pos"), "w") as f:
+                f.write(f"{reader.pos}\n")
+        except OSError:
+            pass
 
 
 # How far into each live run's ask.jsonl this pulse has read. A question is surfaced
@@ -683,8 +886,10 @@ try:
     # The file may shorten the opening look but never lengthen it.
     reported = False
     while True:
+        adopt_copilot_subagents()
+        mirror_copilot_runs()
         live, ended = scan_runs()
-        adopt_subagents()
+        adopt_claude_subagents()
         finish_subagents(ended)
         runs = live_runs(live)
         if runs:
@@ -697,7 +902,7 @@ try:
                 reader = readers.get(run)
                 started = haring_events.run_started(run, meta)
                 if reader is None:
-                    reader = haring_events.RunReader(when_ts=started)
+                    reader = new_reader(run, started)
                     readers[run] = reader
                 events = os.path.join(run, "events.jsonl")
                 lines = reader.read(events) if os.path.exists(events) else []
@@ -756,6 +961,10 @@ try:
             # caught here rather than held until the next look a whole gap later.
             if surface_asks(runs):
                 reported = True
+        if once and reported:
+            sys.exit(0)
+        if once and not runs:
+            sys.exit(0)
         if ever_live:
             if not runs:
                 sys.exit(0)
@@ -778,13 +987,18 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
+            adopt_copilot_subagents()
+            mirror_copilot_runs()
             live, ended = scan_runs()
-            adopt_subagents()
+            adopt_claude_subagents()
             finish_subagents(ended)
             now_live = live_runs(live)
             if surface_asks(now_live):
                 reported = True
+            if once and reported:
+                sys.exit(0)
             if not now_live:
                 sys.exit(0)
 finally:
+    save_positions()
     take_pulse_down()

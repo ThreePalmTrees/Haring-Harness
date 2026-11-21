@@ -404,6 +404,24 @@ the `"finished"` flag in the sidecar meta file beside the transcript. A transcri
 written for fifteen minutes also reads as ended, so a session that dies mid-subagent does
 not leave a run live for ever; such a run is finished as any other ended run is.
 
+A pulse with `COPILOT_AGENT_SESSION_ID` set does the same for Copilot CLI subagents,
+beside the Claude Code adoption. It reads the manager's log at
+`$HARING_COPILOT_STATE/<session>/events.jsonl`, where `HARING_COPILOT_STATE` defaults to
+`$COPILOT_HOME/session-state` or `~/.copilot/session-state`. Each `subagent.started` with
+a `user.message` becomes `<project>/.haring/runs/<stamp>-<kind>-<agent id>/`, with
+`worker=copilot-agent` and the started event's time. Its `events.jsonl` is a real file
+holding only that agent's lines, appended in log order as the log grows; it is never a
+copy of the whole session log. An ended Copilot run is finished with `report.json` and
+`stats.txt` and no copy step. Its liveness comes from `workers/copilot-agent/events.py`
+`alive()`, which reads the same log for that agent's `subagent.completed` or
+`subagent.failed` line and reads a log not written for fifteen minutes as ended.
+
+A pulse started with `--once` is a poll. It exits 0 after the first pass that printed
+anything, or when no worker it would take on is live. It writes each live run's reader
+byte position to `<run>/pulse.pos` on exit, and a later `--once` starts its reader there,
+so a restarted poll prints only what is new. Without `--once` the pulse keeps its cadence,
+output and exit as before.
+
 ### agents-config
 
 The core calls:
