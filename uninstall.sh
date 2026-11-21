@@ -79,7 +79,16 @@ failed=0
 echo "haring: $HARING"
 echo
 echo "skill:"
-for name in "$HOME"/.claude/skills/*; do remove "$name" "$HARING/skills"; done
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    ''|'#'*) continue ;;
+    '~/'*) dir=$HOME/${line#'~/'} ;;
+    *) dir=$line ;;
+  esac
+  printf '  %s\n' "$dir"
+  for name in "$dir"/*; do remove "$name" "$HARING/skills"; done
+  leftovers "$dir"
+done < "$HARING/skill-dirs"
 
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do
@@ -90,7 +99,6 @@ done
 echo "scripts:"
 for name in "$HOME"/.local/bin/haring-*; do remove "$name"; done
 
-leftovers "$HOME/.claude/skills"
 leftovers "$HOME/.claude/agents"
 leftovers "$HOME/.local/bin"
 leftovers "$HOME/.config/opencode/agents"

@@ -25,11 +25,19 @@ failed=0
 echo "haring: $HARING"
 echo
 echo "skill:"
-mkdir -p "$HOME/.claude/skills"
-for d in "$HARING"/skills/*/; do
-  [ -d "$d" ] || continue
-  link "${d%/}" "$HOME/.claude/skills/$(basename "$d")"
-done
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    ''|'#'*) continue ;;
+    '~/'*) dir=$HOME/${line#'~/'} ;;
+    *) dir=$line ;;
+  esac
+  printf '  %s\n' "$dir"
+  mkdir -p "$dir"
+  for d in "$HARING"/skills/*/; do
+    [ -d "$d" ] || continue
+    link "${d%/}" "$dir/$(basename "$d")"
+  done
+done < "$HARING/skill-dirs"
 
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do
@@ -65,5 +73,5 @@ esac
 echo "Done. Run /haring inside any project."
 echo
 echo "Editing rules, schemas or reference files takes effect on the next worker you"
-echo "start. Editing SKILL.md may need a fresh Claude Code session, because the skill"
-echo "list is read when a session begins."
+echo "start. Editing SKILL.md may need a fresh session of your manager, because the"
+echo "skill list is read when a session begins."
