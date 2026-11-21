@@ -16,9 +16,10 @@ My personal setup is:
 **Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
 
 This is the supported setup: a Claude Code manager with OpenCode workers, or with
-Claude Code subagents as workers (`haring-model --worker claude`). Another worker
-harness can be added with the `haring-add-worker` skill and `WORKERS.md`. Other harnesses
-are not maintained here.
+Claude Code subagents as workers (see [Choose the worker](#choose-the-worker)). Another
+worker harness can be added with the `haring-add-worker` skill and `WORKERS.md`; another
+manager harness with the `haring-add-manager` skill. Other harnesses are not maintained
+here.
 
 ## Why Haring
 
@@ -42,7 +43,7 @@ _(you can exit opencode)_
 ```
 cd haring-harness && ./install.sh
 ```
-> It links the skills into `~/.claude/skills`<br/>
+> It links the skills into every folder listed in `skill-dirs` (by default `~/.claude/skills`)<br/>
 > Haring scripts into `~/.local/bin`<br/>
 > And OpenCode agents into `~/.config/opencode/agents`.
 
@@ -64,6 +65,34 @@ To remove only one worker's agent links, run:
 ```
 
 It removes that worker's agent links and leaves every other link in place.
+
+## Choose the worker
+
+- `haring-model` prints the worker, each kind's model and the QA worker.
+- `haring-model --worker claude` makes Claude Code subagents the workers for every
+  project.
+- `haring-model --worker opencode` goes back to OpenCode.
+- Add `--project` to either to write the choice for the current project only.
+- `haring-model --qa <name>` does the same for the QA worker, which is `claude` by
+  default.
+
+A worker runs one of two ways. One harness is both manager and workers: today Claude
+Code starts its own subagents as workers. Or a manager runs another harness's
+command-line workers: today Claude Code runs OpenCode workers through `haring-worker`.
+
+Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
+OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
+runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+
+A fresh run settles its worker from `<project>/.haring/worker`, then
+`<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
+run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
+OpenCode QA worker runs as a `haring-worker qa` run. `WORKERS.md` section 6 gives the
+full rule.
+
+Another worker harness is added with the `haring-add-worker` skill and `WORKERS.md`.
+Another manager harness is added with the `haring-add-manager` skill.
 
 ## Use Haring
 
@@ -115,6 +144,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | Folder | File | What it does |
 |---|---|---|
 | `WORKERS.md` | | the contract a worker harness must meet, and how a run chooses its worker |
+| `skill-dirs` | | the folders `install.sh` links the skills into, one per line |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
 | | `haring-model` | print each kind's model and its agent file; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
@@ -132,6 +162,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | | `haring-root` | print where haring is installed |
 | `skills/haring/` | `SKILL.md` | everything the manager needs, in one file |
 | `skills/haring-add-worker/` | `SKILL.md` | how to add another worker harness |
+| `skills/haring-add-manager/` | `SKILL.md` | how to add another manager harness |
 | `kinds/` | `rules.md` | the rules every worker gets |
 | | `<kind>/rules.md` | one file per kind of task, added to `rules.md` |
 | | `<kind>/schema.json` | the shape of that kind's report |
@@ -151,20 +182,6 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | | `workers/opencode/agents/errand.md` | the OpenCode agent for errands; it has no shell |
 | | `workers/opencode/agents/implement.md` | the OpenCode agent for implement runs |
 | | `workers/opencode/agents/qa.md` | the read-only OpenCode agent for QA runs |
-
-A fresh run settles its worker from the worker file `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `opencode`. A continue keeps the worker recorded in the run's
-`meta`. `WORKERS.md` section 6 gives the full rule.
-
-Every kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
-OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
-runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
-
-A QA pass runs only when you ask for one. The QA worker settles from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`. By default
-that is the Claude worker, whose `workers/claude/agents/qa.md` names `claude-opus-5-5`
-on its `model:` line. The project's QA worker file overrides haring's own. An OpenCode
-QA worker runs as a `haring-worker qa` run.
 
 Everything is linked, not copied, so editing a file here takes effect at once — except an
 agent in `workers/opencode/agents/<kind>.md`: the OpenCode service does not notice that edit, so run
