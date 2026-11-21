@@ -1,0 +1,80 @@
+#!/bin/sh
+# start — run one worker turn in the foreground through GitHub Copilot CLI.
+#
+#   start --kind <kind> --model <model> [--effort <level>]
+#         [--resume <session> [--fork]] [--session-file <path>] <message-file>
+#
+# The message file is the whole prompt. Copilot has no fork in -p mode, so a continued
+# turn resumes the session it is given and --fork is ignored. A fresh turn names its own
+# UUID before it launches and writes the id to --session-file, so the run folder holds the
+# session before the worker has done anything. The harness's own stream is left alone:
+# standard output carries one JSON object per line, standard error its errors, and the
+# exit code is the harness's.
+#
+# Copilot writes final usage to a file rather than to standard output. After it exits, a
+# non-empty valid file is printed as one extra `haring.usage` line, which is why this
+# script cannot exec the harness.
+set -e
+
+usage() {
+  echo "usage: start --kind <kind> --model <model> [--effort <level>]" >&2
+  echo "       [--resume <session> [--fork]] [--session-file <path>] <message-file>" >&2
+  exit 2
+}
+
+kind=""; model=""; effort=""; resume=""; fork=""; session_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --kind) [ $# -ge 2 ] && [ -n "$2" ] || usage; kind=$2; shift 2 ;;
+    --model) [ $# -ge 2 ] && [ -n "$2" ] || usage; model=$2; shift 2 ;;
+    --effort) [ $# -ge 2 ] && [ -n "$2" ] || usage; effort=$2; shift 2 ;;
+    --resume) [ $# -ge 2 ] && [ -n "$2" ] || usage; resume=$2; shift 2 ;;
+    --fork) fork=1; shift ;;
+    --session-file) [ $# -ge 2 ] && [ -n "$2" ] || usage; session_file=$2; shift 2 ;;
+    -*) echo "start: unknown option: $1" >&2; usage ;;
+    *) break ;;
+  esac
+done
+[ $# -eq 1 ] && [ -n "$kind" ] && [ -n "$model" ] || usage
+message_file=$1
+[ -f "$message_file" ] || { echo "start: no such message file: $message_file" >&2; exit 2; }
+if [ -z "$resume" ] && [ -n "$fork" ]; then usage; fi
+
+# The client plan refuses every named model, so only auto is accepted here.
+case "$model" in
+  auto) ;;
+  *) echo "start: Copilot CLI accepts only model auto on this plan; got: $model" >&2; exit 2 ;;
+esac
+
+message=$(cat "$message_file")
+
+usage_file=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-usage.XXXXXX")
+trap 'rm -f "$usage_file"' 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+set -- -p "$message" --output-format json --agent "haring-$kind" --model "$model" \
+  --allow-all-tools --no-ask-user --sync-session=off --usage-output-file "$usage_file"
+[ -n "$effort" ] && set -- "$@" --reasoning-effort "$effort"
+
+if [ -z "$resume" ]; then
+  session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+  [ -n "$session_file" ] && printf '%s\n' "$session" > "$session_file"
+  set -- "$@" --session-id "$session"
+else
+  # Copilot has no fork in -p mode: resume the same session and ignore --fork.
+  set -- "$@" --resume "$resume"
+fi
+
+set +e
+copilot "$@" </dev/null
+rc=$?
+set -e
+
+if [ -s "$usage_file" ]; then
+  python3 -c 'import json, sys
+d = json.load(open(sys.argv[1]))
+print(json.dumps({"type": "haring.usage", "data": d}, separators=(",", ":")))' "$usage_file" || true
+fi
+exit "$rc"

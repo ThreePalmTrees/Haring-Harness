@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""steer — say that a running Copilot -p session cannot take a message.
+
+    steer <session> <message>
+
+Copilot CLI reports -p sessions as non-steerable and has no command that sends a message
+into one. Exits 1 with that reason, and 2 when called wrongly.
+"""
+import sys
+
+if len(sys.argv) != 3:
+    print("usage: steer <session> <message>", file=sys.stderr)
+    sys.exit(2)
+
+print("Copilot CLI cannot take a message into a running -p session.", file=sys.stderr)
+sys.exit(1)
