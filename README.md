@@ -43,7 +43,7 @@ _(you can exit opencode)_
 ```
 cd haring-harness && ./install.sh
 ```
-> It links the skills into every folder listed in `skill-dirs` (by default `~/.claude/skills`)<br/>
+> It links the skills into `~/.claude/skills`, and install keeps a record that uninstall reads<br/>
 > Haring scripts into `~/.local/bin`<br/>
 > And OpenCode agents into `~/.config/opencode/agents`.
 
@@ -143,7 +143,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 
 | Folder | File | What it does |
 |---|---|---|
-| `skill-dirs` | | the folders `install.sh` links the skills into, one per line |
+| `installed-links` | | the record of links `install.sh` made, which `uninstall.sh` reads |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
 | | `haring-model` | print each kind's model and its agent file; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |

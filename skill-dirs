@@ -1,3 +1,0 @@
-# Folders install.sh links haring's skills into, one per line.
-# Empty lines and lines starting with # are ignored. A leading ~/ means $HOME/.
-~/.claude/skills

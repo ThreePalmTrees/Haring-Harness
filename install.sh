@@ -7,37 +7,40 @@
 set -e
 HARING=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+# Remember every link this run puts in place, so uninstall can remove exactly them.
+record() {  # record <linkname>
+  grep -Fqx "$1" "$HARING/installed-links" 2>/dev/null ||
+    printf '%s\n' "$1" >> "$HARING/installed-links"
+}
+
 link() {  # link <target> <linkname>
   target=$1; name=$2
   if [ -L "$name" ]; then
     old=$(readlink "$name")
-    if [ "$old" = "$target" ]; then printf '  same    %s\n' "$name"; return; fi
-    ln -sfn "$target" "$name"; printf '  moved   %s\n            was %s\n' "$name" "$old"; return
+    if [ "$old" = "$target" ]; then printf '  same    %s\n' "$name"; record "$name"; return; fi
+    ln -sfn "$target" "$name"; printf '  moved   %s\n            was %s\n' "$name" "$old"; record "$name"; return
   fi
   if [ -e "$name" ]; then
     printf '  SKIP    %s exists and is not a link. Move it aside, then run this again.\n' "$name" >&2
     failed=1; return
   fi
-  ln -sfn "$target" "$name"; printf '  new     %s\n' "$name"
+  ln -sfn "$target" "$name"; printf '  new     %s\n' "$name"; record "$name"
 }
 
 failed=0
 echo "haring: $HARING"
 echo
 echo "skill:"
-while IFS= read -r line || [ -n "$line" ]; do
-  case "$line" in
-    ''|'#'*) continue ;;
-    '~/'*) dir=$HOME/${line#'~/'} ;;
-    *) dir=$line ;;
-  esac
+: > "$HARING/installed-links"
+# A fork adds its manager's skills folder to this list.
+for dir in "$HOME/.claude/skills"; do
   printf '  %s\n' "$dir"
   mkdir -p "$dir"
   for d in "$HARING"/skills/*/; do
     [ -d "$d" ] || continue
     link "${d%/}" "$dir/$(basename "$d")"
   done
-done < "$HARING/skill-dirs"
+done
 
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do

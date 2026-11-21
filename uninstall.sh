@@ -4,11 +4,12 @@
 #   ./uninstall.sh
 #   ./uninstall.sh --worker <name>
 #
-# A link is removed only when its target is inside this repository — inside skills/ for
-# the skill folder, which may hold more than one haring skill — so a plain file, and a
-# link that points anywhere else, is left alone. A plain file named haring* in one of the
-# folders install.sh writes to is listed at the end, to delete by hand. Nothing else is
-# touched: no project's .haring/ folder or .gitignore is read or written.
+# A link is removed only when its target is inside this repository, so a plain file, and a
+# link that points anywhere else, is left alone. The plain form reads the record that
+# install.sh wrote, so it removes exactly the links install made. A plain file named
+# haring* in one of the folders install.sh writes to is listed at the end, to delete by
+# hand. Nothing else is touched: no project's .haring/ folder or .gitignore is read or
+# written.
 #
 # --worker runs only that worker's agents-config remove, so one worker's agent links go
 # and every other link stays.
@@ -78,17 +79,22 @@ fi
 failed=0
 echo "haring: $HARING"
 echo
-echo "skill:"
-while IFS= read -r line || [ -n "$line" ]; do
-  case "$line" in
-    ''|'#'*) continue ;;
-    '~/'*) dir=$HOME/${line#'~/'} ;;
-    *) dir=$line ;;
-  esac
-  printf '  %s\n' "$dir"
-  for name in "$dir"/*; do remove "$name" "$HARING/skills"; done
-  leftovers "$dir"
-done < "$HARING/skill-dirs"
+echo "links:"
+record=$HARING/installed-links
+parents=""
+if [ -f "$record" ]; then
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    remove "$name"
+    parent=$(dirname -- "$name")
+    if ! printf '%s\n' "$parents" | grep -Fqx "$parent"; then
+      parents="$parents
+$parent"
+    fi
+  done < "$record"
+else
+  echo "  no installed-links record: run ./install.sh once to record the links already in place."
+fi
 
 echo "worker agents:"
 for w in "$HARING"/workers/*/agents-config; do
@@ -96,12 +102,19 @@ for w in "$HARING"/workers/*/agents-config; do
   "$w" remove || failed=1
 done
 
-echo "scripts:"
-for name in "$HOME"/.local/bin/haring-*; do remove "$name"; done
-
+# Leftovers once in each folder the record named, plus the workers' agent folders.
+old_ifs=$IFS
+IFS='
+'
+for dir in $parents; do
+  [ -n "$dir" ] || continue
+  leftovers "$dir"
+done
+IFS=$old_ifs
 leftovers "$HOME/.claude/agents"
-leftovers "$HOME/.local/bin"
 leftovers "$HOME/.config/opencode/agents"
+
+rm -f "$HARING/installed-links"
 
 echo
 [ "$failed" = 0 ] || { echo "Some worker links could not be removed." >&2; exit 1; }

@@ -28,7 +28,7 @@ Read these files in `$ROOT`:
 - `skills/haring/SKILL.md`, the whole of it. It holds the manager's instructions.
 - `workers/claude/agents/*.md`, `workers/claude/agents-config` and
   `workers/claude/events.py`.
-- `skill-dirs`.
+- `install.sh`, for its skills loop.
 
 ## 2. Know what a manager is
 
@@ -92,10 +92,9 @@ For each item, find the answer, put it where the item says, and take the fallbac
 the harness has nothing there.
 
 **a. Skill folder.** Find where the harness reads personal skills, and whether it reads
-folders that hold a `SKILL.md`. Put the folder in one line of `skill-dirs`, which
-`install.sh` links every folder under `skills/` into and `uninstall.sh` removes them
-from. A leading `~/` means `$HOME/`; empty lines and lines starting with `#` are
-ignored. Fallback: a personal instructions file that can point at
+folders that hold a `SKILL.md`. Write that folder into the skills loop in `install.sh`,
+beside `$HOME/.claude/skills`. Uninstall needs no change, because it reads the record
+`install.sh` writes. Fallback: a personal instructions file that can point at
 `skills/haring/SKILL.md`. With neither, stop: the harness cannot be a manager.
 
 **b. Shell.** The manager must run shell commands and find the `haring-*` commands on

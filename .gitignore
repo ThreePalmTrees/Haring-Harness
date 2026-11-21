@@ -3,4 +3,5 @@
 contrails
 /worker
 /qa-worker
+/installed-links
 __pycache__/
