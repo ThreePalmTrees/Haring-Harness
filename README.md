@@ -12,11 +12,11 @@ A wrapper for using sub-agents, so you don't repeat the same setup every time.
 The idea is: you have 2 different subscriptions, one is the manager, and one is the worker.
 
 My personal setup is:
-**Manager:** `Opus` via Claude Code.<br/>
-**Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
+**Manager:** GitHub Copilot CLI.<br/>
+**Worker:** `copilot` on `auto`.
 
-This is the supported setup: a Claude Code manager with OpenCode workers, or with
-Claude Code subagents as workers (see [Choose the worker](#choose-the-worker)). Another
+This branch's supported setup is a Copilot CLI manager with `copilot` workers by
+default, or OpenCode workers (see [Choose the worker](#choose-the-worker)). Another
 worker harness can be added with the `haring-add-worker` skill and `workers/README.md`; another
 manager harness with the `haring-add-manager` skill. Other harnesses are not maintained
 here.
@@ -53,9 +53,10 @@ _(you can exit opencode)_
 ```
 cd haring-harness && ./install.sh
 ```
-> It links the skills into `~/.claude/skills`, and install keeps a record that uninstall reads<br/>
+> It links the skills into `~/.claude/skills` and `~/.copilot/skills`, and install keeps a record that uninstall reads<br/>
 > Haring scripts into `~/.local/bin`<br/>
-> And OpenCode agents into `~/.config/opencode/agents`.
+> OpenCode agents into `~/.config/opencode/agents`<br/>
+> `workers/copilot/agents-config` links Copilot agents into `~/.copilot/agents/haring-<kind>.agent.md`.
 
 To remove haring, run:
 
@@ -79,20 +80,24 @@ It removes that worker's agent links and leaves every other link in place.
 ## Choose the worker
 
 - `haring-model` prints the worker, each kind's model and the QA worker.
-- `haring-model --worker claude` makes Claude Code subagents the workers for every
+- `haring-model --worker copilot` makes the Copilot CLI worker the worker for every
   project.
-- `haring-model --worker opencode` goes back to OpenCode.
-- Add `--project` to either to write the choice for the current project only.
-- `haring-model --qa <name>` does the same for the QA worker, which is `claude` by
+- `haring-model --worker opencode` chooses OpenCode instead.
+- `haring-model --worker claude` chooses the Claude Code subagent worker, which only a
+  Claude Code manager can start.
+- Add `--project` to any of them to write the choice for the current project only.
+- `haring-model --qa <name>` does the same for the QA worker, which is `copilot` by
   default.
 
-A worker runs one of two ways. One harness is both manager and workers: today Claude
-Code starts its own subagents as workers. Or a manager runs another harness's
-command-line workers: today Claude Code runs OpenCode workers through `haring-worker`.
+A worker runs one of two ways. One harness is both manager and workers: Claude Code starts
+its own subagents as workers, and only a Claude Code manager can use that route. Or a
+manager runs another harness's command-line workers: this branch's Copilot CLI manager
+runs `copilot` workers by default, or OpenCode workers, through `haring-worker`.
 
 Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
-OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
-runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+copilot worker runs every kind on `auto`; the OpenCode worker runs every kind on
+`opencode-go/deepseek-v4.1-flash`; the Claude worker runs check, errand and implement on
+`claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
 
 A fresh run settles its worker from `<project>/.haring/worker`, then
 `<haring-root>/worker`, then `copilot`; a continue keeps the worker recorded in the
@@ -182,6 +187,12 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `workers/claude/` | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
 | | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is that kind's model |
+| `workers/copilot/` | `start` | run one worker turn and write the event stream |
+| | `stop` | report whether the Copilot session's process is still alive |
+| | `steer` | say that a running Copilot `-p` session cannot take a message |
+| | `events.py` | reads a Copilot CLI run's JSON stream and turns it into haring's entries and summary |
+| | `agents-config` | install, remove and check the Copilot agent links |
+| | `agents/<kind>.md` | one Copilot agent per kind; its `model:` line is that kind's model |
 | `workers/opencode/` | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
 | | `start` | run one worker turn and write the event stream |
 | | `steer` | send a message into a live session |
@@ -197,7 +208,7 @@ Everything is linked, not copied, so editing a file here takes effect at once â€
 agent in `workers/opencode/agents/<kind>.md`: the OpenCode service does not notice that edit, so run
 `opencode reload` (or `./install.sh`) after one, or its old rules stay in force. Editing a
 rule or a schema applies to the next worker you start. Editing `SKILL.md` needs a fresh
-Claude Code session. Run `./install.sh` again only when you add a script to `bin/` or move
+manager session. Run `./install.sh` again only when you add a script to `bin/` or move
 this directory.
 
 <p align="center">
