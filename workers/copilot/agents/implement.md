@@ -1,6 +1,6 @@
 ---
-name: haring-implement
-description: haring implement worker — started by haring-worker, not for direct use
+name: haring-cli-implement
+description: haring-cli implement worker — started by haring-worker, not for direct use
 model: auto
 tools: ["read", "search", "shell", "edit"]
 strict-tools-list: true

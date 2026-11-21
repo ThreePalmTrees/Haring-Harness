@@ -7,7 +7,8 @@
 #
 # The agent files live in agents/<kind>.md beside this script. Copilot finds a personal
 # agent by the file it is linked as, so each one is linked into ~/.copilot/agents as
-# haring-<kind>.agent.md. The link rules and messages are the ones install.sh uses for
+# haring-cli-<kind>.agent.md. The plain haring-<kind> names belong to the subagent worker,
+# workers/copilot-agent. The link rules and messages are the ones install.sh uses for
 # every link: same, moved, new, and SKIP when a plain file is in the way.
 #
 # remove deletes only the links that point into this directory's agents/, so a plain file
@@ -44,7 +45,7 @@ do_install() {
   for f in "$HERE"/agents/*.md; do
     [ -f "$f" ] || continue
     kind=$(basename "$f" .md)
-    link "$f" "$AGENTS/haring-$kind.agent.md"
+    link "$f" "$AGENTS/haring-cli-$kind.agent.md"
   done
   if ! command -v copilot >/dev/null 2>&1; then
     echo "warning: copilot is not on your PATH. Workers run in GitHub Copilot CLI;" >&2
@@ -66,8 +67,8 @@ do_check() {  # do_check <kind>
   kind=$1
   command -v copilot >/dev/null 2>&1 || {
     echo "haring-worker: copilot is not on PATH. Install GitHub Copilot CLI, then run ./install.sh again." >&2; exit 1; }
-  [ -e "$AGENTS/haring-$kind.agent.md" ] || {
-    echo "haring-worker: the haring-$kind agent is not installed in ~/.copilot/agents." >&2
+  [ -e "$AGENTS/haring-cli-$kind.agent.md" ] || {
+    echo "haring-worker: the haring-cli-$kind agent is not installed in ~/.copilot/agents." >&2
     echo "  Run ./install.sh in $HARING, which links it there." >&2; exit 1; }
 }
 

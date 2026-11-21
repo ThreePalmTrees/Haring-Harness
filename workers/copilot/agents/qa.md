@@ -1,6 +1,6 @@
 ---
-name: haring-qa
-description: haring qa worker — started by haring-worker, not for direct use
+name: haring-cli-qa
+description: haring-cli qa worker — started by haring-worker, not for direct use
 model: auto
 tools: ["read", "search", "shell"]
 strict-tools-list: true

@@ -1,6 +1,6 @@
 ---
-name: haring-check
-description: haring check worker — started by haring-worker, not for direct use
+name: haring-cli-check
+description: haring-cli check worker — started by haring-worker, not for direct use
 model: auto
 tools: ["read", "search", "shell"]
 strict-tools-list: true

@@ -48,7 +48,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-set -- -p "$message" --output-format json --agent "haring-$kind" --model "$model" \
+set -- -p "$message" --output-format json --agent "haring-cli-$kind" --model "$model" \
   --allow-all-tools --no-ask-user --sync-session=off --usage-output-file "$usage_file"
 [ -n "$effort" ] && set -- "$@" --reasoning-effort "$effort"
 

@@ -1,0 +1,106 @@
+#!/bin/sh
+# agents-config — install, remove or check this worker's Copilot CLI subagent files.
+#
+#   agents-config install
+#   agents-config remove
+#   agents-config check <kind>
+#
+# The source agent files live in agents/<kind>.md beside this script. Copilot runs a
+# personal subagent from ~/.copilot/agents/haring-<kind>.agent.md. install writes a
+# generated copy, not a link, because the copy must have @HARING@ replaced by this
+# repository's absolute path and its `model: auto` line removed so the subagent inherits
+# the manager's model; a link would keep the placeholder and the auto model. The copy
+# also carries a marker naming its source file, and remove deletes only regular files
+# whose marker points into this directory's agents/.
+set -e
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HARING=$(CDPATH= cd -- "$HERE/../.." && pwd)
+AGENTS=$HOME/.copilot/agents
+
+tmp=""
+trap '[ -n "$tmp" ] && rm -f "$tmp"' 0
+
+usage() {
+  echo "usage: agents-config install|remove|check <kind>" >&2
+  exit 2
+}
+
+marker_source() {  # marker_source <file>
+  sed -n 's|^<!-- haring source: \(.*\) -->$|\1|p' "$1" | tail -n 1
+}
+
+render() {  # render <source> <destination>
+  r_src=$1; r_dest=$2
+  {
+    sed -e "s|@HARING@|$HARING|g" -e '/^model: auto$/d' "$r_src"
+    printf '\n<!-- haring source: %s -->\n' "$r_src"
+  } > "$r_dest"
+}
+
+do_install() {
+  mkdir -p "$AGENTS"
+  failed=0
+  for f in "$HERE"/agents/*.md; do
+    [ -f "$f" ] || continue
+    kind=$(basename "$f" .md)
+    dest=$AGENTS/haring-$kind.agent.md
+    if [ -L "$dest" ]; then rm -f "$dest"; fi
+    if [ -e "$dest" ] && { [ ! -f "$dest" ] || [ "$(marker_source "$dest")" != "$f" ]; }; then
+      printf '  SKIP    %s exists and was not made by this worker. Move it aside, then run this again.\n' "$dest" >&2
+      failed=1; continue
+    fi
+    tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-agent.XXXXXX")
+    render "$f" "$tmp"
+    if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
+      printf '  same    %s\n' "$dest"
+    else
+      existed=0
+      [ -e "$dest" ] && existed=1
+      cp "$tmp" "$dest"
+      if [ "$existed" = 1 ]; then printf '  updated %s\n' "$dest"; else printf '  new     %s\n' "$dest"; fi
+    fi
+    rm -f "$tmp"; tmp=""
+  done
+  if ! command -v copilot >/dev/null 2>&1; then
+    echo "warning: copilot is not on your PATH. The manager starts these agents from" >&2
+    echo "  GitHub Copilot CLI; install it, then sign in with: copilot login" >&2
+  fi
+  [ "$failed" = 0 ] || exit 1
+}
+
+do_remove() {
+  for name in "$AGENTS"/haring-*.agent.md; do
+    [ -f "$name" ] || continue
+    [ -L "$name" ] && continue
+    case "$(marker_source "$name")" in
+      "$HERE"/agents/*) rm -f "$name"; printf '  removed %s\n' "$name" ;;
+    esac
+  done
+}
+
+do_check() {  # do_check <kind>
+  kind=$1
+  command -v copilot >/dev/null 2>&1 || {
+    echo "haring-worker: copilot is not on PATH. Install GitHub Copilot CLI, then run ./install.sh again." >&2; exit 1; }
+  src=$HERE/agents/$kind.md
+  [ -f "$src" ] || {
+    echo "haring-worker: there is no Copilot subagent source for $kind at $src." >&2; exit 1; }
+  dest=$AGENTS/haring-$kind.agent.md
+  tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-agent.XXXXXX")
+  render "$src" "$tmp"
+  if [ -L "$dest" ] || [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
+    echo "haring-worker: the haring-$kind Copilot subagent is not installed or is out of date in ~/.copilot/agents." >&2
+    echo "  Run $HERE/agents-config install." >&2
+    exit 1
+  fi
+  rm -f "$tmp"; tmp=""
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+  install) [ $# -eq 1 ] || usage; do_install ;;
+  remove)  [ $# -eq 1 ] || usage; do_remove ;;
+  check)   [ $# -eq 2 ] && [ -n "$2" ] || usage; do_check "$2" ;;
+  *) usage ;;
+esac

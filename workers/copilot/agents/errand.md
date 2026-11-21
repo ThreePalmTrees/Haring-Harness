@@ -1,6 +1,6 @@
 ---
-name: haring-errand
-description: haring errand worker — started by haring-worker, not for direct use
+name: haring-cli-errand
+description: haring-cli errand worker — started by haring-worker, not for direct use
 model: auto
 tools: ["read", "search"]
 strict-tools-list: true
