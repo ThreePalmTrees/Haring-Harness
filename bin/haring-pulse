@@ -99,12 +99,14 @@ lib/haring_report.py and stats.txt.
 When the environment names a Copilot CLI session in COPILOT_AGENT_SESSION_ID, every
 subagent of that session is adopted the same way, beside the Claude Code adoption. The
 session log is $HARING_COPILOT_STATE/<session>/events.jsonl, and HARING_COPILOT_STATE
-defaults to $COPILOT_HOME/session-state or ~/.copilot/session-state. A subagent is made a
-run once its subagent.started and user.message lines are both in the log. The meta names
-worker=copilot-agent, the agent id, its type, model and transcript, and prompt.md holds
-the user.message. events.jsonl is a real file holding only that agent's lines, appended
-in log order as the log grows. An ended Copilot run is finished with a report from
-lib/haring_report.py and stats.txt, with no copy of the transcript.
+defaults to $COPILOT_HOME/session-state or ~/.copilot/session-state. The log is read by
+byte offset, so each one-second look reads only the complete lines added since the one
+before; the pulse keeps each agent's subagent.started and first user.message, and its
+lines wait until its run exists. A subagent is made a run once both lines are in the log.
+The meta names worker=copilot-agent, the agent id, its type, model and transcript, and
+prompt.md holds the user.message. events.jsonl is a real file holding only that agent's
+lines, appended in log order as the log grows. An ended Copilot run is finished with a
+report from lib/haring_report.py and stats.txt, with no copy of the transcript.
 
 With --once the pulse is a poll. It exits 0 after the first pass that printed anything,
 and as a plain pulse does when no worker it would take on is live. It writes each live run's
@@ -371,19 +373,68 @@ known_agents = set()
 stopping = False   # set by the signal handler, so a signal's SystemExit is not swallowed
 
 
-def agent_log_lines(log, agent_id):
-    """The lines in a Copilot session log that carry this agent id, in log order."""
-    try:
-        with open(log, errors="replace") as f:
-            for line in f:
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(event, dict) and event.get("agentId") == agent_id:
-                    yield line
-    except OSError:
-        return
+class CopilotLog:
+    """What this pulse has learned from the manager's Copilot session log.
+
+    The log grows for the whole session, so it is read by byte offset: each look reads
+    only the complete lines added since the one before, and a line still being written
+    is left for the next look. Adoption needs each agent's subagent.started and first
+    user.message; mirroring needs its lines, which wait here until its run exists.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.pos = 0
+        self.starts = {}    # agent id -> its subagent.started event
+        self.prompts = {}   # agent id -> its first user.message event
+        self.pending = {}   # agent id -> complete log lines not yet in the agent's run
+        self.written = {}   # run -> log lines its events.jsonl is known to hold
+
+    def look(self):
+        """Keep the complete lines added since the last look."""
+        if not self.path:
+            return
+        try:
+            size = os.path.getsize(self.path)
+            with open(self.path, "rb") as f:
+                if size < self.pos:
+                    # The log is shorter than the offset remembered: a new log has taken
+                    # its place, so read it from the beginning again.
+                    self.pos = 0
+                    self.starts.clear()
+                    self.prompts.clear()
+                    self.pending.clear()
+                    self.written.clear()
+                f.seek(self.pos)
+                data = f.read()
+        except OSError:
+            return
+        end = data.rfind(b"\n")
+        if end < 0:
+            return   # no complete line yet; the next look reads the whole of it
+        self.pos += end + 1
+        for line in data[:end + 1].split(b"\n")[:-1]:
+            self.learn(line + b"\n")
+
+    def learn(self, line):
+        """Keep what one complete log line says, if it names a subagent."""
+        try:
+            event = json.loads(line.decode(errors="replace"))
+        except ValueError:
+            return
+        if not isinstance(event, dict):
+            return
+        agent_id = event.get("agentId")
+        if not agent_id:
+            return
+        if event.get("type") == "subagent.started":
+            self.starts[agent_id] = event
+        elif event.get("type") == "user.message" and agent_id not in self.prompts:
+            self.prompts[agent_id] = event
+        self.pending.setdefault(agent_id, []).append(line)
+
+
+copilot_log = CopilotLog(COPILOT_LOG)
 
 
 def agent_line_count(path):
@@ -395,31 +446,32 @@ def agent_line_count(path):
         return 0
 
 
-def append_agent_lines(log, agent_id, events):
-    """Append this agent's log lines that events.jsonl does not already hold.
+def mirror_copilot_run(run, meta):
+    """Append this agent's log lines that the run's events.jsonl does not hold yet.
 
     The file only grows, because haring-wait reads it by byte position. Counting its
-    lines is how a pulse that arrives after an earlier one skips what that pulse wrote.
+    lines on the first look at a run is how a pulse that arrives after an earlier one
+    skips what that pulse wrote.
     """
-    held = agent_line_count(events)
-    lines = list(agent_log_lines(log, agent_id))
-    if len(lines) <= held:
-        return
-    with open(events, "a") as f:
-        for line in lines[held:]:
-            f.write(line if line.endswith("\n") else line + "\n")
-
-
-def mirror_copilot_run(run, meta):
-    """Bring one Copilot run's events.jsonl up to the manager log's current end."""
-    transcript = str(meta.get("transcript") or "").strip().strip("'")
     agent_id = str(meta.get("agent_id") or "").strip().strip("'")
-    if not transcript or not agent_id or not os.path.isfile(transcript):
+    if not agent_id:
+        return
+    events = os.path.join(run, "events.jsonl")
+    lines = copilot_log.pending.get(agent_id) or []
+    if run not in copilot_log.written:
+        held = agent_line_count(events)
+        copilot_log.written[run] = held
+        lines = lines[min(held, len(lines)):]
+    if not lines:
         return
     try:
-        append_agent_lines(transcript, agent_id, os.path.join(run, "events.jsonl"))
+        with open(events, "ab") as f:
+            for line in lines:
+                f.write(line if line.endswith(b"\n") else line + b"\n")
     except OSError:
-        pass
+        return
+    copilot_log.written[run] += len(lines)
+    copilot_log.pending[agent_id] = []
 
 
 def mirror_copilot_runs():
@@ -445,33 +497,15 @@ def adopt_copilot_subagents():
     The log is the manager's own, and a subagent becomes a run only once its
     subagent.started and user.message lines are both there. The run starts at the
     started event's time, and events.jsonl is a real file holding only that agent's
-    lines, so the pulse can append to it and the run keeps its own evidence.
+    lines, so the pulse can append to it and the run keeps its own evidence. What the
+    log says is already kept by copilot_log, so this needs no read of its own.
     """
-    if not COPILOT_SESSION or not os.path.isfile(COPILOT_LOG):
+    if not COPILOT_SESSION:
         return
-    starts, prompts = {}, {}
-    try:
-        with open(COPILOT_LOG, errors="replace") as f:
-            for line in f:
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    continue
-                if not isinstance(event, dict):
-                    continue
-                agent_id = event.get("agentId")
-                if not agent_id:
-                    continue
-                if event.get("type") == "subagent.started":
-                    starts[agent_id] = event
-                elif event.get("type") == "user.message" and agent_id not in prompts:
-                    prompts[agent_id] = event
-    except OSError:
-        return
-    for agent_id, started in starts.items():
+    for agent_id, started in copilot_log.starts.items():
         if agent_id in known_agents:
             continue
-        prompt_event = prompts.get(agent_id)
+        prompt_event = copilot_log.prompts.get(agent_id)
         if prompt_event is None:
             continue
         data = started.get("data") if isinstance(started.get("data"), dict) else {}
@@ -504,7 +538,6 @@ def adopt_copilot_subagents():
                 f.write(f"started={began:.3f}\n")
             with open(os.path.join(run, "prompt.md"), "w") as f:
                 f.write(prompt)
-            append_agent_lines(COPILOT_LOG, agent_id, os.path.join(run, "events.jsonl"))
         except OSError:
             shutil.rmtree(run, ignore_errors=True)
             continue
@@ -641,6 +674,7 @@ def finish_subagents(ended):
     run whose transcript is unavailable is set aside with the other ended runs rather
     than looked at again.
     """
+    copilot_log.look()   # a line added since the pass's look still belongs in the run
     for run, meta, meta_path in ended:
         settled.add(run)
         worker = meta.get("worker")
@@ -886,6 +920,7 @@ try:
     # The file may shorten the opening look but never lengthen it.
     reported = False
     while True:
+        copilot_log.look()
         adopt_copilot_subagents()
         mirror_copilot_runs()
         live, ended = scan_runs()
@@ -985,6 +1020,7 @@ try:
         deadline = time.time() + gap
         while time.time() < deadline:
             time.sleep(1)
+            copilot_log.look()
             adopt_copilot_subagents()
             mirror_copilot_runs()
             live, ended = scan_runs()
