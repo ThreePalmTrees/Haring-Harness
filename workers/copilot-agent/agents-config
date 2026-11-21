@@ -7,19 +7,21 @@
 #
 # The source agent files live in agents/<kind>.md beside this script. Copilot runs a
 # personal subagent from ~/.copilot/agents/haring-<kind>.agent.md. install writes a
-# generated copy, not a link, because the copy must have @HARING@ replaced by this
-# repository's absolute path and its `model: auto` line removed so the subagent inherits
-# the manager's model; a link would keep the placeholder and the auto model. The copy
-# also carries a marker naming its source file, and remove deletes only regular files
-# whose marker points into this directory's agents/.
+# generated copy, not a link, because the copy must inline bin/haring-prompt <kind> and
+# the kind's schema in place of @RULES@, and must have its `model: auto` line removed so
+# the subagent inherits the manager's model; a link would keep the placeholders and the
+# auto model, and a Copilot subagent cannot read files outside the project. The copy goes
+# stale whenever kinds/rules.md or kinds/<kind>/rules.md changes, so run ./install.sh
+# after editing kinds/. It also carries a marker naming its source file, and remove
+# deletes only regular files whose marker points into this directory's agents/.
 set -e
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HARING=$(CDPATH= cd -- "$HERE/../.." && pwd)
 AGENTS=$HOME/.copilot/agents
 
-tmp=""
-trap '[ -n "$tmp" ] && rm -f "$tmp"' 0
+tmp=""; prompt_tmp=""
+trap '[ -n "$tmp" ] && rm -f "$tmp"; [ -n "$prompt_tmp" ] && rm -f "$prompt_tmp"' 0
 
 usage() {
   echo "usage: agents-config install|remove|check <kind>" >&2
@@ -32,10 +34,27 @@ marker_source() {  # marker_source <file>
 
 render() {  # render <source> <destination>
   r_src=$1; r_dest=$2
-  {
-    sed -e "s|@HARING@|$HARING|g" -e '/^model: auto$/d' "$r_src"
-    printf '\n<!-- haring source: %s -->\n' "$r_src"
-  } > "$r_dest"
+  r_kind=$(basename "$r_src" .md)
+  r_prompt=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-prompt.XXXXXX")
+  prompt_tmp=$r_prompt
+  "$HARING/bin/haring-prompt" "$r_kind" > "$r_prompt"
+  awk -v haring="$HARING" -v prompt="$r_prompt" \
+      -v schema="$HARING/kinds/$r_kind/schema.json" '
+    $0 == "model: auto" { next }
+    $0 == "@RULES@" {
+      while ((getline line < prompt) > 0) print line
+      close(prompt)
+      print ""
+      print "```json"
+      while ((getline line < schema) > 0) print line
+      close(schema)
+      print "```"
+      next
+    }
+    { gsub("@HARING@", haring); print }
+  ' "$r_src" > "$r_dest"
+  rm -f "$r_prompt"; prompt_tmp=""
+  printf '\n<!-- haring source: %s -->\n' "$r_src" >> "$r_dest"
 }
 
 do_install() {

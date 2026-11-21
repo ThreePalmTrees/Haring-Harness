@@ -75,5 +75,6 @@ esac
 echo "Done. Run /haring inside any project."
 echo
 echo "Editing rules, schemas or reference files takes effect on the next worker you"
-echo "start. Editing SKILL.md may need a fresh session of your manager, because the"
+echo "start, except the Copilot subagent copies: run ./install.sh after editing kinds/."
+echo "Editing SKILL.md may need a fresh session of your manager, because the"
 echo "skill list is read when a session begins."
