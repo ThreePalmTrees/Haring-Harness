@@ -3,3 +3,4 @@
 contrails
 /worker
 /qa-worker
+__pycache__/
