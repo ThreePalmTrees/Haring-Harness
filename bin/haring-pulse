@@ -107,7 +107,7 @@ in log order as the log grows. An ended Copilot run is finished with a report fr
 lib/haring_report.py and stats.txt, with no copy of the transcript.
 
 With --once the pulse is a poll. It exits 0 after the first pass that printed anything,
-and immediately when no worker it would take on is live. It writes each live run's
+and as a plain pulse does when no worker it would take on is live. It writes each live run's
 reader byte position to <run>/pulse.pos on exit, and a later --once starts its reader
 there, so a restarted poll prints only what is new. Without --once nothing about cadence,
 output or exit changes.
@@ -962,8 +962,6 @@ try:
             if surface_asks(runs):
                 reported = True
         if once and reported:
-            sys.exit(0)
-        if once and not runs:
             sys.exit(0)
         if ever_live:
             if not runs:

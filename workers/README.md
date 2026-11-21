@@ -417,7 +417,8 @@ copy of the whole session log. An ended Copilot run is finished with `report.jso
 `subagent.failed` line and reads a log not written for fifteen minutes as ended.
 
 A pulse started with `--once` is a poll. It exits 0 after the first pass that printed
-anything, or when no worker it would take on is live. It writes each live run's reader
+anything, and otherwise exits as a plain pulse does: when the workers it took on have
+ended, or about two minutes after starting if none appeared. It writes each live run's reader
 byte position to `<run>/pulse.pos` on exit, and a later `--once` starts its reader there,
 so a restarted poll prints only what is new. Without `--once` the pulse keeps its cadence,
 output and exit as before.
