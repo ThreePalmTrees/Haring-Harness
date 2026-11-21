@@ -25,24 +25,25 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-By default a worker is `copilot`, a command-line worker started with `haring-worker`,
-like OpenCode. The default QA worker is also `copilot`. Every kind runs on `auto`, from
-the `model:` lines in `workers/copilot/agents/<kind>.md`; the client's plan accepts no
-named model. The OpenCode worker stays as the other choice, also started with
-`haring-worker`. The `claude` worker and the `claude` QA worker are Claude Code
-subagents; only a Claude Code manager can start them, so a Copilot manager does not use
-them. Copilot custom subagents, its `task` tool, are not a haring worker route in this
-fork.
+By default a worker is `copilot-agent`, a Copilot CLI subagent you start with your own
+`task` tool. The default QA worker is also `copilot-agent`. The command-line `copilot`
+worker and the OpenCode worker stay as other choices, started with `haring-worker`. The
+`claude` worker and the `claude` QA worker are Claude Code subagents; only a Claude Code
+manager can start them, so a Copilot manager does not use them.
 
 Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`, one
-place for every worker, every kind and every project. The OpenCode worker runs every
-kind on `opencode-go/deepseek-v4.1-flash`; the copilot worker runs every kind on `auto`.
-The choice of model is the client's. `haring-meta` prints the models the settled worker
-and the QA worker run on, so you have them before you ask. You never choose a model on
-your own: `--model` on `haring-worker` is a one-run override, only for when the client
-asks for a different model on that run. `haring-model` with no argument prints every
-kind's model and its agent file; `--worker` reads or writes the worker, and `--qa` reads
-or writes the QA worker.
+place for every worker, every kind and every project. The OpenCode worker runs every kind
+on `opencode-go/deepseek-v4.1-flash`; the command-line copilot worker runs every kind on
+`auto`. The copilot-agent source files say `model: auto`, and `agents-config install`
+leaves that line out of the installed copy, so the subagent takes your model; Copilot
+turns an agent-file `auto` into a named model, which an auto-only plan refuses. A named
+model line is kept, for a plan that allows it. The choice of model is the client's.
+`haring-meta` prints the models the settled worker and the QA worker run on, so you have
+them before you ask. You never choose a model on your own: `--model` on `haring-worker` is
+a one-run override, only for when the client asks for a different model on that run; do
+not pass a model when you start a subagent with `task`. `haring-model` with no argument
+prints every kind's model and its agent file; `--worker` reads or writes the worker, and
+`--qa` reads or writes the QA worker.
 
 ## How a job runs
 
@@ -402,7 +403,9 @@ true as well: a continued worker read 180 fresh input tokens where a new one rea
 
 The kind can change. A worker that checked can be continued as one that implements, and it
 keeps what it found, including the parts it did not think to report. Do that when the work
-follows directly from what it just looked at.
+follows directly from what it just looked at. A copilot-agent subagent cannot be continued
+after it ends (`resumable: false`); the next task is a new subagent whose prompt carries
+what the old one found. While it is still running, `write_agent` is the continuation.
 
 Start fresh when the subject has genuinely changed, when the worker has gone wrong and
 you want it to forget, or when its context has grown so large that it is losing detail.
@@ -434,8 +437,8 @@ Pick the kind first. It sets the tools and the shape of the report.
 - **implement** — do the work, on a branch.
 - **qa** — break what the diff changed, after the manager is satisfied; report only
   what is wrong. Only when the client asks for it, and it runs on the QA worker
-  `haring-model --qa` names — by default `copilot`, started as `haring-worker qa` — see
-  "Run the QA".
+  `haring-model --qa` names — by default `copilot-agent`, started as a Copilot subagent
+  with `agent_type: "haring-qa"` — see "Run the QA".
 
 ### Pick the kind by whether the question needs a shell
 
@@ -550,13 +553,17 @@ instead of starting one.
 
 Read the QA worker with `haring-model --qa`, or with `haring-meta`, when the client asks,
 never earlier. A QA pass always goes to the worker those commands name:
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot`. A QA pass
-is `haring-worker qa <workdir> <prompt-file>` on that worker, followed like any run. By
-default the worker is `copilot`; `opencode` is the other choice. The `claude` QA worker
-is a Claude Code subagent that only a Claude Code manager can start.
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot-agent`. By
+default it is the same route as "Run a Copilot subagent" with `agent_type: "haring-qa"`:
+start the `--once` poll, start the background `task`, find the run, `haring-wait` it, and
+read `haring-report`. If the QA worker is `opencode`, pass the task to
+`haring-worker qa <workdir> <prompt-file>` and follow it like any run. The `claude` QA
+worker is a Claude Code subagent that only a Claude Code manager can start.
 
 A model the client names in the request ("QA it with sonnet") beats the setting for
-that one pass.
+that one pass. For a subagent, write that model into the QA agent file's `model:` line
+and run `./install.sh`; `task` itself takes no model. For a command-line worker, pass it
+with `--model`.
 
 Findings come back through you. Each is checked at the place it names, and the agreed
 ones become worker task or tasks, whose fixes you verify were carried out faithfully.
@@ -567,15 +574,46 @@ A QA run that ends with no report is one brief line to the client: the QA tried 
 <exact model name> and didn't work — the reason if the run's stderr names one, and if
 no reason is known, say that too.
 
-### Run a Claude Code agent
+### Run a Copilot subagent
 
-The `claude` worker and the `claude` QA worker are Claude Code subagents. Only a Claude
-Code manager can start them from its own session, so a Copilot manager does not use them.
-Use `haring-model --worker` and `haring-model --qa` to choose `copilot` or `opencode`.
+1. Start `haring-pulse --once` as an async `bash` command described as "haring pulse". It
+   waits up to two minutes for a first worker. `haring-worker` refuses a launch while no
+   pulse is watching the project, so start the poll before the worker and restart it
+   promptly.
+2. Start the worker with the `task` tool: `agent_type: "haring-<kind>"`,
+   `mode: "background"`, and the prompt is the task alone. The agent file already carries
+   every rule and the report schema. Do not pass a model: the agent file's `model:` line
+   is the model. When that line is `auto`, the installer leaves it out and the subagent
+   takes your model, because Copilot turns an agent-file `auto` into a named model, which
+   an auto-only plan refuses. A named model line is kept, for a plan that allows it.
+   `task` returns the agent id.
+3. The pulse adopts the subagent as the run `<stamp>-<kind>-<agent id>` under
+   `.haring/runs`. Find it with `ls .haring/runs | grep <agent id>`, then start
+   `haring-wait <run>` as an async `bash` command with the bare run name.
+4. Each time the `--once` pulse exits, Copilot wakes you. Read its output with
+   `read_bash`, tell the client one sentence naming what the worker is doing, and start
+   `haring-pulse --once` again while the run is live. A restarted poll starts at
+   `pulse.pos`, so it prints only what is new. This is how you see a worker mid-run, at
+   the pulse's pace, for this route and every command-line route.
+5. Steering is `write_agent` with the agent id and the message. The rules for a steering
+   message still hold.
+6. No Copilot tool stops a running subagent. Let it finish. `haring-kill` and
+   `haring-say` exit 1 for this worker, naming the agent id. A subagent cannot be resumed
+   after it ends (`resumable: false`), so continuing after the report is a new subagent
+   with the context it needs in its prompt. While it is still running, `write_agent` is
+   the continuation.
+7. When it ends, Copilot's agent-completed notification wakes you, the pulse writes
+   `report.json`, and `haring-report <run>` reads it. `read_agent` shows the same final
+   message.
+
+A QA pass is the same with `agent_type: "haring-qa"`.
 
 ---
 
 ## Starting and watching a worker
+
+The command-line workers, `copilot` and `opencode`, run through `haring-worker`. The
+default `copilot-agent` subagent is started with `task` in "Run a Copilot subagent".
 
 ```
 haring-worker <kind> <workdir> <prompt-file> [--effort L]
@@ -612,10 +650,12 @@ even under the lift.
 
 ```
 haring-wait <run-folder>        follow the run, then print its report
-haring-pulse [dir] [--first S] [--every S]
+haring-pulse [dir] [--first S] [--every S] [--once]
                                 each live worker's stream since the last
                                 pass, in one wake-up, opening fast then
-                                settling at a pace you can retune mid-run
+                                settling at a pace you can retune mid-run;
+                                --once polls once and prints only new
+                                output, for a manager that restarts it
 haring-report <run-folder>      the run's Read, Glob, Grep and Bash calls
                                 above the report, then the report
                                 compacted, and a warning when that list is
@@ -674,44 +714,47 @@ their list of running commands, and a run path in it is noise. One wait read as
 `haring-wait 2026-09-09-032301-implement-10209` was the same wait. The client had asked
 for the short form, the commands take it, and the manager still typed the path.
 
-**Start `haring-pulse` as an async `bash` command described as "haring pulse", before you
-launch the first worker.** `haring-worker` refuses to start a run while no pulse is
-watching the project. The pulse exists so you can act on a worker that has gone sideways,
-and that is its first purpose; the client seeing progress without opening anything is the
-second. Each pass prints everything each live worker's stream has added since the pass
-before — its thinking, its speech and its tool calls with their arguments, in the order
-they happened, without the output of the calls — and on a run's first pass, everything
-since the run began. One read with `read_bash` shows everything since the last read,
-however many lines it holds. Turn what arrives into one short sentence for the client that
-names what the worker is doing. Do not paste the raw stream. The first pass on a worker
-comes `--first` seconds after the pulse finds it, defaulting to 180, long enough that a
-worker implementing a plan you have already written has something worth the read; after
-that it reports every `--every` seconds, defaulting to 300. Both numbers and the file are
-held between 60 and 300 seconds: a value outside is used at the nearer edge rather than
-refused, and a line starting `cadence` on the pulse's own output says when one was
-limited, taken, cleared or refused. To change the pace while a run is going, write one
-number of seconds into `.haring/cadence` in the project; the next pass uses it, and the
-file lasts only as long as the pulse that read it. A pass with nothing new still speaks
-once a run's last step is more than a minute old: one line naming the run, how long since
-that step and how long since anything at all was written to its events stream. When the
-stream has carried a thought, the line also says the worker is thinking and how many
-thinking tokens the run has accumulated; otherwise it says there has been no action, with
-no claim about thinking. When that file has gone three minutes unwritten, the words change
-instead to say the stream has been silent that long. That is not a death: a thought is
-written only when it ends, so a worker in one long thought writes nothing until then, and
-runs have gone seven minutes silent and still reported. The run stops itself after fifteen
-minutes of silence. A read costs you a turn, which is why both numbers are minutes. The
-workers it reports are every worker live while it watches, whenever it started: a worker
-you start after the pulse began is taken on too, not left for a next pulse. It looks for
-them between passes rather than only when one is due, so it ends within a second or two of
-the last worker it took on, and about two minutes after starting if none was running. A
-shell command you are running yourself is not a worker and never appears.
+**Start `haring-pulse --once` as an async `bash` command described as "haring pulse",
+before you start the first worker.** It waits up to two minutes for a first worker.
+`haring-worker` refuses to start a run while no pulse is watching the project, so start
+the poll first and restart it promptly each time it exits. The pulse exists so you can act
+on a worker that has gone sideways, and that is its first purpose; the client seeing
+progress without opening anything is the second. Each pass prints everything each live
+worker's stream has added since the pass before — its thinking, its speech and its tool
+calls with their arguments, in the order they happened, without the output of the calls —
+and on a run's first pass, everything since the run began. One read with `read_bash`
+shows everything since the last read, however many lines it holds. Turn what arrives into
+one short sentence for the client that names what the worker is doing. Do not paste the
+raw stream. The first pass on a worker comes `--first` seconds after the pulse finds it,
+defaulting to 180, long enough that a worker implementing a plan you have already written
+has something worth the read; after that it reports every `--every` seconds, defaulting
+to 300. Both numbers and the file are held between 60 and 300 seconds: a value outside is
+used at the nearer edge rather than refused, and a line starting `cadence` on the pulse's
+own output says when one was limited, taken, cleared or refused. To change the pace while
+a run is going, write one number of seconds into `.haring/cadence` in the project; the
+next pass uses it, and the file lasts only as long as the pulse that read it. A pass with
+nothing new still speaks once a run's last step is more than a minute old: one line naming
+the run, how long since that step and how long since anything at all was written to its
+events stream. When the stream has carried a thought, the line also says the worker is
+thinking and how many thinking tokens the run has accumulated; otherwise it says there has
+been no action, with no claim about thinking. When that file has gone three minutes
+unwritten, the words change instead to say the stream has been silent that long. That is
+not a death: a thought is written only when it ends, so a worker in one long thought writes
+nothing until then, and runs have gone seven minutes silent and still reported. The run
+stops itself after fifteen minutes of silence. Each poll costs you a turn, which is why
+both numbers are minutes. The workers it reports are every worker live while it watches,
+whenever it started: a worker you start after the pulse began is taken on too, not left
+for a next pulse. It looks for them between passes rather than only when one is due, so it
+ends within a second or two of the last worker it took on, and about two minutes after
+starting if none was running. A shell command you are running yourself is not a worker and
+never appears.
 
-The pulse cannot wake you mid-run. Copilot notifies you only when a command ends, and the
-pulse does not end while a worker is live. You read its new output with `read_bash` each
-time something else wakes you — a `haring-wait` that has ended, or another command — and
-you learn of a worker gone wrong only then, or when `haring-wait` ends. The run still
-stops itself after fifteen minutes of silence.
+Each time the `--once` pulse exits, Copilot wakes you. Read its output with `read_bash`,
+tell the client one short sentence naming what the worker is doing, and start
+`haring-pulse --once` again while the run is live. A restarted poll starts at `pulse.pos`,
+so it prints only what is new. This is how you see a worker mid-run, at the pulse's pace,
+for this route and every command-line route. The run still stops itself after fifteen
+minutes of silence.
 
 The steps go to standard error and the report goes to standard output, so redirecting
 stdout gives you the report alone.
@@ -730,16 +773,15 @@ that is running. The description is "haring pulse" and the whole of it. The proj
 not part of the name, because the client is in it.
 
 **Do not add timers of your own to a run you are watching.** Two things wake you without
-being asked: the `haring-wait` you started returns when the run ends, and each `read_bash`
-of the pulse shows what it has printed since the last read. A sleep-and-check shell aimed
-at the same run — "sleep 290; haring-stats <run>" — adds nothing to either, and each one
-is a command the client can see. One manager fired four of them at a single run it was
-already waiting on, and the client asked what they were. The fact behind it: an async
-`bash` call returns at once and does not hold your turn open, so each new one is another
-timer rather than a wait. The pulse polls, and polling is exactly what is wanted: it is
-how a worker that has gone sideways is caught in five minutes instead of thirty, and
-every line it emits is there for you to act on when you read it. What is waste is your
-own extra timers on top of it, never the pulse.
+being asked: the `haring-wait` you started returns when the run ends, and each `--once`
+poll exits with what it printed since the last one. A sleep-and-check shell aimed at the
+same run — "sleep 290; haring-stats <run>" — adds nothing to either, and each one is a
+command the client can see. One manager fired four of them at a single run it was already
+waiting on, and the client asked what they were. The fact behind it: an async `bash` call
+returns at once and does not hold your turn open, so each new one is another timer rather
+than a wait. The poll is exactly what is wanted: it is how a worker that has gone sideways
+is caught in five minutes instead of thirty, and every line it emits is there for you to
+act on when it exits. What is waste is your own extra timers on top of it, never the poll.
 
 **Watching a run is `haring-wait`, every time.** The client's window on a run is a
 `haring-wait` started as an async `bash` command: it prints the worker's steps, its
@@ -753,16 +795,16 @@ been started.
 **Once `haring-wait` and `haring-pulse` are armed on a run, do not check the run again by
 hand.** A still-running answer is the clock moving, not news — nothing in it changes but
 the minutes going by — and the news comes from what is armed: the wait returning when the
-run ends, and the pulse's new output read when you are woken. One manager, both watchers
+run ends, and each `--once` poll's output when it exits. One manager, both watchers
 already armed, called `haring-stats` 110 times inside a single turn it never handed back,
 one every five or six seconds, answering each one with a Waiting line to the client, until
 the client stopped it by hand. The tools answer back now too: a still-running answer names
 what asking again is worth, and a second `haring-pulse` refuses while the first lives.
 
-The pulse is the one watcher you start for a run, and the rule to start `haring-pulse` as
-an async `bash` command described as "haring pulse", before the first worker, is it: it
-prints each pass while it goes, and you read that output when something else wakes you. A
-second watcher aimed at anything else is a mechanism you invented, and it takes away the
+The pulse is the one watcher you start for a run, and the rule to start
+`haring-pulse --once` as an async `bash` command described as "haring pulse", before the
+first worker, is it: each poll prints its pass and exits, then wakes you to start it again.
+A second watcher aimed at anything else is a mechanism you invented, and it takes away the
 client's only window. This sits beside "Do not add timers of your own to a run you are
 watching" and splits one line with it: that rule is about adding a watcher to a run you
 already follow, this one is about replacing the watcher the run is meant to have.
@@ -784,7 +826,8 @@ one process cannot reach it. `haring-kill` signals the worker's whole process gr
 what it stopped, and writes a `stopped` file into the run folder. A stopped run and a
 crashed one leave the same empty report, so that file is the only thing that says the stop
 was yours: `haring-wait` reads it and reports a stop on purpose instead of a worker that
-vanished.
+vanished. For a copilot-agent, `haring-kill` exits 1 naming the agent id: no Copilot tool
+stops a running subagent, so let it finish.
 
 **Saying something to a worker that is running is `haring-say <run-folder> "<message>"`.**
 It is for a correction the worker can act on without starting over. The message is queued
@@ -792,17 +835,22 @@ into `say.jsonl` in the run folder and answered before the run ends; a worker mi
 takes it when that turn ends, not in the middle of one. It exits 0 once the message is
 handed over, or queued for a worker that will take it, 1 when the run has already finished
 and there is no worker left to say it to, and 2 when called wrongly. A worker cannot call
-it, the same as `haring-kill`. A Copilot worker cannot take it: `haring-say` exits 1 for
-one, because Copilot `-p` sessions cannot take a message. Use `haring-kill` and a
-`haring-worker continue` instead.
+it, the same as `haring-kill`. A copilot-agent subagent takes a message only through
+`write_agent` while it runs; `haring-say` and `haring-kill` exit 1 for it, naming the
+agent id. The command-line copilot worker cannot take a message either: `haring-say`
+exits 1 because Copilot `-p` sessions cannot take one; stop it with `haring-kill` and
+correct it with `haring-worker continue`.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that checked can be continued as one that
 implements, and it keeps everything it learned while looking. A continued run gets its own
 run folder. OpenCode forks the session, so the run it came from stays whole and can be
 continued again. A start program that cannot fork resumes the same session, and the two
-runs share that transcript. A continued Copilot run resumes the same session, because
-Copilot has no fork in `-p` mode.
+runs share that transcript. A continued command-line Copilot run resumes the same
+session, because Copilot has no fork in `-p` mode. A copilot-agent subagent is not
+continued: it cannot be resumed after it ends, so a correction after its report is a new
+subagent with the context in its prompt. While it runs, `write_agent` is the
+continuation.
 
 Every kind runs in the project itself. On OpenCode it is an agent at
 `workers/opencode/agents/<kind>.md`, and a kind's limits are that agent's deny rules: a
@@ -811,9 +859,11 @@ as well — reading a codebase needs one — and has no write or edit tool, so a
 change a file by ignoring its rules. `errand` gets the same three without the shell. A
 `qa` worker gets what `check` gets, since a QA that could write could fix what it should
 only report. Every kind is denied `question`, `subagent`, `skill`, `webfetch` and
-`websearch`. On Copilot the limits are the `tools:` list of
-`workers/copilot/agents/<kind>.md`, which Copilot enforces: `errand` gets `read` and
-`search`; `check` and `qa` add `shell`; `implement` adds `shell` and `edit`. What every
+`websearch`. On Copilot the limits are the `tools:` list of the worker's agent file —
+`workers/copilot-agent/agents/<kind>.md` for the default subagent, or
+`workers/copilot/agents/<kind>.md` for the command-line worker — which Copilot enforces:
+`errand` gets `read` and `search`; `check` and `qa` add `shell`; `implement` adds `shell`
+and `edit`. What every
 kind is held to besides is the client's private paths outside the project — `~/.claude/`,
 `~/.copilot/`, `~/.ssh/`, `~/.aws/`, `~/.config/gcloud/`, `~/.zsh_history`,
 `~/.bash_history`: on OpenCode the read and edit tools are refused them by the global
@@ -840,9 +890,11 @@ configuration, its running services — or it cannot build or test what it write
 The first time haring writes a run into a repository it adds `.haring/` to that project's
 `.gitignore` and says so. Run records are haring's, not the project's.
 
-A run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
-`events.jsonl` with the run's events, the worker's own stream as they happen, and for every kind but `errand` a
-`PROGRESS.md` the worker appends to as it goes. A run whose worker asked you a question also
+A haring-worker run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
+`events.jsonl` with the run's events, the worker's own stream as they happen, and for every
+kind but `errand` a `PROGRESS.md` the worker appends to as it goes. An adopted
+`copilot-agent` or `claude` subagent leaves `prompt.md`, `meta`, `events.jsonl`,
+`report.json` and `stats.txt`, and keeps no `PROGRESS.md`. A run whose worker asked you a question also
 leaves `ask.jsonl`, one line per question with the moment it was asked. A run whose manager
 said something to its worker also leaves `said.jsonl`, one line per message with the moment
 the worker got it. The prompt names that
@@ -867,24 +919,24 @@ arithmetic compares the wrong things: the half hour was gone whatever you decide
 the decision was only ever about the minutes from then on.
 
 `haring-say` puts a correction in front of an OpenCode worker that is on the right task
-by the wrong route, and costs one message. `haring-kill` is for a worker on the wrong
-task, where no message can put it back and every further minute goes on work you will
-throw away. A Copilot worker cannot be steered: `haring-say` exits 1 for it, because
-Copilot `-p` sessions cannot take a message. With a copilot worker, stop a wrong route
-with `haring-kill` and correct it with `haring-worker continue`, whose prompt names what
-is still unfinished.
+by the wrong route, and costs one message. `haring-kill` is for an OpenCode worker on the
+wrong task, where no message can put it back and every further minute goes on work you
+will throw away. For a copilot-agent subagent, `write_agent` with the agent id and the
+message is the correction. No Copilot tool stops a running subagent: `haring-kill` and
+`haring-say` exit 1 for it, naming the agent id, so let a subagent on the wrong task
+finish and correct it with a new subagent.
 
 ### A steering message names what is still unfinished
 
-**When:** you write the message for `haring-say`, or the prompt for a
-`haring-worker continue` that corrects a stopped Copilot run.
+**When:** you write the message for `write_agent` or `haring-say`, or the prompt for a
+new subagent that corrects a finished one.
 **Why:** the worker takes your message as the whole of its job from that point on. One was
 told to change its route, treated the correction as the entire task, and reported finished
 while the rest of what you had asked for was not done.
 
 Name what it is to keep doing, what it is to do instead, and what is still left of the
 original task. The last of those is what keeps the run going to the end. The same rule
-applies to the prompt of a continue that corrects a stopped Copilot run.
+applies to a `write_agent` message and to the prompt of a new subagent.
 
 ### A correction after the report is not a steering message
 
@@ -901,24 +953,28 @@ the whole conversation; you know exactly which item is wrong and exactly what pr
 fix, and the worker holds neither. Left to work it out, the worker re-runs the whole
 verification, undoes and remakes the commit, and re-reads the source to rebuild its
 report. Measured on one correction: nine of fifteen tool calls after the correction
-arrived, where the fix itself was six.
+arrived, where the fix itself was six. For a copilot-agent, this correction is a new
+subagent with that one item and its proof in the prompt, because the ended subagent
+cannot be resumed.
 
 ### When one is taking too long
 
-Read `PROGRESS.md` first, then the run's own `events.jsonl`, which is written entry by
-entry as it happens. `haring-wait` reads the same stream. A worker writes no event while
-it waits on the API or while a command runs, so a worker waiting on the API and a worker
-inside a long command look the same: nothing new.
+Read `PROGRESS.md` when the worker keeps one, then the run's own `events.jsonl`, which
+is written entry by entry as it happens. `haring-wait` reads the same stream. A worker
+writes no event while it waits on the API or while a command runs, so a worker waiting
+on the API and a worker inside a long command look the same: nothing new.
 
-- The same tool call again and again — stuck in a loop. Stop it with `haring-kill`,
-  restate the task in a fresh run, and say what it looped on.
+- The same tool call again and again — stuck in a loop. For an OpenCode or command-line
+  worker, stop it with `haring-kill`, restate the task in a fresh run, and say what it
+  looped on. For a copilot-agent, no tool stops it; let it finish and start a new
+  subagent, saying what it looped on.
 - Reads of files unrelated to the task — lost. The task was under-specified or too wide.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it
   next time.
 - Few calls, no new events, process alive — a long thought, a long command, or the
-  endpoint not answering. Its last reasoning and its last `PROGRESS.md` line say which.
-  Wait; the run stops itself after fifteen minutes of nothing. Next time hand it the
-  design instead of making it derive one.
+  endpoint not answering. Its last events and, when it keeps one, its last `PROGRESS.md`
+  line say which. Wait; the run stops itself after fifteen minutes of nothing. Next time
+  hand it the design instead of making it derive one.
 - Process gone, no report — finished or crashed. Read the report. No report plus changed
   files is a failure.
 
@@ -962,12 +1018,12 @@ further yourself, change the task, or tell it to go ahead as written and say why
 is the arrangement working, not a worker failing to cope, the way a worker that stops on a
 contradiction has done the right thing.
 
-Answer with `haring-say`, promptly, for an OpenCode worker. A Copilot worker cannot take a
-message; let the run end and answer with `haring-worker continue`, whose prompt answers the
-question and names what is still unfinished. The worker has gone on with whatever did not
-depend on the answer, and stops and reports blocked when that runs out. An unanswered ask
-costs the run: once nothing is left that does not depend on the answer, the run sits blocked
-until yours lands.
+Answer with `write_agent` to a running Copilot subagent, or with `haring-say` to an
+OpenCode worker, promptly. A Copilot subagent that has already ended cannot be resumed;
+its answer is a new subagent with the question and the answer in the prompt. The worker
+has gone on with whatever did not depend on the answer, and stops and reports blocked when
+that runs out. An unanswered ask costs the run: once nothing is left that does not depend
+on the answer, the run sits blocked until yours lands.
 
 ### Read the doubts before the findings
 
@@ -1255,8 +1311,8 @@ desk. Deciding is the work. Decide, and say what you decided when the job comes 
 
 ### Every mid-run line carries something
 
-**When:** a background command wakes you, and you are about to send the client a line
-while a run is going.
+**When:** a background command or an agent completion wakes you, and you are about to
+send the client a line while a run is going.
 **Why:** one manager, woken by a task finishing, wrote the client the whole message
 "Still going." It cost the client a line and told them nothing, because a line that
 could be printed at any moment of any job says nothing.
@@ -1287,7 +1343,8 @@ client can do nothing with, and that turns out to be nothing at all once checked
 
 **When:** a notification wakes you and you are about to write the client a line.
 **Why:** the harness talks to you in system messages — a background command finishing, a
-command with no new output — and what they say is addressed to you, not to the client.
+command with no new output, an agent completing — and what they say is addressed to you,
+not to the client.
 One manager sent the client these, as whole messages, more than once: "Background
 task bnebsnwk0 completed. Check its output with TaskOutput or by reading the output
 file." and "Monitor bk1x2x60i produced no new events yet. Keep working; you'll be
@@ -1297,9 +1354,9 @@ mid-run line carries something": the wake-up demands output, you have nothing of
 to say, and you hand on what you were given.
 
 Nothing addressed to you is addressed to them. A system reminder, a task completion
-notice, a shell completion notice: none of them is ever repeated to the client. When a
-notification wakes you and there is nothing worth saying, say nothing about the
-notification.
+notice, a shell completion notice, an agent completion notice: none of them is ever
+repeated to the client. When a notification wakes you and there is nothing worth saying,
+say nothing about the notification.
 
 ### A command the client ran themselves is not a question to you
 

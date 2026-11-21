@@ -13,11 +13,11 @@
 # none with the file path.
 #
 # --worker reads or writes the worker choice. It settles from <project>/.haring/worker,
-# then <haring-root>/worker, then copilot. With a name it writes that name into
+# then <haring-root>/worker, then copilot-agent. With a name it writes that name into
 # <haring-root>/worker, or <project>/.haring/worker with --project.
 #
 # --qa does the same for the QA worker, read from <project>/.haring/qa-worker, then
-# <haring-root>/qa-worker, then copilot. Its read prints the QA worker, where it came
+# <haring-root>/qa-worker, then copilot-agent. Its read prints the QA worker, where it came
 # from, and the qa model from that worker's agent file. With a name it writes it into
 # <haring-root>/qa-worker, or <project>/.haring/qa-worker with --project.
 #
@@ -33,8 +33,8 @@
 set -e
 
 # The last fallback for the settled worker, and for the QA worker.
-WORKER_DEFAULT=copilot
-QA_WORKER_DEFAULT=copilot
+WORKER_DEFAULT=copilot-agent
+QA_WORKER_DEFAULT=copilot-agent
 
 # The kinds a run of the settled worker uses, in the order they are printed. Each one
 # has an agent file under workers/<worker>/agents/.

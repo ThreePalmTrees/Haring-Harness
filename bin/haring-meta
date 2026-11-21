@@ -50,7 +50,7 @@ PERDIR = 50    # how many entries of one directory are listed
 NAMEMAX = 50   # a longer file or directory name is cut, with the count of what was cut
 
 # The last fallback for a fresh run's worker.
-WORKER_DEFAULT = "copilot"
+WORKER_DEFAULT = "copilot-agent"
 
 
 def die(message, code):
@@ -125,7 +125,7 @@ def settle(root, haring, filename, default):
 # has an agent file under workers/<worker>/agents/. The qa kind has a worker of its
 # own, settled from qa-worker, so it is named separately.
 KINDS = ("check", "errand", "implement")
-QA_WORKER_DEFAULT = "copilot"
+QA_WORKER_DEFAULT = "copilot-agent"
 
 
 def agent_model(haring, worker, kind):

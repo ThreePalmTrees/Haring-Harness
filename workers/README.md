@@ -20,7 +20,7 @@ example for one the manager starts.
 ## 1. What a worker folder is
 
 A worker folder lives at `workers/<name>/` under the haring root. A fresh run settles
-its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `copilot`.
+its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `copilot-agent`.
 A continued run uses the `worker=` line in the run it continues, or `opencode` when
 that line is absent. Section 6 gives the full rule.
 
@@ -363,13 +363,16 @@ The watchdog ignores both output and exit code.
 ### A worker the manager starts
 
 Some harnesses run inside the manager's own session. The manager starts the work with
-the harness's tool, and haring only reads the transcript. `workers/claude/` is the
-example.
+the harness's tool, and haring only reads the transcript. `workers/copilot-agent/` and
+`workers/claude/` are the examples.
 
 Such a worker leaves out `start`, `steer` and `stop`. `haring-worker` refuses to launch
 it: when the settled worker has no `start` program it exits 2, names the missing path,
-and creates no run folder. The manager starts the run with Claude Code's Agent tool,
-steers it with SendMessage and stops it with TaskStop.
+and creates no run folder. A Copilot CLI manager starts a `copilot-agent` with the `task`
+tool and steers it with `write_agent`; no Copilot tool stops a running subagent, so
+`haring-kill` and `haring-say` exit 1 for one and name the agent id. A Claude Code manager
+starts a `claude` subagent with its own Agent tool, steers it with SendMessage and stops
+it with TaskStop.
 
 When a worker has no `steer` or `stop`, `haring-say` and `haring-kill` do not try to
 reach it. They exit 1 with one line, the same for every worker: this worker has no
@@ -521,7 +524,7 @@ reads the `worker=` line, or uses `opencode` when the line is absent. It then lo
 
 `haring-model` and `haring-meta` answer before a run exists. They settle the worker the
 same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
-then `copilot`. Each kind's model is the `model:` line of
+then `copilot-agent`. Each kind's model is the `model:` line of
 `workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled worker's check,
 errand and implement models, and the QA worker with its `qa` model.
 
@@ -536,7 +539,7 @@ with exit 2 and names the file. `haring-worker --model` is a one-run override, p
 through unchecked, and a continue keeps the model recorded in the run it continues.
 
 A qa run settles a worker of its own: `<project>/.haring/qa-worker`, then
-`<haring-root>/qa-worker`, then `copilot`, never the worker files. Its model is the
+`<haring-root>/qa-worker`, then `copilot-agent`, never the worker files. Its model is the
 `model:` line of that worker's `agents/qa.md`.
 
 `haring-model` with no argument prints the settled worker and, for check, errand and

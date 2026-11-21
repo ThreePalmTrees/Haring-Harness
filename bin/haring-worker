@@ -12,7 +12,7 @@
 # fresh run settles <name> from <project>/.haring/worker, then <haring-root>/worker, then
 # WORKER_DEFAULT below; a continue keeps the worker recorded in the run it continues.
 # A qa run settles a worker of its own: <project>/.haring/qa-worker, then
-# <haring-root>/qa-worker, then copilot, never the worker files.
+# <haring-root>/qa-worker, then copilot-agent, never the worker files.
 # A fresh run's model is the model: line of the worker's agent file for the kind,
 # workers/<worker>/agents/<kind>.md — one place for every worker, every kind and every
 # project. A missing agent file or model line stops the launch with exit 2 and names the
@@ -40,7 +40,7 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 
 # The last fallback for a fresh run's worker. workers/<name>/ holds the programs that
 # launch it and talk to it; a continue keeps the worker of the run it continues.
-WORKER_DEFAULT=copilot
+WORKER_DEFAULT=copilot-agent
 
 # The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
 # is set. The number is the plan's concurrency limit — the most requests the model provider
@@ -174,13 +174,13 @@ project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$work
 # then the default. A continue keeps the worker recorded in the run it continues. A
 # file that is missing, empty, or holds only whitespace names nothing and is passed
 # over rather than treated as a choice. A qa run has a worker of its own: it reads
-# <project>/.haring/qa-worker, then <haring-root>/qa-worker, then defaults to copilot,
+# <project>/.haring/qa-worker, then <haring-root>/qa-worker, then defaults to copilot-agent,
 # and never reads the worker files.
 if [ -z "$resume_id" ]; then
   if [ "$kind" = qa ]; then
     first_worker_file="$project/.haring/qa-worker"
     second_worker_file="$HARING/qa-worker"
-    worker_default=copilot
+    worker_default=copilot-agent
   else
     first_worker_file="$project/.haring/worker"
     second_worker_file="$HARING/worker"
