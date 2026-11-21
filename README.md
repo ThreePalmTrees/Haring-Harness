@@ -45,13 +45,13 @@ Worker: Implements.
 
 ## Install Haring
 
-1. Install [OpenCode](https://opencode.ai) and sign in to OpenCode:
+1. Install [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) and sign in:
 ```
-opencode auth login
+copilot login
 ```
-_(you can exit opencode)_
+OpenCode is needed only if you choose the OpenCode worker.
 
-2. Clone Haring anywhere.
+2. Clone Haring anywhere and check out this branch: `git checkout copilot`.
 
 3. Navigate inside and run the installer:
 ```
