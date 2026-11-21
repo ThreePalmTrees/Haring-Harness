@@ -17,7 +17,7 @@ My personal setup is:
 
 This is the supported setup: a Claude Code manager with OpenCode workers, or with
 Claude Code subagents as workers (see [Choose the worker](#choose-the-worker)). Another
-worker harness can be added with the `haring-add-worker` skill and `WORKERS.md`; another
+worker harness can be added with the `haring-add-worker` skill and `workers/README.md`; another
 manager harness with the `haring-add-manager` skill. Other harnesses are not maintained
 here.
 
@@ -88,10 +88,10 @@ A fresh run settles its worker from `<project>/.haring/worker`, then
 `<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
 run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
 `<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
-OpenCode QA worker runs as a `haring-worker qa` run. `WORKERS.md` section 6 gives the
+OpenCode QA worker runs as a `haring-worker qa` run. `workers/README.md` section 6 gives the
 full rule.
 
-Another worker harness is added with the `haring-add-worker` skill and `WORKERS.md`.
+Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
 Another manager harness is added with the `haring-add-manager` skill.
 
 ## Use Haring
@@ -143,7 +143,6 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 
 | Folder | File | What it does |
 |---|---|---|
-| `WORKERS.md` | | the contract a worker harness must meet, and how a run chooses its worker |
 | `skill-dirs` | | the folders `install.sh` links the skills into, one per line |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
@@ -169,6 +168,7 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 | `lib/` | `haring_events.py` | reads a run's stream for every reader |
 | | `haring_report.py` | turns the stream into `report.json`, and checks the report against its schema |
 | | `haring_run.py` | the numbers a run's report holds, shared by `haring-stats` and `haring-stats-page` |
+| `workers/` | `README.md` | the contract a worker harness must meet, and how a run chooses its worker |
 | `workers/claude/` | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
 | | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is that kind's model |

@@ -1,6 +1,6 @@
 ---
 name: haring-add-worker
-description: Add support for another coding-agent harness to haring. Use when the user wants haring workers to run through a harness that is not the built-in OpenCode worker, or asks to add a folder under workers/. The skill reads the harness's own documentation, builds the worker folder against WORKERS.md, and tests a real run.
+description: Add support for another coding-agent harness to haring. Use when the user wants haring workers to run through a harness that is not the built-in OpenCode worker, or asks to add a folder under workers/. The skill reads the harness's own documentation, builds the worker folder against workers/README.md, and tests a real run.
 ---
 
 # Add a worker harness to haring
@@ -10,7 +10,7 @@ A folder under `workers/` tells the core how to start one harness, talk to it an
 its events.
 
 OpenCode in `workers/opencode/` is the worked example. This skill adds another worker.
-It does not change the core. If this skill and `WORKERS.md` disagree, `WORKERS.md` wins,
+It does not change the core. If this skill and `workers/README.md` disagree, `workers/README.md` wins,
 because it describes the code as it is.
 
 ## 1. Read the contract first
@@ -19,7 +19,7 @@ Run:
 
     ROOT=$(haring-root)
 
-Read `$ROOT/WORKERS.md` from the first line to the last. Read `$ROOT/workers/opencode/`
+Read `$ROOT/workers/README.md` from the first line to the last. Read `$ROOT/workers/opencode/`
 as the example. Do not copy its OpenCode commands. Copy its shape.
 
 If `haring-root` is missing or prints nothing, stop and tell the user haring is not
@@ -62,7 +62,7 @@ Write the answers down. You will need them in the next step.
 ## 3. Build the worker folder
 
 Create `workers/<name>/` beside `workers/opencode/`. Use the harness name, lowercase and
-with no spaces. Follow `WORKERS.md` sections 1 to 4 for every file. Do not edit `bin/`
+with no spaces. Follow `workers/README.md` sections 1 to 4 for every file. Do not edit `bin/`
 or `lib/`.
 
 Use these files:
@@ -82,20 +82,20 @@ to `start` with `--model`; a missing file or line stops the launch. The same fil
 the kind's tools and limits.
 
 `events.py`: implement `session(event)`, `entries(event, seen)` and `summary(events)`
-with the exact entry and summary shapes in `WORKERS.md` section 3. Map the harness's
+with the exact entry and summary shapes in `workers/README.md` section 3. Map the harness's
 tool names to the labels haring uses where they match: `Read`, `Glob`, `Grep`, `Bash`,
 `Edit`, `Write`, `Patch`, `TodoWrite`. `haring-report` counts `Read`, `Glob`, `Grep`
 and `Bash` as evidence. Use the harness's own name for a tool that has no match. Do not
 invent a tool call that the stream does not contain.
 
-`start`: accept the arguments in `WORKERS.md` section 4. For a fresh run, write the
+`start`: accept the arguments in `workers/README.md` section 4. For a fresh run, write the
 session id to the `--session-file` path only when the harness accepts an id chosen up
 front, and never write an id that is not the real session. For a continue, resume the
 session, and fork only when `--fork` is given. Write one JSON object per line to standard
 output and nothing else. Write errors to standard error. Pass the harness's exit code
 through. Never read standard input.
 
-`steer` and `stop`: use the exact arguments and exit codes in `WORKERS.md` section 4.
+`steer` and `stop`: use the exact arguments and exit codes in `workers/README.md` section 4.
 Return 0 only when the harness accepted the request.
 
 `agents-config`: implement `check <kind>`, `install` and `remove`. `check` must exit 0
@@ -108,7 +108,7 @@ them.
 
 ## 4. When the harness lacks something
 
-Do not fake a capability. `WORKERS.md` and the core define what happens when it is
+Do not fake a capability. `workers/README.md` and the core define what happens when it is
 absent.
 
 No thinking. Do not emit `thinking` or `thinking_tokens` entries. haring still shows the
@@ -146,7 +146,7 @@ Use a small scratch project under `/tmp`. Do not test in the user's project.
 1. Run `./install.sh` in the haring root, or run the new
    `workers/<name>/agents-config install`. This installs the per-kind files.
 2. Create `<project>/.haring/worker` with the new worker name in it. This is the
-   project worker file from `WORKERS.md` section 6.
+   project worker file from `workers/README.md` section 6.
 3. Start a small errand with `haring-worker`. Use a prompt that asks for one fact from
    one file. `haring-worker` prints the run folder. Watch it with `haring-pulse`, or
    pass `--no-pulse` for one test run.

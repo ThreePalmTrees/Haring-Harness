@@ -8,8 +8,8 @@ description: Add support for another coding-agent harness to haring as the manag
 The manager is the agent that loads `skills/haring/SKILL.md` and runs the `haring-*`
 commands. Claude Code is the manager today. This skill makes another harness a manager.
 
-Read `WORKERS.md` for the worker contract. If this skill and `WORKERS.md` disagree,
-`WORKERS.md` wins, because it describes the code as it is. `workers/opencode/` is the
+Read `workers/README.md` for the worker contract. If this skill and `workers/README.md` disagree,
+`workers/README.md` wins, because it describes the code as it is. `workers/opencode/` is the
 worked example of a command-line worker. `workers/claude/` is the worked example of a
 worker the manager starts.
 
@@ -24,7 +24,7 @@ installed. Do not guess where it is.
 
 Read these files in `$ROOT`:
 
-- `WORKERS.md` sections 1, 3, "A worker the manager starts" and 6.
+- `workers/README.md` sections 1, 3, "A worker the manager starts" and 6.
 - `skills/haring/SKILL.md`, the whole of it. It holds the manager's instructions.
 - `workers/claude/agents/*.md`, `workers/claude/agents-config` and
   `workers/claude/events.py`.
@@ -152,7 +152,7 @@ subagent finish, and say so in `skills/haring/SKILL.md`.
 is one file per subagent, or the subagent's lines sit inside the manager's own session
 log, tagged with an agent id between a started and an ended event. Find the final
 message and the token usage. Put the reader in `workers/<harness>/events.py`, with the
-shapes in `WORKERS.md` section 3, including `alive()`. Put the adoption in
+shapes in `workers/README.md` section 3, including `alive()`. Put the adoption in
 `bin/haring-pulse`, which today reads only Claude Code: `CLAUDE_CODE_SESSION_ID`,
 `~/.claude/projects/*/<session>/subagents/`, and the functions `claude_meta_files`,
 `adopt_subagents` and `finish_subagents`. This is a change to the core. Add the new
@@ -208,7 +208,7 @@ Use a small scratch project under `/tmp`. Do not test in the user's project.
    in order, and that `haring-stats` shows it.
 
 If a check fails, fix the files this skill names. Do not hide a failure by changing the
-core in a way `WORKERS.md` does not describe.
+core in a way `workers/README.md` does not describe.
 
 ## 7. Report to the user
 
