@@ -40,12 +40,6 @@ message_file=$1
 [ -f "$message_file" ] || { echo "start: no such message file: $message_file" >&2; exit 2; }
 if [ -z "$resume" ] && [ -n "$fork" ]; then usage; fi
 
-# The client plan refuses every named model, so only auto is accepted here.
-case "$model" in
-  auto) ;;
-  *) echo "start: Copilot CLI accepts only model auto on this plan; got: $model" >&2; exit 2 ;;
-esac
-
 message=$(cat "$message_file")
 
 usage_file=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-usage.XXXXXX")
