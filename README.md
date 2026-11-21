@@ -167,6 +167,15 @@ running, the pulse records it as a run the same way, from
 </p>
 <br/>
 
+## License and responsibility
+
+Haring is released under the [MIT License](LICENSE).
+
+Haring is provided as is. It runs other tools (coding agents and their command-line
+programs) under your own accounts. You are responsible for how you use it, and for
+reading and complying with the terms of service of each tool and model provider you
+connect to it.
+
 ## Development and contributing
 
 ### Structure
