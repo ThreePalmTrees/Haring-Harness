@@ -59,6 +59,9 @@ This skill points there and does not repeat it.
 
 ## 3. Measure on a real run
 
+Read the harness's own current documentation and its help commands first. Do not rely
+on memory, because harnesses change. The run below checks what the documentation says.
+
 Make a scratch git repository under `/tmp`. Never measure in the user's project.
 
 Run the harness's one-shot mode with its machine-readable output. Give it a session id
@@ -127,7 +130,9 @@ route; use command-line workers.
 **g. Each kind's model.** Find whether the `model:` line takes effect. The harness's
 subagent start event usually names the model and where it came from. Find which names
 the user's plan accepts. A plan may accept no named model at all, only the harness's
-automatic choice; then say so to the user and record it. `haring-worker` needs a
+automatic choice; then say so to the user and record it. A model the plan refuses
+makes the subagent fail as it starts, so never write one into an agent file the harness
+reads. `haring-worker` needs a
 `model:` line in every agent file before a command-line launch.
 
 **h. Starting a subagent in the background, and being told when it ends.** Claude Code
