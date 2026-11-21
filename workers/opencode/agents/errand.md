@@ -16,6 +16,8 @@ permissions:
   - { action: "shell", resource: "*/.config/gcloud*", effect: "deny" }
   - { action: "shell", resource: "*/.claude/*", effect: "deny" }
   - { action: "shell", resource: "*/.claude", effect: "deny" }
+  - { action: "shell", resource: "*/.copilot/*", effect: "deny" }
+  - { action: "shell", resource: "*/.copilot", effect: "deny" }
   - { action: "edit", resource: "*", effect: "deny" }
   - { action: "shell", resource: "*", effect: "deny" }
 ---

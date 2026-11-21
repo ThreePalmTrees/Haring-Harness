@@ -85,9 +85,9 @@ OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude
 runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
 
 A fresh run settles its worker from `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
+`<haring-root>/worker`, then `copilot`; a continue keeps the worker recorded in the
 run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot`; an
 OpenCode QA worker runs as a `haring-worker qa` run. `workers/README.md` section 6 gives the
 full rule.
 

@@ -32,7 +32,7 @@ echo "haring: $HARING"
 echo
 echo "skill:"
 # A fork adds its manager's skills folder to this list.
-for dir in "$HOME/.claude/skills"; do
+for dir in "$HOME/.claude/skills" "$HOME/.copilot/skills"; do
   printf '  %s\n' "$dir"
   mkdir -p "$dir"
   for d in "$HARING"/skills/*/; do

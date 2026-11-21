@@ -20,7 +20,7 @@ example for one the manager starts.
 ## 1. What a worker folder is
 
 A worker folder lives at `workers/<name>/` under the haring root. A fresh run settles
-its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `opencode`.
+its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `copilot`.
 A continued run uses the `worker=` line in the run it continues, or `opencode` when
 that line is absent. Section 6 gives the full rule.
 
@@ -480,7 +480,7 @@ called it.
 A fresh run settles its worker from two files. It reads the first of
 `<project>/.haring/worker` and `<haring-root>/worker` that names one. A file that is
 missing, empty or holds only whitespace names nothing and is passed over. When neither
-file names a worker, `haring-worker` uses `WORKER_DEFAULT`, which is `opencode`.
+file names a worker, `haring-worker` uses `WORKER_DEFAULT`, which is `copilot`.
 
 The settled name must be a folder under `workers/`. When it is not, `haring-worker`
 stops before it creates the run folder. It exits 2, prints where the name came from,
@@ -502,7 +502,7 @@ reads the `worker=` line, or uses `opencode` when the line is absent. It then lo
 
 `haring-model` and `haring-meta` answer before a run exists. They settle the worker the
 same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
-then `opencode`. Each kind's model is the `model:` line of
+then `copilot`. Each kind's model is the `model:` line of
 `workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled worker's check,
 errand and implement models, and the QA worker with its `qa` model.
 
@@ -517,7 +517,7 @@ with exit 2 and names the file. `haring-worker --model` is a one-run override, p
 through unchecked, and a continue keeps the model recorded in the run it continues.
 
 A qa run settles a worker of its own: `<project>/.haring/qa-worker`, then
-`<haring-root>/qa-worker`, then `claude`, never the worker files. Its model is the
+`<haring-root>/qa-worker`, then `copilot`, never the worker files. Its model is the
 `model:` line of that worker's `agents/qa.md`.
 
 `haring-model` with no argument prints the settled worker and, for check, errand and

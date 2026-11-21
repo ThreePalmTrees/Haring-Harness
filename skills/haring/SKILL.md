@@ -547,7 +547,7 @@ instead of starting one.
 
 Read the QA worker with `haring-model --qa`, or with `haring-meta`, when the client asks,
 never earlier. A QA pass always goes to the worker those commands name:
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`.
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot`.
 
 - **`claude`** — start the Claude Code agent with the Agent tool,
   `subagent_type: "haring-qa"`. Do not pass a `model` parameter: the `model:` line of

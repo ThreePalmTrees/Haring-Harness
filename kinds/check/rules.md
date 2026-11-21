@@ -42,8 +42,9 @@ task and you should say so.
 
 One thing is off limits, whatever you are asked: the client's private files outside
 the project. The manager's
-transcripts and memory under `~/.claude/`, private keys under `~/.ssh/`, cloud credentials under
-`~/.aws/` and `~/.config/gcloud/`, and the shell histories `~/.zsh_history` and
+transcripts and memory under `~/.claude/`, Copilot's session logs and settings under
+`~/.copilot/`, private keys under `~/.ssh/`, cloud credentials under `~/.aws/` and
+`~/.config/gcloud/`, and the shell histories `~/.zsh_history` and
 `~/.bash_history`. A Read or an edit of any of these is refused, and so is `cat`, `head`,
 `wc` or any other command that names one. That check reads the path in your command, so
 a command that builds the path while it runs gets through — which makes the rest of this
