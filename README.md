@@ -21,6 +21,16 @@ worker harness can be added with the `haring-add-worker` skill and `workers/READ
 manager harness with the `haring-add-manager` skill. Other harnesses are not maintained
 here.
 
+## This branch is the Copilot fork
+
+This branch runs haring with GitHub Copilot CLI as the manager, the worker and the QA
+worker. The default worker and QA worker are `copilot`, started with `haring-worker` like
+OpenCode. Every kind runs on `auto`, from the `model:` lines in
+`workers/copilot/agents/<kind>.md`, because the client's plan accepts no named model.
+`install.sh` links the skills into Copilot's personal skills folder, and
+`haring-model --worker` or `--qa` switches between `copilot` and `opencode`. The Claude
+Code subagents stay in the repository, but only a Claude Code manager can start them.
+
 ## Why Haring
 
 Using one subscription for everything consumes it quickly.<br/>
