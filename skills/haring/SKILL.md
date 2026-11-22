@@ -30,16 +30,18 @@ is `claude`, it is a Claude Code subagent started with the Agent tool — see "R
 Claude Code agent". Otherwise a worker is started with `haring-worker`, never with the
 Agent tool.
 
-Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`, one
-place for every worker, every kind and every project. The OpenCode worker runs every
-kind on `opencode-go/deepseek-v4.1-flash`. The Claude worker runs check, errand and
-implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The choice of model is
-the client's. `haring-meta` prints the models the settled worker and the QA worker run
-on, so you have them before you ask. You never choose a model on your own: `--model` on
-`haring-worker` is a one-run override, only for when the client asks for a different
-model on that run. `haring-model` with no argument prints every kind's model and its
-agent file; `--worker` reads or writes the worker, and `--qa` reads or writes the QA
-worker.
+Each kind's model is a line in the untracked `<haring-root>/models`, written with
+`haring-model <kind> <model>` and removed with `haring-model <kind> --clear`, so
+changing it leaves the repo untouched; without one, it is the `model:` line of
+`workers/<worker>/agents/<kind>.md`. For the Claude worker, `haring-model` reinstalls
+the agent as a generated copy carrying the model. The OpenCode worker runs every kind on
+`opencode-go/deepseek-v4.1-flash`. The Claude worker runs check, errand and implement on
+`claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The choice of model is the client's.
+`haring-meta` prints the models the settled worker and the QA worker run on, so you have
+them before you ask. You never choose a model on your own: `--model` on `haring-worker`
+is a one-run override, only for when the client asks for a different model on that run.
+`haring-model` with no argument prints every kind's model and where it came from;
+`--worker` reads or writes the worker, and `--qa` reads or writes the QA worker.
 
 ## How a job runs
 
@@ -550,9 +552,9 @@ never earlier. A QA pass always goes to the worker those commands name:
 `<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`.
 
 - **`claude`** — start the Claude Code agent with the Agent tool,
-  `subagent_type: "haring-qa"`. Do not pass a `model` parameter: the `model:` line of
-  `workers/claude/agents/qa.md` is the model, `claude-opus-5-5`. Pass one only when the
-  client asks for a different model on that one pass. The agent reads the QA rules and
+  `subagent_type: "haring-qa"`. Do not pass a `model` parameter: the QA model
+  `haring-model --qa` prints is installed in `haring-qa`. Pass one only when the client
+  asks for a different model on that one pass. The agent reads the QA rules and
   the report schema itself; your prompt is the task alone, written as you would write
   any worker's, with the base and head commits and the project path. Its final message
   is the report, as JSON. Run it in the background and carry on. The pulse records the
@@ -577,8 +579,8 @@ no reason is known, say that too.
 When `haring-meta` says the worker is `claude`, a task of any kind is a Claude
 Code subagent, not a `haring-worker` run. Start `haring-pulse` first, as for any worker:
 the pulse turns the subagent into a run. Then start it with the Agent tool as
-`subagent_type: "haring-<kind>"`. Do not pass a `model` parameter, because the `model:`
-line of `workers/claude/agents/<kind>.md` is the model; pass one only when the client
+`subagent_type: "haring-<kind>"`. Do not pass a `model` parameter: the kind's model,
+which `haring-model` prints, is installed in the agent; pass one only when the client
 asks for a different model on that one run. Your prompt is the task alone. Steer it
 with SendMessage to its agent id, and stop it with TaskStop. Its run folder is read with
 the same haring commands as any other run.
@@ -648,13 +650,14 @@ haring-say <run-folder>         say a word to a running worker
 haring-meta [dir]               project name, date, OS, git state, the worker models and a listing of the project
 haring-model [--worker [<name>]] [--qa [<name>]] [--project]
                                 with no argument, the settled worker,
-                                each kind's model and its agent file,
+                                each kind's model and where it came from,
                                 and the QA worker with its model.
-                                --worker prints the settled worker and
-                                where it came from, or writes one the
-                                same way. --qa does the same for the QA
-                                worker. A model is changed by editing
-                                the agent file's model: line
+                                <kind> <model> writes the kind's model
+                                into <haring-root>/models, and
+                                <kind> --clear removes it. --worker
+                                prints the settled worker and where it
+                                came from, or writes one the same way.
+                                --qa does the same for the QA worker
 ```
 
 **Wait in the background, never in the foreground.** The Bash tool takes
