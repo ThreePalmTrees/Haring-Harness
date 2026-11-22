@@ -25,8 +25,9 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-By default a worker is an OpenCode session, started with `opencode run`. When the worker
-is `claude`, it is a Claude Code subagent started with the Agent tool — see "Run a
+A worker runs on its kind's driver. By default check, errand and implement are OpenCode
+sessions, started with `opencode run`, and qa is a Claude Code subagent. When a kind's
+driver is `claude`, it is a Claude Code subagent started with the Agent tool — see "Run a
 Claude Code agent". Otherwise a worker is started with `haring-worker`, never with the
 Agent tool.
 
