@@ -16,30 +16,31 @@ My personal setup is:
 **Worker:** opencode-go/deepseek-v4.1-flash via `OpenCode`.
 
 This is the supported setup: a Claude Code manager with OpenCode workers, or with
-Claude Code subagents as workers (see [Choose the worker](#choose-the-worker)). Another
+Claude Code subagents as workers (see [Choose a different worker](#choose-a-different-worker)). Another
 worker harness can be added with the `haring-add-worker` skill and `workers/README.md`; another
 manager harness with the `haring-add-manager` skill. Other harnesses are not maintained
 here.
 
 ## Why Haring
 
-Using one subscription for everything consumes it quickly.<br/>
-Haring gives you more bang for your buck.
+1. Built for long-horizon work (can work autonomously)
+2. Not having to repeat instructions
+3. Using one subscription for everything consumes limits quickly
 
 Manager: Plans, architects, orchestrates, and reviews.<br/>
-Worker: Implements.
+Worker: Implements.<br/>
+QA: Finds anything missed.
+
+## Prerequisites
+
+* An [OpenCode](https://opencode.ai/console/go) subscription
+* A [Claude Code](https://claude.com/pricing) subscription
 
 ## Install Haring
 
-1. Install [OpenCode](https://opencode.ai) and sign in to OpenCode:
-```
-opencode auth login
-```
-_(you can exit opencode)_
+1. Clone Haring anywhere.
 
-2. Clone Haring anywhere.
-
-3. Navigate inside and run the installer:
+2. Navigate inside and run the installer:
 ```
 cd haring-harness && ./install.sh
 ```
@@ -47,52 +48,7 @@ cd haring-harness && ./install.sh
 > Haring scripts into `~/.local/bin`<br/>
 > And OpenCode agents into `~/.config/opencode/agents`.
 
-To remove haring, run:
-
-```
-./uninstall.sh
-```
-
-It removes every link that points into this repository: the skill links, the Claude QA
-agent, each worker's agent links and the `haring-*` scripts in `~/.local/bin`. It leaves
-plain files and links to other places alone, and lists plain `haring*` files to delete by
-hand. It does not touch a project's `.haring` folder or `.gitignore`.
-
-To remove only one worker's agent links, run:
-
-```
-./uninstall.sh --worker <name>
-```
-
-It removes that worker's agent links and leaves every other link in place.
-
-## Choose the worker
-
-- `haring-model` prints the worker, each kind's model and the QA worker.
-- `haring-model --worker claude` makes Claude Code subagents the workers for every
-  project.
-- `haring-model --worker opencode` goes back to OpenCode.
-- Add `--project` to either to write the choice for the current project only.
-- `haring-model --qa <name>` does the same for the QA worker, which is `claude` by
-  default.
-
-A worker runs one of two ways. One harness is both manager and workers: today Claude
-Code starts its own subagents as workers. Or a manager runs another harness's
-command-line workers: today Claude Code runs OpenCode workers through `haring-worker`.
-
-Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
-OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
-runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
-
-A fresh run settles its worker from `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
-run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
-OpenCode QA worker runs as a `haring-worker qa` run. `workers/README.md` section 6 gives the
-full rule.
-
-Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
-Another manager harness is added with the `haring-add-manager` skill.
+That's it.
 
 ## Use Haring
 
@@ -130,6 +86,63 @@ When the manager is a Claude Code session and starts a subagent while `haring-pu
 running, the pulse records the subagent as a run under `.haring/runs/`. When the
 subagent ends, the pulse copies its transcript into the run folder and writes
 `report.json` and `stats.txt` from it.
+
+## Choose a different worker
+
+<details>
+<summary>Read how to change the worker or the QA worker (optional)</summary>
+
+- `haring-model` prints the worker, each kind's model and the QA worker.
+- `haring-model --worker claude` makes Claude Code subagents the workers for every
+  project.
+- `haring-model --worker opencode` goes back to OpenCode.
+- Add `--project` to either to write the choice for the current project only.
+- `haring-model --qa <name>` does the same for the QA worker, which is `claude` by
+  default.
+
+A worker runs one of two ways. One harness is both manager and workers: today Claude
+Code starts its own subagents as workers. Or a manager runs another harness's
+command-line workers: today Claude Code runs OpenCode workers through `haring-worker`.
+
+Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
+OpenCode worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker
+runs check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+
+A fresh run settles its worker from `<project>/.haring/worker`, then
+`<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
+run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
+OpenCode QA worker runs as a `haring-worker qa` run. `workers/README.md` section 6 gives the
+full rule.
+
+Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
+Another manager harness is added with the `haring-add-manager` skill.
+</details>
+
+## Uninstall Haring
+
+<details>
+<summary>Read how to uninstall Haring</summary>
+
+To remove haring, run:
+
+```
+./uninstall.sh
+```
+
+It removes every link that points into this repository: the skill links, the Claude QA
+agent, each worker's agent links and the `haring-*` scripts in `~/.local/bin`. It leaves
+plain files and links to other places alone, and lists plain `haring*` files to delete by
+hand. It does not touch a project's `.haring` folder or `.gitignore`.
+
+To remove only one worker's agent links, run:
+
+```
+./uninstall.sh --worker <name>
+```
+
+It removes that worker's agent links and leaves every other link in place.
+</details>
 
 <br/>
 <p align="center">
