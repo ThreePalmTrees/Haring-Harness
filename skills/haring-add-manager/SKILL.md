@@ -44,13 +44,13 @@ it with its own tool, and `haring-pulse` adopts it as a run and reads the transc
 writes. `workers/claude/` is the example. This route exists only when the manager and
 the worker are the same harness.
 
-Choose the worker and the QA worker with:
+Choose a kind's driver with:
 
-    haring-model --worker <name>
-    haring-model --qa <name>
+    haring-worker-driver --kind <kind> --driver <driver>
+    haring-worker-driver --driver <driver>
 
-Add `--project` to write the choice for one project only. With no name, each form
-prints the settled worker and where it came from.
+Add `--project` to write the choice for one project only. With no argument it prints
+each kind's driver.
 
 So the mixes are: one harness as manager and workers, either as its own subagents or
 through its own command-line worker; or a manager with another harness's command-line
@@ -59,7 +59,7 @@ This skill points there and does not repeat it.
 
 Build the subagent route first when the harness can start its own subagents from agent
 files. That route is the goal of making the harness both manager and worker; make it the
-fork's default worker and QA worker. The command-line worker is an optional extra: it is
+fork's default driver, qa included. The command-line worker is an optional extra: it is
 how this harness serves as a worker under another manager, never a substitute for the
 subagent route. The adoption in `bin/haring-pulse` is a core change this skill expects
 and allows; needing it is not a reason to leave the route out.
@@ -195,9 +195,9 @@ nested: `HARING_NESTED` is set only by `haring-worker`. Every agent file must sa
 `~/.claude/projects`. Find where the harness records per-call token usage and add a
 reader, or leave `haring-session` as Claude Code only and tell the user.
 
-**o. The default QA worker.** It is `claude` in `bin/haring-meta`, `bin/haring-model`
-and `bin/haring-worker`. A fork either changes that default or writes its QA worker with
-`haring-model --qa <name>`.
+**o. The default qa driver.** It is `claude` in `bin/haring-meta`, `bin/haring-model`,
+`bin/haring-worker` and `bin/haring-worker-driver`. A fork either changes that default
+or sets the qa kind's driver with `haring-worker-driver --kind qa --driver <name>`.
 
 **p. Private paths.** `kinds/check/rules.md` and `kinds/qa/rules.md` list `~/.claude/`,
 and `workers/opencode/agents/*.md` deny shell commands on `*/.claude`. Add the new

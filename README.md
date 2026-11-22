@@ -90,37 +90,38 @@ subagent ends, the pulse copies its transcript into the run folder and writes
 ## Choose a different worker
 
 <details>
-<summary>Read how to change the worker or the QA worker (optional)</summary>
+<summary>Read how to choose a driver or a model (optional)</summary>
 
-- `haring-model` prints the worker, each kind's model and where it comes from, and the
-  QA worker.
-- `haring-model --worker <name> --kind <kind> --model <model>` sets that worker's model
-  for that kind; `--clear` in place of `--model <model>` removes it.
-- `haring-model --worker claude` makes Claude Code subagents the workers for every
-  project.
-- `haring-model --worker opencode` goes back to OpenCode.
-- Add `--project` to either to write the choice for the current project only.
-- `haring-model --qa <name>` does the same for the QA worker, which is `claude` by
-  default.
+- `haring-worker-driver` prints each kind's driver. `--kind <kind> --driver <driver>`
+  sets one; `--driver <driver>` sets all four. `--project` writes the choice for the
+  current project only.
+- `haring-model` prints each kind's driver and model and where the model comes from.
+  `--worker <name> --kind <kind> --model <model>` writes a saved model; `--clear` in
+  place of `--model` removes it.
 
 A worker runs one of two ways. One harness is both manager and workers: today Claude
 Code starts its own subagents as workers. Or a manager runs another harness's
 command-line workers: today Claude Code runs OpenCode workers through `haring-worker`.
 
-Each kind's model is a line in the untracked `<haring-root>/models`, written with
+Each kind's driver is the folder under `workers/` that runs it: `opencode` or `claude`.
+It settles from `<project>/.haring/drivers`, then `<haring-root>/drivers`, then the
+default: qa is `claude`, every other kind `opencode`. Each kind's model is a line in the
+untracked `<haring-root>/models`, written with
 `haring-model --worker <name> --kind <kind> --model <model>` and removed with `--clear`
 in place of `--model`, so changing it leaves the repo untouched; without a line, it is
-the `model:` line of `workers/<worker>/agents/<kind>.md`. For a Claude Code subagent,
+the `model:` line of `workers/<driver>/agents/<kind>.md`. For the Claude driver,
 `haring-model` reinstalls the agent as a generated copy carrying that model. The OpenCode
-worker runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker runs
+driver runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude driver runs
 check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
 
-A fresh run settles its worker from `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `opencode`; a continue keeps the worker recorded in the
-run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `claude`; an
-OpenCode QA worker runs as a `haring-worker qa` run. `workers/README.md` section 6 gives the
-full rule.
+A model for one run, or for the rest of the session, is passed at launch, with the Agent
+tool's `model` parameter for the Claude driver and `--model` on `haring-worker` otherwise;
+it is not a settings change, and a session request holds for every launch in that session.
+A fresh run settles each kind's driver from
+`<project>/.haring/drivers`, then `<haring-root>/drivers`, then the default: qa is
+`claude`, every other kind `opencode`. A continue keeps the driver recorded in the run's
+`meta`. A QA pass runs only when you ask for one, and its kind settles like every other.
+`workers/README.md` section 6 gives the full rule.
 
 Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
 Another manager harness is added with the `haring-add-manager` skill.
@@ -166,7 +167,8 @@ It removes that worker's agent links and leaves every other link in place.
 | `installed-links` | | the record of links `install.sh` made, which `uninstall.sh` reads |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
-| | `haring-model` | print each kind's model and where it comes from; `--worker <name> --kind <kind> --model <model>` writes one and `--clear` in place of `--model` removes it; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
+| | `haring-worker-driver` | print each kind's driver; `--kind <kind> --driver <driver>` sets one, `--driver <driver>` sets all, and `--project` writes the project's choice |
+| | `haring-model` | print each kind's driver and model; `--worker <name> --kind <kind> --model <model>` writes a model and `--clear` in place of `--model` removes it |
 | | `haring-wait` | follow a run, then print its report |
 | | `haring-pulse` | the workers' stream since the last pass, fast then at a pace you can retune |
 | | `haring-kill` | stop a running worker on purpose |
