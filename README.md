@@ -17,11 +17,14 @@ My personal setup is:
 
 This branch's supported setup is a Copilot CLI manager with `copilot-agent` subagents by
 default, or the command-line `copilot` and OpenCode workers (see
-[Choose the worker](#choose-the-worker)). Another worker harness can be added with the
+[Choose a different worker](#choose-a-different-worker)). Another worker harness can be added with the
 `haring-add-worker` skill and `workers/README.md`; another manager harness with the
 `haring-add-manager` skill. Other harnesses are not maintained here.
 
 ## This branch is the Copilot fork
+
+<details>
+<summary>Read how the Copilot fork works</summary>
 
 This branch runs haring with GitHub Copilot CLI as the manager, the worker and the QA
 worker. The default worker and QA worker are `copilot-agent`, subagents the manager starts
@@ -34,26 +37,28 @@ the manager when it exits; read its output and start it again while the worker i
 It prints only what is new, held in `pulse.pos`. Run `./install.sh` again after editing
 kinds/, because the subagent copies carry the rules and schema. The Claude Code subagents
 stay in the repository, but only a Claude Code manager can start them.
+</details>
 
 ## Why Haring
 
-Using one subscription for everything consumes it quickly.<br/>
-Haring gives you more bang for your buck.
+1. Built for long-horizon work (can work autonomously)
+2. Not having to repeat instructions
+3. Using one subscription for everything consumes limits quickly
 
 Manager: Plans, architects, orchestrates, and reviews.<br/>
-Worker: Implements.
+Worker: Implements.<br/>
+QA: Finds anything missed.
+
+## Prerequisites
+
+* A [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) subscription, signed in with `copilot login`
+* Optional: an [OpenCode](https://opencode.ai/console/go) subscription, only if you choose the OpenCode worker
 
 ## Install Haring
 
-1. Install [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) and sign in:
-```
-copilot login
-```
-OpenCode is needed only if you choose the OpenCode worker.
+1. Clone Haring anywhere and check out this branch: `git checkout copilot`.
 
-2. Clone Haring anywhere and check out this branch: `git checkout copilot`.
-
-3. Navigate inside and run the installer:
+2. Navigate inside and run the installer:
 ```
 cd haring-harness && ./install.sh
 ```
@@ -63,61 +68,7 @@ cd haring-harness && ./install.sh
 > `workers/copilot/agents-config` links the command-line Copilot agents into `~/.copilot/agents/haring-cli-<kind>.agent.md`.<br/>
 > `workers/copilot-agent/agents-config` writes Copilot subagent copies with the rules and schema inlined; run `./install.sh` again after editing kinds/.
 
-To remove haring, run:
-
-```
-./uninstall.sh
-```
-
-It removes every link that points into this repository: the skill links, the Claude QA
-agent, each worker's agent links and the `haring-*` scripts in `~/.local/bin`. It leaves
-plain files and links to other places alone, and lists plain `haring*` files to delete by
-hand. It does not touch a project's `.haring` folder or `.gitignore`.
-
-To remove only one worker's agent links, run:
-
-```
-./uninstall.sh --worker <name>
-```
-
-It removes that worker's agent links and leaves every other link in place.
-
-## Choose the worker
-
-- `haring-model` prints the worker, each kind's model and the QA worker.
-- `haring-model --worker copilot-agent` makes Copilot subagents the workers for every
-  project. This is the default.
-- `haring-model --worker copilot` chooses the command-line Copilot worker.
-- `haring-model --worker opencode` chooses OpenCode instead.
-- `haring-model --worker claude` chooses the Claude Code subagent worker, which only a
-  Claude Code manager can start.
-- Add `--project` to any of them to write the choice for the current project only.
-- `haring-model --qa <name>` does the same for the QA worker, which is `copilot-agent` by
-  default.
-
-A worker runs one of two ways. One harness is both manager and workers: a Copilot CLI
-manager starts `copilot-agent` subagents by default, and a Claude Code manager starts its
-own subagents. Or a manager runs another harness's command-line workers: this branch's
-Copilot CLI manager can run the command-line `copilot` worker or OpenCode workers through
-`haring-worker`.
-
-Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
-copilot-agent source files say `auto`, and install leaves that line out so the subagent
-inherits the manager's model; a named model line is kept. The command-line copilot worker
-runs every kind on `auto`; the OpenCode worker runs every kind on
-`opencode-go/deepseek-v4.1-flash`; the Claude worker runs check, errand and implement on
-`claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
-
-A fresh run settles its worker from `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `copilot-agent`; a continue keeps the worker recorded in the
-run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot-agent`; a
-copilot-agent QA pass is the subagent route, an OpenCode QA worker runs as a
-`haring-worker qa` run, and a Claude QA worker needs a Claude Code manager.
-`workers/README.md` section 6 gives the full rule.
-
-Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
-Another manager harness is added with the `haring-add-manager` skill.
+That's it.
 
 ## Use Haring
 
@@ -160,6 +111,72 @@ When the manager is a Copilot CLI session and starts a subagent while `haring-pu
 running, the pulse records it as a run the same way, from
 `~/.copilot/session-state/<session>/events.jsonl`, and writes `report.json` and
 `stats.txt` when it ends.
+
+## Choose a different worker
+
+<details>
+<summary>Read how to change the worker or the QA worker (optional)</summary>
+
+- `haring-model` prints the worker, each kind's model and the QA worker.
+- `haring-model --worker copilot-agent` makes Copilot subagents the workers for every
+  project. This is the default.
+- `haring-model --worker copilot` chooses the command-line Copilot worker.
+- `haring-model --worker opencode` chooses OpenCode instead.
+- `haring-model --worker claude` chooses the Claude Code subagent worker, which only a
+  Claude Code manager can start.
+- Add `--project` to any of them to write the choice for the current project only.
+- `haring-model --qa <name>` does the same for the QA worker, which is `copilot-agent` by
+  default.
+
+A worker runs one of two ways. One harness is both manager and workers: a Copilot CLI
+manager starts `copilot-agent` subagents by default, and a Claude Code manager starts its
+own subagents. Or a manager runs another harness's command-line workers: this branch's
+Copilot CLI manager can run the command-line `copilot` worker or OpenCode workers through
+`haring-worker`.
+
+Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
+copilot-agent source files say `auto`, and install leaves that line out so the subagent
+inherits the manager's model; a named model line is kept. The command-line copilot worker
+runs every kind on `auto`; the OpenCode worker runs every kind on
+`opencode-go/deepseek-v4.1-flash`; the Claude worker runs check, errand and implement on
+`claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+
+A fresh run settles its worker from `<project>/.haring/worker`, then
+`<haring-root>/worker`, then `copilot-agent`; a continue keeps the worker recorded in the
+run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
+`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot-agent`; a
+copilot-agent QA pass is the subagent route, an OpenCode QA worker runs as a
+`haring-worker qa` run, and a Claude QA worker needs a Claude Code manager.
+`workers/README.md` section 6 gives the full rule.
+
+Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
+Another manager harness is added with the `haring-add-manager` skill.
+</details>
+
+## Uninstall Haring
+
+<details>
+<summary>Read how to uninstall Haring</summary>
+
+To remove haring, run:
+
+```
+./uninstall.sh
+```
+
+It removes every link that points into this repository: the skill links, the Claude QA
+agent, each worker's agent links and the `haring-*` scripts in `~/.local/bin`. It leaves
+plain files and links to other places alone, and lists plain `haring*` files to delete by
+hand. It does not touch a project's `.haring` folder or `.gitignore`.
+
+To remove only one worker's agent links, run:
+
+```
+./uninstall.sh --worker <name>
+```
+
+It removes that worker's agent links and leaves every other link in place.
+</details>
 
 <br/>
 <p align="center">
