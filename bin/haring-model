@@ -1,59 +1,43 @@
 #!/bin/sh
-# haring-model — the models a worker in this project runs on, and the worker choices.
+# haring-model — the models each kind runs on.
 #
 #   haring-model
-#   haring-model --worker [<name>]
-#   haring-model --qa [<name>]
 #   haring-model --worker <name> --kind <kind> --model <model>
 #   haring-model --worker <name> --kind <kind> --clear
 #
-# With no argument, prints the settled worker and, for each kind, the model it runs on
-# and where that model came from. A kind's model is its line in <haring-root>/models,
+# With no argument, prints one line per kind, check, errand, implement and qa:
+# <kind>: <driver> <model> (<file the model came from>). A kind's driver settles from
+# <project>/.haring/drivers, then <haring-root>/drivers, then the default: qa is claude,
+# every other kind is opencode. A kind's model is its line in <haring-root>/models,
 # <worker> <kind> <model>, one setting per line; else the model: line of
-# workers/<worker>/agents/<kind>.md. The qa kind has a worker of its own, so the output
-# also names the QA worker and its model. A missing model prints none with the agent
-# file path; a model from the models file prints that file's path.
-#
-# --worker reads or writes the worker choice. It settles from <project>/.haring/worker,
-# then <haring-root>/worker, then opencode. With a name it writes that name into
-# <haring-root>/worker, or <project>/.haring/worker with --project.
-#
-# --qa does the same for the QA worker, read from <project>/.haring/qa-worker, then
-# <haring-root>/qa-worker, then claude. Its read prints the QA worker, where it came
-# from, and the qa model for that worker. With a name it writes it into
-# <haring-root>/qa-worker, or <project>/.haring/qa-worker with --project.
+# workers/<worker>/agents/<kind>.md. A missing model prints none with the agent file
+# path; a model from the models file prints that file's path.
 #
 # --worker <name> --kind <kind> --model <model> writes that worker and kind's model
 # into <haring-root>/models, replacing any line for them and keeping every other line;
-# --clear removes it. All three parts are required, and the worker choice files are
-# never changed. After a write or --clear, when workers/<name>/agents-config exists,
-# haring-model runs its install with the output on standard error, so an installed
-# subagent reflects the change; a failed reinstall exits 1 after saying the models file
-# was written.
+# --clear removes it. All three parts are required. The write does not change a kind's
+# driver; when the kind settles to another driver, the line printed after the write says
+# so. After a write or --clear, when workers/<name>/agents-config exists, haring-model
+# runs its install with the output on standard error, so an installed subagent reflects
+# the change; a failed reinstall exits 1 after saying the models file was written.
 #
-# The worker writes refuse a name with no folder under workers/. A model write needs a
-# worker name, one of the four kinds, and one of --model <model> or --clear.
+# A worker name with no folder under workers/ is refused. A model write needs a worker
+# name, one of the four kinds, and one of --model <model> or --clear.
 #
 # project is the git top level of the current directory, resolved the same way
 # bin/haring-worker resolves a workdir.
 #
-# Exits 2 when called wrongly: an unknown option or kind, a bare word, --worker and
-# --qa together, --qa or --project with --kind, --model with --clear, a missing worker
-# name or kind, or a name with no worker folder. Exits 1 when haring's own directory
-# could not be found, a choice or model could not be written, or the worker's agents
-# could not be reinstalled.
+# Exits 2 when called wrongly: an unknown option or kind, a bare word, --model with
+# --clear, a missing worker name or kind, or a name with no worker folder. Exits 1 when
+# haring's own directory could not be found, a model could not be written, or the
+# worker's agents could not be reinstalled.
 set -e
 
-# The last fallback for the settled worker, and for the QA worker.
-WORKER_DEFAULT=opencode
-QA_WORKER_DEFAULT=claude
-
-# The kinds a run of the settled worker uses, in the order they are printed. Each one
-# has an agent file under workers/<worker>/agents/.
-KINDS="check errand implement"
+# The kinds in the order they are printed.
+KINDS="check errand implement qa"
 
 usage() {
-  echo "usage: haring-model [--worker [<name>]] [--qa [<name>]] [--project]" >&2
+  echo "usage: haring-model" >&2
   echo "       haring-model --worker <name> --kind <kind> --model <model>" >&2
   echo "       haring-model --worker <name> --kind <kind> --clear" >&2
   exit 2
@@ -75,19 +59,33 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd) || { echo "haring-mode
 # bin/haring-worker resolves a workdir.
 project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 
-# A choice settles from the project's own file, then haring's, then the default. A file
-# that is missing, empty, or holds only whitespace names nothing and is passed over.
-settle_choice() {  # settle_choice <project-file> <haring-file> <default>
-  choice=$3
-  choice_source=""
-  for choice_file in "$1" "$2"; do
-    [ -f "$choice_file" ] || continue
-    candidate=$(tr -d '[:space:]' < "$choice_file")
-    [ -n "$candidate" ] || continue
-    choice=$candidate
-    choice_source=$choice_file
-    break
+# The default driver for a kind.
+default_driver() {  # default_driver <kind>
+  case "$1" in
+    qa) echo claude ;;
+    *)  echo opencode ;;
+  esac
+}
+
+# A kind's driver is the last line for it in the project's drivers file, else the last
+# line for it in haring's, else the kind's default. A missing file is passed over.
+driver_of() {  # driver_of <kind>
+  driver=""
+  for drivers_file in "$project/.haring/drivers" "$HARING/drivers"; do
+    [ -f "$drivers_file" ] || continue
+    while read -r drivers_kind drivers_name drivers_rest || [ -n "$drivers_kind" ]; do
+      case "$drivers_kind" in
+        ''|'#'*) continue ;;
+      esac
+      [ "$drivers_kind" = "$1" ] || continue
+      [ -n "$drivers_name" ] || continue
+      driver=$drivers_name
+    done < "$drivers_file"
+    if [ -n "$driver" ]; then
+      return 0
+    fi
   done
+  driver=$(default_driver "$1")
 }
 
 # A kind's model may be set in <haring-root>/models, one <worker> <kind> <model> per
@@ -174,8 +172,7 @@ clear_model() {  # clear_model <worker> <kind>
   echo "$1 $2: $removed removed from $models_file"
 }
 
-# A model write names its worker, so the name must be a folder under workers/. The
-# refusal is the same one write_choice gives.
+# A model write names its worker, so the name must be a folder under workers/.
 require_worker() {  # require_worker <name>
   if [ ! -d "$HARING/workers/$1" ]; then
     worker_names=""
@@ -190,51 +187,19 @@ require_worker() {  # require_worker <name>
   fi
 }
 
-# Write a settled worker name, into the project's file with --project, else haring's.
-# A name with no worker folder is refused, so a typo never becomes the choice.
-write_choice() {  # write_choice <name> <project-file> <haring-file>
-  if [ ! -d "$HARING/workers/$1" ]; then
-    worker_names=""
-    for worker_dir in "$HARING"/workers/*/; do
-      [ -d "$worker_dir" ] || continue
-      name=${worker_dir%/}
-      worker_names="$worker_names ${name##*/}"
-    done
-    echo "haring-model: unknown worker: $1" >&2
-    echo "  the worker folders are:${worker_names}" >&2
-    exit 2
-  fi
-  if [ -n "$project_flag" ]; then
-    mkdir -p "$project/.haring" || { echo "haring-model: could not create $project/.haring" >&2; exit 1; }
-    dest=$2
-  else
-    dest=$3
-  fi
-  printf '%s\n' "$1" > "$dest" || { echo "haring-model: could not write $dest" >&2; exit 1; }
-  echo "$1 -> $dest"
-}
-
-project_flag=""
 worker_flag=""
 worker_write=""
-qa_flag=""
-qa_write=""
 kind_flag=""
 model_flag=""
 clear_flag=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --project) project_flag=1; shift ;;
     --worker) worker_flag=1; shift
-          # The name is optional: the next word is it unless it is another flag.
+          # The name is required: a following flag, or nothing, leaves it unset and
+          # the write is refused.
           case "${1-}" in
             ''|-*) ;;
             *) worker_write=$1; shift ;;
-          esac ;;
-    --qa) qa_flag=1; shift
-          case "${1-}" in
-            ''|-*) ;;
-            *) qa_write=$1; shift ;;
           esac ;;
     --kind) case "${2-}" in
               ''|-*) echo "haring-model: --kind needs a kind" >&2; usage ;;
@@ -250,112 +215,50 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# A model write names its worker, kind and model all at once, so it is the only mode
-# with --kind, --model or --clear.
-if [ -n "$kind_flag" ] || [ -n "$model_flag" ] || [ -n "$clear_flag" ]; then
-  [ -n "$worker_flag" ] && [ -n "$worker_write" ] || {
-    echo "haring-model: a model write needs --worker <name>" >&2; usage; }
-  [ -n "$kind_flag" ] || {
-    echo "haring-model: a model write needs --kind <kind>" >&2; usage; }
-  case "$kind_flag" in
-    check|errand|implement|qa) ;;
-    *) echo "haring-model: unknown kind: $kind_flag" >&2
-       echo "  the kinds are: check errand implement qa" >&2
-       usage ;;
-  esac
-  [ -z "$clear_flag" ] || [ -z "$model_flag" ] || {
-    echo "haring-model: give --model <model> or --clear, not both" >&2; usage; }
-  [ -n "$model_flag" ] || [ -n "$clear_flag" ] || {
-    echo "haring-model: a model write needs --model <model> or --clear" >&2; usage; }
-  [ -z "$qa_flag" ] || {
-    echo "haring-model: --qa does not go with --kind" >&2; usage; }
-  [ -z "$project_flag" ] || {
-    echo "haring-model: --project does not go with --kind" >&2; usage; }
-  require_worker "$worker_write"
-  if [ -n "$clear_flag" ]; then
-    clear_model "$worker_write" "$kind_flag"
-  else
-    write_model "$worker_write" "$kind_flag" "$model_flag"
-  fi
-  agents_config="$HARING/workers/$worker_write/agents-config"
-  if [ -f "$agents_config" ]; then
-    if ! "$agents_config" install >&2; then
-      echo "haring-model: the models file was written, but the agents could not be reinstalled." >&2
-      exit 1
+if [ -z "$worker_flag" ] && [ -z "$kind_flag" ] && [ -z "$model_flag" ] && [ -z "$clear_flag" ]; then
+  for kind in $KINDS; do
+    driver_of "$kind"
+    agent_model_of "$driver" "$kind"
+    if [ -n "$agent_model" ]; then
+      echo "$kind: $driver $agent_model ($agent_file)"
+    else
+      echo "$kind: $driver none ($agent_file)"
     fi
-  fi
+  done
   exit 0
 fi
 
-[ -z "$worker_flag" ] || [ -z "$qa_flag" ] || {
-  echo "haring-model: --worker and --qa do not go together" >&2; usage; }
-
-if [ -n "$worker_flag" ]; then
-  if [ -n "$worker_write" ]; then
-    write_choice "$worker_write" "$project/.haring/worker" "$HARING/worker"
-    exit 0
-  fi
-  [ -z "$project_flag" ] || { echo "haring-model: --project needs a worker name to write" >&2; usage; }
-  settle_choice "$project/.haring/worker" "$HARING/worker" "$WORKER_DEFAULT"
-  if [ -n "$choice_source" ]; then
-    echo "$choice ($choice_source)"
-  else
-    echo "$choice (default)"
-  fi
-  exit 0
-fi
-
-if [ -n "$qa_flag" ]; then
-  if [ -n "$qa_write" ]; then
-    write_choice "$qa_write" "$project/.haring/qa-worker" "$HARING/qa-worker"
-    exit 0
-  fi
-  [ -z "$project_flag" ] || { echo "haring-model: --project needs a worker name to write" >&2; usage; }
-  settle_choice "$project/.haring/qa-worker" "$HARING/qa-worker" "$QA_WORKER_DEFAULT"
-  if [ -n "$choice_source" ]; then
-    echo "$choice ($choice_source)"
-  else
-    echo "$choice (default)"
-  fi
-  agent_model_of "$choice" qa
-  if [ -n "$agent_model" ]; then
-    echo "qa: $agent_model ($agent_file)"
-  else
-    echo "qa: none ($agent_file)"
-  fi
-  exit 0
-fi
-
-[ -z "$project_flag" ] || { echo "haring-model: --project needs a worker name to write" >&2; usage; }
-
-settle_choice "$project/.haring/worker" "$HARING/worker" "$WORKER_DEFAULT"
-worker=$choice
-worker_source=$choice_source
-settle_choice "$project/.haring/qa-worker" "$HARING/qa-worker" "$QA_WORKER_DEFAULT"
-qa_worker=$choice
-qa_worker_source=$choice_source
-
-if [ -n "$worker_source" ]; then
-  echo "$worker ($worker_source)"
+# The only write is a model write, so it needs a worker name, a kind and one of a model
+# or --clear.
+[ -n "$worker_flag" ] && [ -n "$worker_write" ] || {
+  echo "haring-model: a model write needs --worker <name>" >&2; usage; }
+[ -n "$kind_flag" ] || {
+  echo "haring-model: a model write needs --kind <kind>" >&2; usage; }
+case "$kind_flag" in
+  check|errand|implement|qa) ;;
+  *) echo "haring-model: unknown kind: $kind_flag" >&2
+     echo "  the kinds are: check errand implement qa" >&2
+     usage ;;
+esac
+[ -z "$clear_flag" ] || [ -z "$model_flag" ] || {
+  echo "haring-model: give --model <model> or --clear, not both" >&2; usage; }
+[ -n "$model_flag" ] || [ -n "$clear_flag" ] || {
+  echo "haring-model: a model write needs --model <model> or --clear" >&2; usage; }
+require_worker "$worker_write"
+if [ -n "$clear_flag" ]; then
+  clear_model "$worker_write" "$kind_flag"
 else
-  echo "$worker (default)"
+  write_model "$worker_write" "$kind_flag" "$model_flag"
 fi
-for kind in $KINDS; do
-  agent_model_of "$worker" "$kind"
-  if [ -n "$agent_model" ]; then
-    echo "$kind: $agent_model ($agent_file)"
-  else
-    echo "$kind: none ($agent_file)"
+driver_of "$kind_flag"
+if [ "$driver" != "$worker_write" ]; then
+  echo "note: $kind_flag runs on $driver, not $worker_write; set the driver with haring-worker-driver"
+fi
+agents_config="$HARING/workers/$worker_write/agents-config"
+if [ -f "$agents_config" ]; then
+  if ! "$agents_config" install >&2; then
+    echo "haring-model: the models file was written, but the agents could not be reinstalled." >&2
+    exit 1
   fi
-done
-if [ -n "$qa_worker_source" ]; then
-  echo "qa worker: $qa_worker ($qa_worker_source)"
-else
-  echo "qa worker: $qa_worker (default)"
 fi
-agent_model_of "$qa_worker" qa
-if [ -n "$agent_model" ]; then
-  echo "qa: $agent_model ($agent_file)"
-else
-  echo "qa: none ($agent_file)"
-fi
+exit 0
