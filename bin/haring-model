@@ -92,7 +92,7 @@ settle_choice() {  # settle_choice <project-file> <haring-file> <default>
 models_model_of() {  # models_model_of <worker> <kind>
   models_model=""
   [ -f "$HARING/models" ] || return 0
-  while read -r models_worker models_kind models_name models_rest; do
+  while read -r models_worker models_kind models_name models_rest || [ -n "$models_worker" ]; do
     case "$models_worker" in
       ''|'#'*) continue ;;
     esac

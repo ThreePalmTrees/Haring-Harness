@@ -253,7 +253,7 @@ if [ -z "$model" ]; then
   agent_file="$HARING/workers/$worker/agents/$kind.md"
   models_file="$HARING/models"
   if [ -f "$models_file" ]; then
-    while read -r models_worker models_kind models_name models_rest; do
+    while read -r models_worker models_kind models_name models_rest || [ -n "$models_worker" ]; do
       case "$models_worker" in
         ''|'#'*) continue ;;
       esac
