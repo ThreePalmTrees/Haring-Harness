@@ -26,7 +26,10 @@
 # <kind> <model> writes the kind's model into <haring-root>/models for the worker the
 # kind settles to: check, errand and implement use the settled worker, qa uses the
 # settled QA worker. It replaces any line for that worker and kind and keeps every
-# other line. <kind> --clear removes that worker and kind's line.
+# other line. <kind> --clear removes that worker and kind's line. After a write or
+# --clear, when workers/<worker>/agents-config exists, haring-model runs its install
+# with the output on standard error, so an installed subagent reflects the change; a
+# failed reinstall exits 1 after saying the models file was written.
 #
 # Both worker writes refuse a name with no folder under workers/. A model write needs
 # one of the four kinds; a bare model name is a usage error.
@@ -36,8 +39,8 @@
 #
 # Exits 2 when called wrongly: an unknown option or kind, a bare model name, --worker
 # and --qa together, --project with a model write, or a name with no worker folder.
-# Exits 1 when haring's own directory could not be found, or a choice or model could
-# not be written.
+# Exits 1 when haring's own directory could not be found, a choice or model could not
+# be written, or the worker's agents could not be reinstalled.
 set -e
 
 # The last fallback for the settled worker, and for the QA worker.
@@ -260,6 +263,13 @@ if [ -n "$model_kind" ]; then
     clear_model "$choice" "$model_kind"
   else
     write_model "$choice" "$model_kind" "$model_name"
+  fi
+  agents_config="$HARING/workers/$choice/agents-config"
+  if [ -f "$agents_config" ]; then
+    if ! "$agents_config" install >&2; then
+      echo "haring-model: the models file was written, but the agents could not be reinstalled." >&2
+      exit 1
+    fi
   fi
   exit 0
 fi
