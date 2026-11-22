@@ -50,13 +50,11 @@ A named model line is kept, for a plan that allows it. The OpenCode driver runs 
 on `opencode-go/deepseek-v4.1-flash`. The Claude driver runs check, errand and implement on
 `claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The choice of model is the client's. `haring-meta` prints each
 kind's driver and model, so you have them before you ask. A model for one run, or for the
-rest of the session, is not a settings change: pass it at launch, with the Agent tool's
-`model` parameter when the kind's driver is `claude` and `--model` on `haring-worker`
-otherwise; a session request holds for every launch in that session. Without such a
-request you pass no model. You never choose a model on your own: `--model` on
-`haring-worker` is a one-run override, only for when the client asks for a different model
-on that run; do not pass a model when you start a subagent with `task`. `haring-model`
-with no argument prints each kind's driver and model.
+rest of the session, is not a settings change: pass it at launch, with `task`'s `model`
+parameter when the kind's driver is `copilot-cli`, the Agent tool's `model` parameter when
+it is `claude`, and `--model` on `haring-worker` otherwise; a session request holds for
+every launch in that session. Without such a request you pass no model: you never choose
+a model on your own. `haring-model` with no argument prints each kind's driver and model.
 
 ## How a job runs
 
@@ -570,8 +568,9 @@ qa: `copilot-cli` by default.
 
 - **`copilot-cli`** — the same route as "Run a Copilot subagent", with
   `agent_type: "haring-qa"`: start the `--once` poll, start the background `task`, find
-  the run, `haring-wait` it, and read `haring-report`. Do not pass a model: the qa model
-  `haring-model` prints is installed in `haring-qa`; `task` itself takes no model.
+  the run, `haring-wait` it, and read `haring-report`. Pass no `model` unless the client
+  asks for a different model on that one pass; then pass it as `task`'s `model`. The
+  saved model `haring-model` prints is installed in `haring-qa`.
 - **`claude`** — start the Claude Code agent with the Agent tool,
   `subagent_type: "haring-qa"`. Pass no `model` parameter unless the client asks for a
   different model on that one pass; then pass the Agent tool's `model` parameter. The
@@ -585,8 +584,9 @@ qa: `copilot-cli` by default.
   it like any other run.
 
 A model the client names for the pass ("QA it with sonnet") is passed at launch, not
-saved: the Agent tool's `model` parameter for `claude`, `--model` on `haring-worker` for
-`opencode`. A request for the session holds for every launch in it.
+saved: `task`'s `model` for `copilot-cli`, the Agent tool's `model` parameter for
+`claude`, `--model` on `haring-worker` for `opencode`. A request for the session holds
+for every launch in it.
 
 Findings come back through you. Each is checked at the place it names, and the agreed
 ones become worker task or tasks, whose fixes you verify were carried out faithfully.
@@ -605,8 +605,10 @@ no reason is known, say that too.
    promptly.
 2. Start the worker with the `task` tool: `agent_type: "haring-<kind>"`,
    `mode: "background"`, and the prompt is the task alone. The agent file already carries
-   every rule and the report schema. Do not pass a model: the kind's model, which
-   `haring-model` prints, is installed in the agent. The copilot-cli source files say
+   every rule and the report schema. Pass no `model` unless the client asks for one;
+   then pass it as `task`'s `model`, for that run or for every launch in the session when
+   the client says so. The saved model, which `haring-model` prints, is installed in the
+   agent. The copilot-cli source files say
    `model: auto`; a models-file line replaces it in the copy, and with no line the
    installer leaves it out so the subagent takes your model. Copilot turns an agent-file
    `auto` into a named model, which an auto-only plan refuses. A named model line is
