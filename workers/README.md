@@ -20,8 +20,9 @@ example for one the manager starts.
 ## 1. What a worker folder is
 
 A worker folder lives at `workers/<name>/` under the haring root. A fresh run settles
-its name from `<project>/.haring/worker`, then `<haring-root>/worker`, then `copilot-agent`.
-A continued run uses the `worker=` line in the run it continues, or `opencode` when
+its kind's driver from `<project>/.haring/drivers`, then `<haring-root>/drivers`, then
+the default: `copilot-agent` for every kind.
+A continued run uses the `worker=` line in the run it continues, or `copilot-agent` when
 that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
@@ -293,7 +294,7 @@ The arguments are:
 
 - `--kind`: one of `check`, `implement`, `errand` or `qa`.
 - `--model`: the model this kind runs on, from `<haring-root>/models` when it has a line
-  for the worker and kind, else the `model:` line of the worker's `agents/<kind>.md`, or
+  for the driver and kind, else the `model:` line of the driver's `agents/<kind>.md`, or
   the caller's one-run override.
 - `--effort`: `low`, `high` or `max`, only when the caller asked for one.
 - `--session-file`: the path where a fresh run may record its session id.
@@ -369,7 +370,7 @@ the harness's tool, and haring only reads the transcript. `workers/copilot-agent
 `workers/claude/` are the examples.
 
 Such a worker leaves out `start`, `steer` and `stop`. `haring-worker` refuses to launch
-it: when the settled worker has no `start` program it exits 2, names the missing path,
+it: when the settled driver has no `start` program it exits 2, names the missing path,
 and creates no run folder. A Copilot CLI manager starts a `copilot-agent` with the `task`
 tool and steers it with `write_agent`; no Copilot tool stops a running subagent, so
 `haring-kill` and `haring-say` exit 1 for one and name the agent id. A Claude Code manager
@@ -488,7 +489,7 @@ and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.
 --worker <name>` does not list that folder and refuses the name with exit 2.
 
 A fresh launch stops with exit 2 and names the agent file when `<haring-root>/models`
-has no line for the worker and kind and `agents/<kind>.md` is missing or has no `model:`
+has no line for the driver and kind and `agents/<kind>.md` is missing or has no `model:`
 line. `haring-meta` prints `none` with the agent file path when it cannot find a kind's
 model.
 
@@ -500,12 +501,13 @@ A `start` that exits non-zero is not detected as a failure. The core records the
 code nowhere. A `steer` or `stop` that exits non-zero is reported by the command that
 called it.
 
-## 6. How the core chooses the worker
+## 6. How the core chooses the driver
 
-A fresh run settles its worker from two files. It reads the first of
-`<project>/.haring/worker` and `<haring-root>/worker` that names one. A file that is
-missing, empty or holds only whitespace names nothing and is passed over. When neither
-file names a worker, `haring-worker` uses `WORKER_DEFAULT`, which is `copilot`.
+A fresh run settles its kind's driver from two files. It reads the last line for the
+kind in `<project>/.haring/drivers`, then in `<haring-root>/drivers`; the project file
+wins when it names the kind. A drivers file holds one `<kind> <driver>` per line; blank
+lines and lines whose first word starts with # are ignored, and the last line for a kind
+wins. When neither file names the kind, the default is `copilot-agent` for every kind.
 
 The settled name must be a folder under `workers/`. When it is not, `haring-worker`
 stops before it creates the run folder. It exits 2, prints where the name came from,
@@ -516,45 +518,41 @@ same way.
 before it launches anything.
 
 A continued run uses the worker recorded in the run it continues. If that `meta` has
-no `worker=` line, it uses the default worker. The new run records the same name in
-its own `meta`. A missing worker folder is refused the same way, with the run's `meta`
-named as the source.
+no `worker=` line, it uses `copilot-agent`. The new run records the same name in its own
+`meta`. A missing worker folder is refused the same way, with the run's `meta` named as
+the source.
 
-Every command that reads the event stream finds the worker from the run's `meta`. It
-reads the `worker=` line, or uses `opencode` when the line is absent. It then loads
+Every command that reads the event stream finds the driver from the run's `meta`. It
+reads the `worker=` line, or uses `copilot-agent` when the line is absent. It then loads
 `workers/<name>/events.py`. The commands that need a program call it in
 `workers/<name>/`.
 
-`haring-model` and `haring-meta` answer before a run exists. They settle the worker the
-same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
-then `copilot-agent`. Each kind's model is its line in `<haring-root>/models`, else the
-`model:` line of `workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled
-worker's check, errand and implement models, and the QA worker with its `qa` model.
+`haring-model` and `haring-meta` answer before a run exists. They settle each kind's
+driver the same way a fresh run does: `<project>/.haring/drivers`, then
+`<haring-root>/drivers`, then `copilot-agent` for every kind. Each kind's model is its
+line in `<haring-root>/models`, else the `model:` line of
+`workers/<driver>/agents/<kind>.md`. `haring-meta` prints one line, `Drivers and
+models: ...`, with every kind's driver and model.
 
-`haring-model --worker` prints the settled worker and where it came from. Given a name,
-it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with
-`--project`, and refuses a name with no folder under `workers/`.
+`haring-worker-driver` prints each kind's driver. `--kind <kind> --driver <driver>`
+sets one kind and `--driver <driver>` sets all four; `--project` writes
+`<project>/.haring/drivers` instead of `<haring-root>/drivers`. A name with no folder
+under `workers/` is refused.
 
-A fresh run's model is the line for its worker and kind in `<haring-root>/models`, else
-the `model:` line of `workers/<worker>/agents/<kind>.md`. It is read after the worker
+A fresh run's model is the line for its driver and kind in `<haring-root>/models`, else
+the `model:` line of `workers/<driver>/agents/<kind>.md`. It is read after the driver
 settles and before the run folder is created. The models file is untracked, so changing
 a model there leaves the repo untouched. A missing model in both stops the launch with
 exit 2 and names the agent file. `haring-worker --model` is a one-run override, passed
 through unchecked, and a continue keeps the model recorded in the run it continues.
 
-A qa run settles a worker of its own: `<project>/.haring/qa-worker`, then
-`<haring-root>/qa-worker`, then `copilot-agent`, never the worker files. Its model is its
-line in `<haring-root>/models`, else the `model:` line of that worker's `agents/qa.md`.
-
-`haring-model` with no argument prints the settled worker and, for check, errand and
-implement, the model and where it came from, then the QA worker and its model. A model
-from `<haring-root>/models` names that file; otherwise the agent file is named.
-`haring-model --worker <name> --kind <kind> --model <model>` writes that worker's model
-for that kind into `<haring-root>/models`, and `--clear` in place of `--model` removes
-it; for a copilot-agent subagent the generated copy is reinstalled with that model in
-place of `auto`. `haring-model --qa` prints the QA worker, where it came from, and its
-`qa` model; given a name, it writes that name into `<haring-root>/qa-worker`, or
-`<project>/.haring/qa-worker` with `--project`.
+`haring-model` with no argument prints each kind's driver, its model and where the model
+came from. `haring-model --worker <name> --kind <kind> --model <model>` writes that
+worker's model for that kind into `<haring-root>/models`, and `--clear` in place of
+`--model` removes it; for a copilot-agent subagent the generated copy is reinstalled with
+that model in place of `auto`, and for the Claude driver the agent is reinstalled as a
+generated copy carrying the model. When the kind settles to a different driver, the write
+also prints a note naming it.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program

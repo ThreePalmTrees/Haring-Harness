@@ -145,8 +145,10 @@ Use a small scratch project under `/tmp`. Do not test in the user's project.
 
 1. Run `./install.sh` in the haring root, or run the new
    `workers/<name>/agents-config install`. This installs the per-kind files.
-2. Create `<project>/.haring/worker` with the new worker name in it. This is the
-   project worker file from `workers/README.md` section 6.
+2. Set the project's errand driver with
+   `haring-worker-driver --kind errand --driver <name> --project`, which writes
+   `<project>/.haring/drivers`, the project drivers file from `workers/README.md`
+   section 6.
 3. Start a small errand with `haring-worker`. Use a prompt that asks for one fact from
    one file. `haring-worker` prints the run folder. Watch it with `haring-pulse`, or
    pass `--no-pulse` for one test run.

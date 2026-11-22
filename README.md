@@ -26,9 +26,9 @@ default, or the command-line `copilot` and OpenCode workers (see
 <details>
 <summary>Read how the Copilot fork works</summary>
 
-This branch runs haring with GitHub Copilot CLI as the manager, the worker and the QA
-worker. The default worker and QA worker are `copilot-agent`, subagents the manager starts
-with its own `task` tool. The command-line `copilot` worker and `opencode` are the other
+This branch runs haring with GitHub Copilot CLI as the manager and every kind's driver.
+The default driver for every kind is `copilot-agent`, subagents the manager starts with
+its own `task` tool. The command-line `copilot` worker and `opencode` are the other
 choices. The source agent files say `model: auto`; `agents-config install` leaves that line
 out of the installed copy, so the subagent takes the manager's model, because Copilot
 turns an agent-file `auto` into a named model that an auto-only plan refuses. A named
@@ -115,21 +115,18 @@ running, the pulse records it as a run the same way, from
 ## Choose a different worker
 
 <details>
-<summary>Read how to change the worker or the QA worker (optional)</summary>
+<summary>Read how to choose a driver or a model (optional)</summary>
 
-- `haring-model` prints the worker, each kind's model and where it comes from, and the
-  QA worker.
-- `haring-model --worker <name> --kind <kind> --model <model>` sets that worker's model
-  for that kind; `--clear` in place of `--model <model>` removes it.
-- `haring-model --worker copilot-agent` makes Copilot subagents the workers for every
-  project. This is the default.
-- `haring-model --worker copilot` chooses the command-line Copilot worker.
-- `haring-model --worker opencode` chooses OpenCode instead.
-- `haring-model --worker claude` chooses the Claude Code subagent worker, which only a
-  Claude Code manager can start.
-- Add `--project` to any of them to write the choice for the current project only.
-- `haring-model --qa <name>` does the same for the QA worker, which is `copilot-agent` by
-  default.
+- `haring-worker-driver` prints each kind's driver. `--kind <kind> --driver <driver>`
+  sets one; `--driver <driver>` sets all four. `--project` writes the choice for the
+  current project only.
+- The default driver for every kind is `copilot-agent`, a Copilot CLI subagent the
+  manager starts with its own `task` tool. `copilot` chooses the command-line Copilot
+  worker and `opencode` the OpenCode worker, both started with `haring-worker`; `claude`
+  chooses the Claude Code subagent driver, which only a Claude Code manager can start.
+- `haring-model` prints each kind's driver and model and where the model comes from.
+  `--worker <name> --kind <kind> --model <model>` writes a saved model; `--clear` in
+  place of `--model` removes it.
 
 A worker runs one of two ways. One harness is both manager and workers: a Copilot CLI
 manager starts `copilot-agent` subagents by default, and a Claude Code manager starts its
@@ -137,24 +134,31 @@ own subagents. Or a manager runs another harness's command-line workers: this br
 Copilot CLI manager can run the command-line `copilot` worker or OpenCode workers through
 `haring-worker`.
 
-Each kind's model is a line in the untracked `<haring-root>/models`, written with
+Each kind's driver is the folder under `workers/` that runs it: `copilot-agent`,
+`copilot`, `opencode` or `claude`. It settles from `<project>/.haring/drivers`, then
+`<haring-root>/drivers`, then the default: `copilot-agent` for every kind. Each kind's
+model is a line in the untracked `<haring-root>/models`, written with
 `haring-model --worker <name> --kind <kind> --model <model>` and removed with `--clear`
 in place of `--model`, so changing it leaves the repo untouched; without a line, it is
-the `model:` line of `workers/<worker>/agents/<kind>.md`. For a copilot-agent subagent,
+the `model:` line of `workers/<driver>/agents/<kind>.md`. For a copilot-agent subagent,
 `haring-model` reinstalls the generated copy with that model in place of `auto`. The
 copilot-agent source files say `model: auto`, and with no models-file line install leaves
 that line out so the subagent inherits the manager's model; a named model line is kept.
 Copilot turns an agent-file `auto` into a named model, which an auto-only plan refuses.
-The command-line copilot worker runs every kind on `auto`; the OpenCode worker runs every
-kind on `opencode-go/deepseek-v4.1-flash`; the Claude worker runs check, errand and
-implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
+For the Claude driver, `haring-model` reinstalls the agent as a generated copy carrying
+that model. The command-line copilot worker runs every kind on `auto`; the OpenCode driver
+runs every kind on `opencode-go/deepseek-v4.1-flash`; the Claude driver runs check, errand
+and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
 
-A fresh run settles its worker from `<project>/.haring/worker`, then
-`<haring-root>/worker`, then `copilot-agent`; a continue keeps the worker recorded in the
-run's `meta`. A QA pass runs only when you ask for one, and settles its own worker from
-`<project>/.haring/qa-worker`, then `<haring-root>/qa-worker`, then `copilot-agent`; a
-copilot-agent QA pass is the subagent route, an OpenCode QA worker runs as a
-`haring-worker qa` run, and a Claude QA worker needs a Claude Code manager.
+A model for one run, or for the rest of the session, is passed at launch, with the Agent
+tool's `model` parameter for the Claude driver and `--model` on `haring-worker` otherwise;
+it is not a settings change, and a session request holds for every launch in that session.
+A fresh run settles each kind's driver from
+`<project>/.haring/drivers`, then `<haring-root>/drivers`, then the default:
+`copilot-agent` for every kind. A continue keeps the driver recorded in the run's `meta`.
+A QA pass runs only when you ask for one, and its kind settles like every other: a
+copilot-agent QA pass is the subagent route, an OpenCode qa run uses `haring-worker qa`,
+and a Claude qa run needs a Claude Code manager.
 `workers/README.md` section 6 gives the full rule.
 
 Another worker harness is added with the `haring-add-worker` skill and `workers/README.md`.
@@ -201,7 +205,8 @@ It removes that worker's agent links and leaves every other link in place.
 | `installed-links` | | the record of links `install.sh` made, which `uninstall.sh` reads |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
-| | `haring-model` | print each kind's model and where it comes from; `--worker <name> --kind <kind> --model <model>` writes one and `--clear` in place of `--model` removes it; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
+| | `haring-worker-driver` | print each kind's driver; `--kind <kind> --driver <driver>` sets one, `--driver <driver>` sets all, and `--project` writes the project's choice |
+| | `haring-model` | print each kind's driver and model; `--worker <name> --kind <kind> --model <model>` writes a model and `--clear` in place of `--model` removes it |
 | | `haring-wait` | follow a run, then print its report |
 | | `haring-pulse` | the workers' stream since the last pass, fast then at a pace you can retune |
 | | `haring-kill` | stop a running worker on purpose |
