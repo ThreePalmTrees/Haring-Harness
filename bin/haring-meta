@@ -128,12 +128,36 @@ KINDS = ("check", "errand", "implement")
 QA_WORKER_DEFAULT = "claude"
 
 
+def models_model(haring, worker, kind):
+    # A kind's model may be set in <haring-root>/models, one <worker> <kind> <model>
+    # per line. Blank lines and lines whose first word starts with # are ignored, and
+    # the last line for a worker and kind wins. The path is returned even when no line
+    # matches, so a caller can name the file.
+    path = os.path.join(haring, "models")
+    model = None
+    try:
+        with open(path) as f:
+            for line in f:
+                fields = line.split()
+                if not fields or fields[0].startswith("#"):
+                    continue
+                if len(fields) >= 3 and fields[0] == worker and fields[1] == kind:
+                    model = fields[2]
+    except OSError:
+        pass
+    return model, path
+
+
 def agent_model(haring, worker, kind):
-    # Every kind's model is the model: line of its agent file, the only place a model
-    # is named. The meta line names the file only when the model is missing, because
-    # the block goes into every worker's prompt; haring-model names every file. The line is read from column 1, the rest of the line is the model, and
+    # A kind's model is the models file's line for the worker and kind, else the
+    # model: line of its agent file. The meta line names the file only when the model
+    # is missing, because the block goes into every worker's prompt; haring-model names
+    # every file. The line is read from column 1, the rest of the line is the model, and
     # surrounding whitespace is not part of it. A missing file or empty line returns
     # None; the caller prints none with the path.
+    model, models_path = models_model(haring, worker, kind)
+    if model:
+        return model, models_path
     path = os.path.join(haring, "workers", worker, "agents", kind + ".md")
     try:
         with open(path) as f:
