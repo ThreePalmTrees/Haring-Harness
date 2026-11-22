@@ -117,7 +117,10 @@ running, the pulse records it as a run the same way, from
 <details>
 <summary>Read how to change the worker or the QA worker (optional)</summary>
 
-- `haring-model` prints the worker, each kind's model and the QA worker.
+- `haring-model` prints the worker, each kind's model and where it comes from, and the
+  QA worker.
+- `haring-model <kind> <model>` sets that kind's model; `haring-model <kind> --clear`
+  removes the setting.
 - `haring-model --worker copilot-agent` makes Copilot subagents the workers for every
   project. This is the default.
 - `haring-model --worker copilot` chooses the command-line Copilot worker.
@@ -134,10 +137,15 @@ own subagents. Or a manager runs another harness's command-line workers: this br
 Copilot CLI manager can run the command-line `copilot` worker or OpenCode workers through
 `haring-worker`.
 
-Each kind's model is the `model:` line of `workers/<worker>/agents/<kind>.md`. The
-copilot-agent source files say `auto`, and install leaves that line out so the subagent
-inherits the manager's model; a named model line is kept. The command-line copilot worker
-runs every kind on `auto`; the OpenCode worker runs every kind on
+Each kind's model is a line in the untracked `<haring-root>/models`, written with
+`haring-model <kind> <model>` and removed with `haring-model <kind> --clear`, so
+changing it leaves the repo untouched; without a line, it is the `model:` line of
+`workers/<worker>/agents/<kind>.md`. For a copilot-agent subagent, `haring-model`
+reinstalls the generated copy with that model in place of `auto`. The copilot-agent
+source files say `model: auto`, and with no models-file line install leaves that line out
+so the subagent inherits the manager's model; a named model line is kept. Copilot turns an
+agent-file `auto` into a named model, which an auto-only plan refuses. The command-line
+copilot worker runs every kind on `auto`; the OpenCode worker runs every kind on
 `opencode-go/deepseek-v4.1-flash`; the Claude worker runs check, errand and implement on
 `claude-sonnet-5-5`, and qa on `claude-opus-5-5`.
 
@@ -193,7 +201,7 @@ It removes that worker's agent links and leaves every other link in place.
 | `installed-links` | | the record of links `install.sh` made, which `uninstall.sh` reads |
 | `uninstall.sh` | | remove the links that `install.sh` made |
 | `bin/` | `haring-worker` | start a worker, or continue one |
-| | `haring-model` | print each kind's model and its agent file; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
+| | `haring-model` | print each kind's model and where it comes from; `<kind> <model>` writes it and `<kind> --clear` removes it; `--worker` reads or writes the worker, and `--qa` reads or writes the QA worker |
 | | `haring-wait` | follow a run, then print its report |
 | | `haring-pulse` | the workers' stream since the last pass, fast then at a pace you can retune |
 | | `haring-kill` | stop a running worker on purpose |
@@ -218,7 +226,7 @@ It removes that worker's agent links and leaves every other link in place.
 | `workers/` | `README.md` | the contract a worker harness must meet, and how a run chooses its worker |
 | `workers/claude/` | `events.py` | reads a Claude Code subagent's transcript and turns it into haring's entries and summary |
 | | `agents-config` | install, remove and check the Claude Code agent links |
-| | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is that kind's model |
+| | `agents/<kind>.md` | one Claude Code agent per kind; its `model:` line is the kind's default model |
 | `workers/copilot/` | `start` | run one worker turn and write the event stream |
 | | `stop` | report whether the Copilot session's process is still alive |
 | | `steer` | say that a running Copilot `-p` session cannot take a message |
@@ -227,7 +235,7 @@ It removes that worker's agent links and leaves every other link in place.
 | | `agents/<kind>.md` | one Copilot agent per kind; its `model:` line is that kind's model |
 | `workers/copilot-agent/` | `events.py` | reads a Copilot CLI manager log's subagent lines and turns them into haring's entries and summary |
 | | `agents-config` | install, remove and check the generated Copilot subagent copies, with the rules and schema inlined |
-| | `agents/<kind>.md` | one Copilot subagent per kind; its `model:` line is that kind's model |
+| | `agents/<kind>.md` | one Copilot subagent per kind; its `model:` line is the kind's default model |
 | `workers/opencode/` | `events.py` | reads OpenCode's event stream and turns it into haring's entries and summary |
 | | `start` | run one worker turn and write the event stream |
 | | `steer` | send a message into a live session |

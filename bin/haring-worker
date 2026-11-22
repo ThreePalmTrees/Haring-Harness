@@ -13,12 +13,12 @@
 # WORKER_DEFAULT below; a continue keeps the worker recorded in the run it continues.
 # A qa run settles a worker of its own: <project>/.haring/qa-worker, then
 # <haring-root>/qa-worker, then copilot-agent, never the worker files.
-# A fresh run's model is the model: line of the worker's agent file for the kind,
-# workers/<worker>/agents/<kind>.md — one place for every worker, every kind and every
-# project. A missing agent file or model line stops the launch with exit 2 and names the
-# file. --model is a one-run override and is passed through unchecked; it exists only
-# when the person who asked for the work asks for it. A continue keeps the model of the
-# run it continues, recorded in that run's meta.
+# A fresh run's model is the line for its worker and kind in <haring-root>/models,
+# <worker> <kind> <model>, else the model: line of the worker's agent file for the
+# kind, workers/<worker>/agents/<kind>.md. A missing model in both stops the launch
+# with exit 2 and names the agent file. --model is a one-run override and is passed
+# through unchecked; it exists only when the person who asked for the work asks for it.
+# A continue keeps the model of the run it continues, recorded in that run's meta.
 # --effort lowers or raises how hard the worker thinks — low, high or max, the model's
 # harness variant — and exists only for when the person who asked for the work asks
 # for it. No kind sets it: see the comment above the kind table.
@@ -237,31 +237,46 @@ if [ ! -x "$HARING/workers/$worker/start" ]; then
   exit 2
 fi
 
-# Every kind's model lives in one place: the model: line in the frontmatter of
+# A kind's model is set in <haring-root>/models, one <worker> <kind> <model> per line,
+# and falls back to the model: line in the frontmatter of
 # workers/<worker>/agents/<kind>.md, the same file that sets the kind's tools and
-# limits. It is read after the worker settles and before anything is created; a missing
-# file or line is refused here. --model above is a one-run override and is passed
-# through unchecked, and a continue already carries the model from its run's meta.
+# limits. Blank lines and lines whose first word starts with # are ignored, and the last
+# line for a worker and kind wins. It is read after the worker settles and before
+# anything is created; a missing model in both places is refused here. --model above is
+# a one-run override and is passed through unchecked, and a continue already carries the
+# model from its run's meta.
 case "$kind" in
   check|errand|implement|qa) ;;
   *) echo "unknown kind: $kind" >&2; usage ;;
 esac
 if [ -z "$model" ]; then
   agent_file="$HARING/workers/$worker/agents/$kind.md"
-  if [ -f "$agent_file" ]; then
+  models_file="$HARING/models"
+  if [ -f "$models_file" ]; then
+    while read -r models_worker models_kind models_name models_rest || [ -n "$models_worker" ]; do
+      case "$models_worker" in
+        ''|'#'*) continue ;;
+      esac
+      [ "$models_worker" = "$worker" ] && [ "$models_kind" = "$kind" ] || continue
+      [ -n "$models_name" ] || continue
+      model=$models_name
+    done < "$models_file"
+  fi
+  if [ -z "$model" ] && [ -f "$agent_file" ]; then
     model=$(sed -n 's/^model:[[:space:]]*//p' "$agent_file" | sed -n 1p | tr -d '[:space:]')
   fi
   if [ -z "$model" ]; then
-    echo "haring-worker: the $kind kind has no model: $agent_file is missing or has no model: line." >&2
+    echo "haring-worker: the $kind kind has no model: $models_file has no $worker $kind line and $agent_file is missing or has no model: line." >&2
     exit 2
   fi
 fi
 
 # Each kind runs as its own OpenCode agent, workers/opencode/agents/<kind>.md, linked
 # into ~/.config/opencode/agents by workers/opencode/agents-config, which install.sh
-# runs. The agent file also names the kind's model, in its model: line above. The agent
-# is where a kind's limits live: a deny rule there removes the tool
-# from the session outright, so a read-only kind has no write tool to be talked out of.
+# runs. The model is the models file's line for the kind when it has one, else the
+# agent file's model: line above. The agent is where a kind's limits live: a deny rule
+# there removes the tool from the session outright, so a read-only kind has no write
+# tool to be talked out of.
 # check and qa are denied edit (which covers write and patch too), errand is denied the
 # shell as well, and every kind is denied question, subagent, skill, webfetch and
 # websearch. The private paths every worker is refused are refused twice: to the read

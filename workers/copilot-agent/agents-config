@@ -8,12 +8,15 @@
 # The source agent files live in agents/<kind>.md beside this script. Copilot runs a
 # personal subagent from ~/.copilot/agents/haring-<kind>.agent.md. install writes a
 # generated copy, not a link, because the copy must inline bin/haring-prompt <kind> and
-# the kind's schema in place of @RULES@, and must have its `model: auto` line removed so
-# the subagent inherits the manager's model; a link would keep the placeholders and the
-# auto model, and a Copilot subagent cannot read files outside the project. The copy goes
-# stale whenever kinds/rules.md or kinds/<kind>/rules.md changes, so run ./install.sh
-# after editing kinds/. It also carries a marker naming its source file, and remove
-# deletes only regular files whose marker points into this directory's agents/.
+# the kind's schema in place of @RULES@. Its `model: auto` line is removed so the
+# subagent inherits the manager's model, unless <haring-root>/models has a line for
+# `copilot-agent <kind>`, which replaces it with that model; a link would keep the
+# placeholders and the auto model, and a Copilot subagent cannot read files outside the
+# project. Blank lines and lines whose first word starts with # in the models file are
+# ignored, and the last line for the worker and kind wins. The copy goes stale whenever
+# kinds/rules.md or kinds/<kind>/rules.md changes, so run ./install.sh after editing
+# kinds/. It also carries a marker naming its source file, and remove deletes only
+# regular files whose marker points into this directory's agents/.
 set -e
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -32,15 +35,32 @@ marker_source() {  # marker_source <file>
   sed -n 's|^<!-- haring source: \(.*\) -->$|\1|p' "$1" | tail -n 1
 }
 
+model_of() {  # model_of <kind>
+  model_of_value=""
+  [ -f "$HARING/models" ] || return 0
+  while read -r model_worker model_kind model_name model_rest || [ -n "$model_worker" ]; do
+    case "$model_worker" in
+      ''|'#'*) continue ;;
+    esac
+    [ "$model_worker" = copilot-agent ] && [ "$model_kind" = "$1" ] || continue
+    [ -n "$model_name" ] || continue
+    model_of_value=$model_name
+  done < "$HARING/models"
+}
+
 render() {  # render <source> <destination>
   r_src=$1; r_dest=$2
   r_kind=$(basename "$r_src" .md)
+  model_of "$r_kind"
   r_prompt=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-prompt.XXXXXX")
   prompt_tmp=$r_prompt
   "$HARING/bin/haring-prompt" "$r_kind" > "$r_prompt"
   awk -v haring="$HARING" -v prompt="$r_prompt" \
-      -v schema="$HARING/kinds/$r_kind/schema.json" '
-    $0 == "model: auto" { next }
+      -v schema="$HARING/kinds/$r_kind/schema.json" -v model="$model_of_value" '
+    $0 == "model: auto" {
+      if (model != "") print "model: " model
+      next
+    }
     $0 == "@RULES@" {
       while ((getline line < prompt) > 0) print line
       close(prompt)

@@ -4,13 +4,15 @@
 #   haring-model
 #   haring-model --worker [<name>]
 #   haring-model --qa [<name>]
+#   haring-model <kind> <model>
+#   haring-model <kind> --clear
 #
-# With no argument, prints the settled worker and, for each kind, the model in the
-# model: line of workers/<worker>/agents/<kind>.md, with that file. The qa kind has a
-# worker of its own, so the output also names the QA worker and its model from that
-# worker's agents/qa.md. The agent file is the only place a model is named: the saved
-# model files and qa-model are not read. A missing file or model line prints
-# none with the file path.
+# With no argument, prints the settled worker and, for each kind, the model it runs on
+# and where that model came from. A kind's model is its line in <haring-root>/models,
+# <worker> <kind> <model>, one setting per line; else the model: line of
+# workers/<worker>/agents/<kind>.md. The qa kind has a worker of its own, so the output
+# also names the QA worker and its model. A missing model prints none with the agent
+# file path; a model from the models file prints that file's path.
 #
 # --worker reads or writes the worker choice. It settles from <project>/.haring/worker,
 # then <haring-root>/worker, then copilot-agent. With a name it writes that name into
@@ -18,18 +20,27 @@
 #
 # --qa does the same for the QA worker, read from <project>/.haring/qa-worker, then
 # <haring-root>/qa-worker, then copilot-agent. Its read prints the QA worker, where it came
-# from, and the qa model from that worker's agent file. With a name it writes it into
+# from, and the qa model for that worker. With a name it writes it into
 # <haring-root>/qa-worker, or <project>/.haring/qa-worker with --project.
 #
-# Both writes refuse a name with no folder under workers/. Models are chosen by editing
-# the agent files: a model name argument is a usage error.
+# <kind> <model> writes the kind's model into <haring-root>/models for the worker the
+# kind settles to: check, errand and implement use the settled worker, qa uses the
+# settled QA worker. It replaces any line for that worker and kind and keeps every
+# other line. <kind> --clear removes that worker and kind's line. After a write or
+# --clear, when workers/<worker>/agents-config exists, haring-model runs its install
+# with the output on standard error, so an installed subagent reflects the change; a
+# failed reinstall exits 1 after saying the models file was written.
+#
+# Both worker writes refuse a name with no folder under workers/. A model write needs
+# one of the four kinds; a bare model name is a usage error.
 #
 # project is the git top level of the current directory, resolved the same way
 # bin/haring-worker resolves a workdir.
 #
-# Exits 2 when called wrongly: an unknown option, a model name, --worker and --qa
-# together, --project with nothing to write, or a name with no worker folder. Exits 1
-# when haring's own directory could not be found, or a choice could not be written.
+# Exits 2 when called wrongly: an unknown option or kind, a bare model name, --worker
+# and --qa together, --project with a model write, or a name with no worker folder.
+# Exits 1 when haring's own directory could not be found, a choice or model could not
+# be written, or the worker's agents could not be reinstalled.
 set -e
 
 # The last fallback for the settled worker, and for the QA worker.
@@ -42,6 +53,8 @@ KINDS="check errand implement"
 
 usage() {
   echo "usage: haring-model [--worker [<name>]] [--qa [<name>]] [--project]" >&2
+  echo "       haring-model <kind> <model>" >&2
+  echo "       haring-model <kind> --clear" >&2
   exit 2
 }
 
@@ -76,14 +89,88 @@ settle_choice() {  # settle_choice <project-file> <haring-file> <default>
   done
 }
 
-# A kind's model is the model: line of its agent file. The line is read from column 1,
-# the rest of the line is the model, and surrounding whitespace is not part of it.
+# A kind's model may be set in <haring-root>/models, one <worker> <kind> <model> per
+# line. Blank lines and lines whose first word starts with # are ignored, and the last
+# line for a worker and kind wins.
+models_model_of() {  # models_model_of <worker> <kind>
+  models_model=""
+  [ -f "$HARING/models" ] || return 0
+  while read -r models_worker models_kind models_name models_rest || [ -n "$models_worker" ]; do
+    case "$models_worker" in
+      ''|'#'*) continue ;;
+    esac
+    [ "$models_worker" = "$1" ] && [ "$models_kind" = "$2" ] || continue
+    [ -n "$models_name" ] || continue
+    models_model=$models_name
+  done < "$HARING/models"
+}
+
+# A kind's model is the models file's line for the worker and kind, else the model:
+# line of its agent file. The line is read from column 1, the rest of the line is the
+# model, and surrounding whitespace is not part of it.
 agent_model_of() {  # agent_model_of <worker> <kind>
   agent_file="$HARING/workers/$1/agents/$2.md"
   agent_model=""
+  models_model_of "$1" "$2"
+  if [ -n "$models_model" ]; then
+    agent_model=$models_model
+    agent_file="$HARING/models"
+    return 0
+  fi
   if [ -f "$agent_file" ]; then
     agent_model=$(sed -n 's/^model:[[:space:]]*//p' "$agent_file" | sed -n 1p | tr -d '[:space:]')
   fi
+}
+
+# Write one model setting into <haring-root>/models, replacing every line for that
+# worker and kind and keeping every other line as it was.
+write_model() {  # write_model <worker> <kind> <model>
+  models_file="$HARING/models"
+  models_tmp="$models_file.tmp.$$"
+  if [ -f "$models_file" ]; then
+    awk -v worker="$1" -v kind="$2" '
+      {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        if (line == "" || line ~ /^#/) { print; next }
+        split(line, field, /[[:space:]]+/)
+        if (field[1] == worker && field[2] == kind) next
+        print
+      }' "$models_file" > "$models_tmp"
+  else
+    : > "$models_tmp"
+  fi
+  printf '%s %s %s\n' "$1" "$2" "$3" >> "$models_tmp" || {
+    rm -f "$models_tmp"; echo "haring-model: could not write $models_file" >&2; exit 1; }
+  mv "$models_tmp" "$models_file" || {
+    rm -f "$models_tmp"; echo "haring-model: could not write $models_file" >&2; exit 1; }
+  echo "$1 $2: $3 -> $models_file"
+}
+
+# Remove every line for a worker and kind from <haring-root>/models and say what the
+# last one set, or that nothing was set.
+clear_model() {  # clear_model <worker> <kind>
+  models_file="$HARING/models"
+  models_model_of "$1" "$2"
+  if [ -z "$models_model" ]; then
+    echo "$1 $2: nothing set"
+    return 0
+  fi
+  removed=$models_model
+  models_tmp="$models_file.tmp.$$"
+  awk -v worker="$1" -v kind="$2" '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line == "" || line ~ /^#/) { print; next }
+      split(line, field, /[[:space:]]+/)
+      if (field[1] == worker && field[2] == kind) next
+      print
+    }' "$models_file" > "$models_tmp" || {
+    rm -f "$models_tmp"; echo "haring-model: could not write $models_file" >&2; exit 1; }
+  mv "$models_tmp" "$models_file" || {
+    rm -f "$models_tmp"; echo "haring-model: could not write $models_file" >&2; exit 1; }
+  echo "$1 $2: $removed removed from $models_file"
 }
 
 # Write a settled worker name, into the project's file with --project, else haring's.
@@ -115,6 +202,9 @@ worker_flag=""
 worker_write=""
 qa_flag=""
 qa_write=""
+model_kind=""
+model_name=""
+clear_flag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) project_flag=1; shift ;;
@@ -129,10 +219,60 @@ while [ $# -gt 0 ]; do
             ''|-*) ;;
             *) qa_write=$1; shift ;;
           esac ;;
+    --clear) clear_flag=1; shift ;;
     -*) echo "haring-model: unknown option: $1" >&2; usage ;;
-    *) echo "haring-model: takes no model name: $1" >&2; usage ;;
+    *)
+          if [ -z "$model_kind" ]; then
+            model_kind=$1
+          elif [ -z "$clear_flag" ] && [ -z "$model_name" ]; then
+            model_name=$1
+          else
+            echo "haring-model: unexpected argument: $1" >&2; usage
+          fi
+          shift ;;
   esac
 done
+
+if [ -n "$clear_flag" ] && [ -z "$model_kind" ]; then
+  echo "haring-model: --clear needs a kind" >&2
+  usage
+fi
+
+if [ -n "$model_kind" ]; then
+  if [ -z "$model_name" ] && [ -z "$clear_flag" ]; then
+    echo "haring-model: takes no model name: $model_kind" >&2; usage
+  fi
+  [ -z "$clear_flag" ] || [ -z "$model_name" ] || {
+    echo "haring-model: give a model or --clear, not both" >&2; usage; }
+  case "$model_kind" in
+    check|errand|implement|qa) ;;
+    *) echo "haring-model: unknown kind: $model_kind" >&2
+       echo "  the kinds are: check errand implement qa" >&2
+       usage ;;
+  esac
+  [ -z "$project_flag" ] || {
+    echo "haring-model: --project does not go with a model write" >&2; usage; }
+  [ -z "$worker_flag" ] && [ -z "$qa_flag" ] || {
+    echo "haring-model: a model write does not go with --worker or --qa" >&2; usage; }
+  if [ "$model_kind" = qa ]; then
+    settle_choice "$project/.haring/qa-worker" "$HARING/qa-worker" "$QA_WORKER_DEFAULT"
+  else
+    settle_choice "$project/.haring/worker" "$HARING/worker" "$WORKER_DEFAULT"
+  fi
+  if [ -n "$clear_flag" ]; then
+    clear_model "$choice" "$model_kind"
+  else
+    write_model "$choice" "$model_kind" "$model_name"
+  fi
+  agents_config="$HARING/workers/$choice/agents-config"
+  if [ -f "$agents_config" ]; then
+    if ! "$agents_config" install >&2; then
+      echo "haring-model: the models file was written, but the agents could not be reinstalled." >&2
+      exit 1
+    fi
+  fi
+  exit 0
+fi
 
 [ -z "$worker_flag" ] || [ -z "$qa_flag" ] || {
   echo "haring-model: --worker and --qa do not go together" >&2; usage; }

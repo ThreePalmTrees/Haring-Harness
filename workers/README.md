@@ -35,9 +35,10 @@ The core uses these files.
 - `agents-config` installs, removes and checks the worker's harness-side files.
   `haring-worker` calls its `check` before a launch, and the installers call `install`
   and `remove`. A worker the manager starts does not need it.
-- `agents/<kind>.md` is one file per kind. Its `model:` line is the kind's model, and
-  the core reads it before it launches the kind. The worker's own `agents-config`
-  installs the file into the harness.
+- `agents/<kind>.md` is one file per kind. Its `model:` line is the kind's default
+  model; a line for that worker and kind in `<haring-root>/models` wins, and the core
+  reads it before it launches the kind. The worker's own `agents-config` installs the
+  file into the harness, as a generated copy when the models file sets the model.
 - `api.py` is a helper module used by the OpenCode `steer` and `stop`. The core never
   reads it.
 
@@ -291,8 +292,9 @@ For a report retry:
 The arguments are:
 
 - `--kind`: one of `check`, `implement`, `errand` or `qa`.
-- `--model`: the model this kind runs on, from the `model:` line of the worker's
-  `agents/<kind>.md`, or the caller's one-run override.
+- `--model`: the model this kind runs on, from `<haring-root>/models` when it has a line
+  for the worker and kind, else the `model:` line of the worker's `agents/<kind>.md`, or
+  the caller's one-run override.
 - `--effort`: `low`, `high` or `max`, only when the caller asked for one.
 - `--session-file`: the path where a fresh run may record its session id.
 - `--resume`: the session to continue.
@@ -485,9 +487,10 @@ A missing or unusable `agents-config` stops a fresh launch with exit 1. `install
 and `uninstall.sh` skip a worker folder that has no `agents-config`; `uninstall.sh
 --worker <name>` does not list that folder and refuses the name with exit 2.
 
-A missing `agents/<kind>.md`, or one with no `model:` line,
-stops a fresh launch with exit 2 and names the file. `haring-meta` prints `none` with
-the path when it cannot find a kind's model.
+A fresh launch stops with exit 2 and names the agent file when `<haring-root>/models`
+has no line for the worker and kind and `agents/<kind>.md` is missing or has no `model:`
+line. `haring-meta` prints `none` with the agent file path when it cannot find a kind's
+model.
 
 A missing worker folder makes `haring-worker` stop with exit 2 before it creates the
 run folder. A run whose `meta` names a worker folder that has since been removed has no
@@ -524,30 +527,34 @@ reads the `worker=` line, or uses `opencode` when the line is absent. It then lo
 
 `haring-model` and `haring-meta` answer before a run exists. They settle the worker the
 same way a fresh run does: `<project>/.haring/worker`, then `<haring-root>/worker`,
-then `copilot-agent`. Each kind's model is the `model:` line of
-`workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled worker's check,
-errand and implement models, and the QA worker with its `qa` model.
+then `copilot-agent`. Each kind's model is its line in `<haring-root>/models`, else the
+`model:` line of `workers/<worker>/agents/<kind>.md`. `haring-meta` prints the settled
+worker's check, errand and implement models, and the QA worker with its `qa` model.
 
 `haring-model --worker` prints the settled worker and where it came from. Given a name,
 it writes that name into `<haring-root>/worker`, or `<project>/.haring/worker` with
 `--project`, and refuses a name with no folder under `workers/`.
 
-A fresh run's model is the `model:` line of `workers/<worker>/agents/<kind>.md`, read
-after the worker settles and before the run folder is created. The file is one place for
-every worker, every kind and every project. A missing file or model line stops the launch
-with exit 2 and names the file. `haring-worker --model` is a one-run override, passed
+A fresh run's model is the line for its worker and kind in `<haring-root>/models`, else
+the `model:` line of `workers/<worker>/agents/<kind>.md`. It is read after the worker
+settles and before the run folder is created. The models file is untracked, so changing
+a model there leaves the repo untouched. A missing model in both stops the launch with
+exit 2 and names the agent file. `haring-worker --model` is a one-run override, passed
 through unchecked, and a continue keeps the model recorded in the run it continues.
 
 A qa run settles a worker of its own: `<project>/.haring/qa-worker`, then
-`<haring-root>/qa-worker`, then `copilot-agent`, never the worker files. Its model is the
-`model:` line of that worker's `agents/qa.md`.
+`<haring-root>/qa-worker`, then `copilot-agent`, never the worker files. Its model is its
+line in `<haring-root>/models`, else the `model:` line of that worker's `agents/qa.md`.
 
 `haring-model` with no argument prints the settled worker and, for check, errand and
-implement, the model and its agent file, then the QA worker and its model. It writes no
-model. `haring-model --qa` prints the QA worker, where it came from, and its `qa` model;
-given a name, it writes that name into `<haring-root>/qa-worker`, or
-`<project>/.haring/qa-worker` with `--project`. A model is changed by editing the agent
-file's `model:` line.
+implement, the model and where it came from, then the QA worker and its model. A model
+from `<haring-root>/models` names that file; otherwise the agent file is named.
+`haring-model <kind> <model>` writes the kind's model into `<haring-root>/models` for the
+worker the kind settles to, and `<kind> --clear` removes it; for a copilot-agent subagent
+the generated copy is reinstalled with that model in place of `auto`. `haring-model --qa`
+prints the QA worker, where it came from, and its `qa` model; given a name, it writes
+that name into `<haring-root>/qa-worker`, or `<project>/.haring/qa-worker` with
+`--project`.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program

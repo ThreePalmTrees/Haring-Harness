@@ -7,22 +7,78 @@
 #
 # The agent files live in agents/<kind>.md beside this script. Claude Code names an
 # agent after the `name:` in its frontmatter, and finds it through the file it is linked
-# as, so each one is linked into ~/.claude/agents as haring-<kind>.md. The link rules
-# and messages are the ones install.sh uses for every link: same, moved, new, and SKIP
-# when a plain file is in the way.
+# as, so each one is installed as ~/.claude/agents/haring-<kind>.md. When
+# <haring-root>/models has a line for `claude <kind>`, that file is a generated copy of
+# the source whose first `model:` line names that model, ending with a blank line and a
+# marker naming its source; otherwise it is a link to the source, so a copy carrying the
+# marker becomes a link again when the line goes. Blank lines and lines whose first word
+# starts with # in the models file are ignored, and the last line for a worker and kind
+# wins. A plain file without the marker is a SKIP. The link rules and messages are the
+# ones install.sh uses for every link, and copy installs use the same words: same, new,
+# updated, and SKIP when a plain file is in the way.
 #
-# remove deletes only the links that point into this directory's agents/, so a plain
-# file and a link to somewhere else are left alone. check exits 0 when claude is on
-# PATH and the kind's link is installed, and 1 with the reason when either is missing.
+# remove deletes links that point into this directory's agents/, and regular files whose
+# marker points there, so a plain file and a link to somewhere else are left alone. check
+# exits 0 when claude is on PATH and the kind's agent is installed, and 1 with the reason
+# when either is missing.
 set -e
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HARING=$(CDPATH= cd -- "$HERE/../.." && pwd)
 AGENTS=$HOME/.claude/agents
 
+tmp=""
+trap '[ -n "$tmp" ] && rm -f "$tmp"' 0
+
 usage() {
   echo "usage: agents-config install|remove|check <kind>" >&2
   exit 2
+}
+
+marker_source() {  # marker_source <file>
+  sed -n 's|^<!-- haring source: \(.*\) -->$|\1|p' "$1" | tail -n 1
+}
+
+model_of() {  # model_of <kind>
+  model_of_value=""
+  [ -f "$HARING/models" ] || return 0
+  while read -r model_worker model_kind model_name model_rest || [ -n "$model_worker" ]; do
+    case "$model_worker" in
+      ''|'#'*) continue ;;
+    esac
+    [ "$model_worker" = claude ] && [ "$model_kind" = "$1" ] || continue
+    [ -n "$model_name" ] || continue
+    model_of_value=$model_name
+  done < "$HARING/models"
+}
+
+render() {  # render <source> <destination> <model>
+  r_src=$1; r_dest=$2; r_model=$3
+  awk -v model="$r_model" '
+    !done && /^model:/ { print "model: " model; done = 1; next }
+    { print }
+  ' "$r_src" > "$r_dest"
+  printf '\n<!-- haring source: %s -->\n' "$r_src" >> "$r_dest"
+}
+
+install_copy() {  # install_copy <source> <destination> <model>
+  i_src=$1; i_dest=$2; i_model=$3
+  if [ -L "$i_dest" ]; then rm -f "$i_dest"; fi
+  if [ -e "$i_dest" ] && { [ ! -f "$i_dest" ] || [ "$(marker_source "$i_dest")" != "$i_src" ]; }; then
+    printf '  SKIP    %s exists and was not made by this worker. Move it aside, then run this again.\n' "$i_dest" >&2
+    failed=1; return
+  fi
+  tmp=$(mktemp "${TMPDIR:-/tmp}/haring-claude-agent.XXXXXX")
+  render "$i_src" "$tmp" "$i_model"
+  if [ -f "$i_dest" ] && cmp -s "$tmp" "$i_dest"; then
+    printf '  same    %s\n' "$i_dest"
+  else
+    existed=0
+    [ -e "$i_dest" ] && existed=1
+    cp "$tmp" "$i_dest"
+    if [ "$existed" = 1 ]; then printf '  updated %s\n' "$i_dest"; else printf '  new     %s\n' "$i_dest"; fi
+  fi
+  rm -f "$tmp"; tmp=""
 }
 
 link() {  # link <target> <linkname>
@@ -45,7 +101,16 @@ do_install() {
   for f in "$HERE"/agents/*.md; do
     [ -f "$f" ] || continue
     kind=$(basename "$f" .md)
-    link "$f" "$AGENTS/haring-$kind.md"
+    dest=$AGENTS/haring-$kind.md
+    model_of "$kind"
+    if [ -n "$model_of_value" ]; then
+      install_copy "$f" "$dest" "$model_of_value"
+    else
+      if [ -f "$dest" ] && [ ! -L "$dest" ] && [ "$(marker_source "$dest")" = "$f" ]; then
+        rm -f "$dest"
+      fi
+      link "$f" "$dest"
+    fi
   done
   if ! command -v claude >/dev/null 2>&1; then
     echo "warning: claude is not on your PATH. The manager starts these agents from" >&2
@@ -56,10 +121,16 @@ do_install() {
 
 do_remove() {
   for name in "$AGENTS"/*; do
-    [ -L "$name" ] || continue
-    case "$(readlink "$name")" in
-      "$HERE"/agents/*) rm -f "$name"; printf '  removed %s\n' "$name" ;;
-    esac
+    [ -e "$name" ] || [ -L "$name" ] || continue
+    if [ -L "$name" ]; then
+      case "$(readlink "$name")" in
+        "$HERE"/agents/*) rm -f "$name"; printf '  removed %s\n' "$name" ;;
+      esac
+    elif [ -f "$name" ]; then
+      case "$(marker_source "$name")" in
+        "$HERE"/agents/*) rm -f "$name"; printf '  removed %s\n' "$name" ;;
+      esac
+    fi
   done
 }
 
