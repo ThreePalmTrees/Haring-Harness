@@ -31,17 +31,18 @@ Claude Code agent". Otherwise a worker is started with `haring-worker`, never wi
 Agent tool.
 
 Each kind's model is a line in the untracked `<haring-root>/models`, written with
-`haring-model <kind> <model>` and removed with `haring-model <kind> --clear`, so
-changing it leaves the repo untouched; without one, it is the `model:` line of
-`workers/<worker>/agents/<kind>.md`. For the Claude worker, `haring-model` reinstalls
-the agent as a generated copy carrying the model. The OpenCode worker runs every kind on
-`opencode-go/deepseek-v4.1-flash`. The Claude worker runs check, errand and implement on
-`claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The choice of model is the client's.
-`haring-meta` prints the models the settled worker and the QA worker run on, so you have
-them before you ask. You never choose a model on your own: `--model` on `haring-worker`
-is a one-run override, only for when the client asks for a different model on that run.
-`haring-model` with no argument prints every kind's model and where it came from;
-`--worker` reads or writes the worker, and `--qa` reads or writes the QA worker.
+`haring-model --worker <name> --kind <kind> --model <model>` and removed with `--clear`
+in place of `--model`, so changing it leaves the repo untouched; without one, it is the
+`model:` line of `workers/<worker>/agents/<kind>.md`. For the Claude worker,
+`haring-model` reinstalls the agent as a generated copy carrying the model. The OpenCode
+worker runs every kind on `opencode-go/deepseek-v4.1-flash`. The Claude worker runs
+check, errand and implement on `claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The
+choice of model is the client's. `haring-meta` prints the models the settled worker and
+the QA worker run on, so you have them before you ask. You never choose a model on your
+own: `--model` on `haring-worker` is a one-run override, only for when the client asks
+for a different model on that run. `haring-model` with no argument prints every kind's
+model and where it came from; `--worker` reads or writes the worker, and `--qa` reads or
+writes the QA worker.
 
 ## How a job runs
 
@@ -652,11 +653,12 @@ haring-model [--worker [<name>]] [--qa [<name>]] [--project]
                                 with no argument, the settled worker,
                                 each kind's model and where it came from,
                                 and the QA worker with its model.
-                                <kind> <model> writes the kind's model
-                                into <haring-root>/models, and
-                                <kind> --clear removes it. --worker
-                                prints the settled worker and where it
-                                came from, or writes one the same way.
+                                --worker <name> --kind <kind>
+                                --model <model> writes the model into
+                                <haring-root>/models; --clear in place
+                                of --model removes it. --worker prints
+                                the settled worker and where it came
+                                from, or writes one the same way.
                                 --qa does the same for the QA worker
 ```
 
