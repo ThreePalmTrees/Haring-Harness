@@ -10,7 +10,7 @@
 #
 # The worker is the folder under workers/<name>/: its start program runs one turn. A
 # fresh run settles <name> for its kind from <project>/.haring/drivers, then
-# <haring-root>/drivers, then the kind's default: copilot-agent for every kind. A
+# <haring-root>/drivers, then the kind's default: copilot-cli for every kind. A
 # continue keeps the worker recorded in the run it continues.
 # A fresh run's model is the line for its worker and kind in <haring-root>/models,
 # <worker> <kind> <model>, else the model: line of the worker's agent file for the
@@ -40,7 +40,7 @@ HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 # The default driver for every kind, and the last fallback for a continued run whose
 # meta has no worker line. workers/<name>/ holds the programs that launch it and talk
 # to it; a continue keeps the worker of the run it continues.
-WORKER_DEFAULT=copilot-agent
+WORKER_DEFAULT=copilot-cli
 
 # The most workers that may run at once in one project, and only when HARING_ALLOW_PARALLEL
 # is set. The number is the plan's concurrency limit — the most requests the model provider
@@ -171,14 +171,14 @@ done
 project=$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null || echo "$workdir")
 
 # The driver a fresh run uses settles from the project's own drivers file, then
-# haring's, then the kind's default: copilot-agent for every kind. A continue keeps the
+# haring's, then the kind's default: copilot-cli for every kind. A continue keeps the
 # worker recorded in the run it continues. A file that is missing, empty, or holds no
 # line for the kind is passed over. A drivers file holds one <kind> <driver> per line;
 # blank lines and lines whose first word starts with # are ignored, and the last line
 # for the kind wins.
 if [ -z "$resume_id" ]; then
   if [ "$kind" = qa ]; then
-    worker_default=copilot-agent
+    worker_default=copilot-cli
   else
     worker_default=$WORKER_DEFAULT
   fi

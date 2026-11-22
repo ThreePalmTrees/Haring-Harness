@@ -7,7 +7,7 @@
 #
 # With no argument, prints one line per kind, check, errand, implement and qa:
 # <kind>: <driver> <model> (<file the model came from>). A kind's driver settles from
-# <project>/.haring/drivers, then <haring-root>/drivers, then the default: copilot-agent
+# <project>/.haring/drivers, then <haring-root>/drivers, then the default: copilot-cli
 # for every kind. A kind's model is its line in <haring-root>/models,
 # <worker> <kind> <model>, one setting per line; else the model: line of
 # workers/<worker>/agents/<kind>.md. A missing model prints none with the agent file
@@ -61,7 +61,7 @@ project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # The default driver for a kind.
 default_driver() {  # default_driver <kind>
-  echo copilot-agent
+  echo copilot-cli
 }
 
 # A kind's driver is the last line for it in the project's drivers file, else the last

@@ -106,7 +106,7 @@ KINDS = ("check", "errand", "implement", "qa")
 
 
 def default_driver(kind):
-    return "copilot-agent"
+    return "copilot-cli"
 
 
 def settle_driver(root, haring, kind):

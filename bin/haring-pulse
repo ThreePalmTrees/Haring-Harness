@@ -103,7 +103,7 @@ defaults to $COPILOT_HOME/session-state or ~/.copilot/session-state. The log is 
 byte offset, so each one-second look reads only the complete lines added since the one
 before; the pulse keeps each agent's subagent.started and first user.message, and its
 lines wait until its run exists. A subagent is made a run once both lines are in the log.
-The meta names worker=copilot-agent, the agent id, its type, model and transcript, and
+The meta names worker=copilot-cli, the agent id, its type, model and transcript, and
 prompt.md holds the user.message. events.jsonl is a real file holding only that agent's
 lines, appended in log order as the log grows. An ended Copilot run is finished with a
 report from lib/haring_report.py and stats.txt, with no copy of the transcript.
@@ -487,7 +487,7 @@ def mirror_copilot_runs():
                 meta = dict(l.strip().split("=", 1) for l in f if "=" in l)
         except OSError:
             continue
-        if meta.get("worker") == "copilot-agent":
+        if meta.get("worker") == "copilot-cli":
             mirror_copilot_run(run, meta)
 
 
@@ -531,7 +531,7 @@ def adopt_copilot_subagents():
                 f.write(f"kind={kind}\n")
                 f.write(f"workdir='{project}'\n")
                 f.write(f"model={data.get('model') or ''}\n")
-                f.write("worker=copilot-agent\n")
+                f.write("worker=copilot-cli\n")
                 f.write(f"agent_id={agent_id}\n")
                 f.write(f"agent_type={agent_type}\n")
                 f.write(f"transcript={COPILOT_LOG}\n")
@@ -678,7 +678,7 @@ def finish_subagents(ended):
     for run, meta, meta_path in ended:
         settled.add(run)
         worker = meta.get("worker")
-        if not meta.get("agent_id") or worker not in ("claude", "copilot-agent"):
+        if not meta.get("agent_id") or worker not in ("claude", "copilot-cli"):
             continue
         transcript = str(meta.get("transcript") or "").strip().strip("'")
         events = os.path.join(run, "events.jsonl")

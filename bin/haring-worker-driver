@@ -15,7 +15,7 @@
 # that kind's line and keeps every other line.
 #
 # A driver settles from <project>/.haring/drivers, then <haring-root>/drivers, then the
-# default: copilot-agent for every kind.
+# default: copilot-cli for every kind.
 #
 # A driver is a folder under workers/. A name with no folder is refused, so a typo
 # never becomes the driver.
@@ -54,7 +54,7 @@ project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # The default driver for a kind.
 default_driver() {  # default_driver <kind>
-  echo copilot-agent
+  echo copilot-cli
 }
 
 # A kind's driver is the last line for it in the project's drivers file, else the last

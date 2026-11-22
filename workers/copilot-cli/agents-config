@@ -10,7 +10,7 @@
 # generated copy, not a link, because the copy must inline bin/haring-prompt <kind> and
 # the kind's schema in place of @RULES@. Its `model: auto` line is removed so the
 # subagent inherits the manager's model, unless <haring-root>/models has a line for
-# `copilot-agent <kind>`, which replaces it with that model; a link would keep the
+# `copilot-cli <kind>`, which replaces it with that model; a link would keep the
 # placeholders and the auto model, and a Copilot subagent cannot read files outside the
 # project. Blank lines and lines whose first word starts with # in the models file are
 # ignored, and the last line for the worker and kind wins. The copy goes stale whenever
@@ -42,7 +42,7 @@ model_of() {  # model_of <kind>
     case "$model_worker" in
       ''|'#'*) continue ;;
     esac
-    [ "$model_worker" = copilot-agent ] && [ "$model_kind" = "$1" ] || continue
+    [ "$model_worker" = copilot-cli ] && [ "$model_kind" = "$1" ] || continue
     [ -n "$model_name" ] || continue
     model_of_value=$model_name
   done < "$HARING/models"
@@ -89,7 +89,7 @@ do_install() {
       printf '  SKIP    %s exists and was not made by this worker. Move it aside, then run this again.\n' "$dest" >&2
       failed=1; continue
     fi
-    tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-agent.XXXXXX")
+    tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-cli.XXXXXX")
     render "$f" "$tmp"
     if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
       printf '  same    %s\n' "$dest"
@@ -126,7 +126,7 @@ do_check() {  # do_check <kind>
   [ -f "$src" ] || {
     echo "haring-worker: there is no Copilot subagent source for $kind at $src." >&2; exit 1; }
   dest=$AGENTS/haring-$kind.agent.md
-  tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-agent.XXXXXX")
+  tmp=$(mktemp "${TMPDIR:-/tmp}/haring-copilot-cli.XXXXXX")
   render "$src" "$tmp"
   if [ -L "$dest" ] || [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
     echo "haring-worker: the haring-$kind Copilot subagent is not installed or is out of date in ~/.copilot/agents." >&2

@@ -25,31 +25,30 @@ job.
 A job can be a whole project, one feature, a bug fix, or a piece of analysis. The size
 changes. The way of working does not.
 
-A worker runs on its kind's driver. By default every kind's driver is `copilot-agent`, a
+A worker runs on its kind's driver. By default every kind's driver is `copilot-cli`, a
 Copilot CLI subagent you start with your own `task` tool — see "Run a Copilot subagent".
-The command-line `copilot` driver and the OpenCode driver stay as other choices, started
-with `haring-worker`. When a kind's driver is `claude`, it is a Claude Code subagent
-started with the Agent tool — see "Run a Claude Code agent"; only a Claude Code manager
-can start it, so a Copilot manager does not use it. Otherwise a worker is started with
-`haring-worker`, never with the Agent tool.
+The OpenCode driver stays as another choice, started with `haring-worker`. When a kind's
+driver is `claude`, it is a Claude Code subagent started with the Agent tool — see "Run a
+Claude Code agent"; only a Claude Code manager can start it, so a Copilot manager does
+not use it. Otherwise a worker is started with `haring-worker`, never with the Agent
+tool.
 
-Each kind's driver is the folder under `workers/` that runs it: `copilot-agent`,
-`copilot`, `opencode` or `claude`. It settles from `<project>/.haring/drivers`, then
-`<haring-root>/drivers`, then the default: `copilot-agent` for every kind. Set it per kind
+Each kind's driver is the folder under `workers/` that runs it: `copilot-cli`,
+`opencode` or `claude`. It settles from `<project>/.haring/drivers`, then
+`<haring-root>/drivers`, then the default: `copilot-cli` for every kind. Set it per kind
 with `haring-worker-driver --kind <kind> --driver <driver>`, or for all kinds with
 `haring-worker-driver --driver <driver>`; `--project` writes the project's choice.
 Each kind's model is a line in the untracked `<haring-root>/models`, written with
 `haring-model --worker <name> --kind <kind> --model <model>` and removed with `--clear`
 in place of `--model`, so changing it leaves the repo untouched; without one, it is the
-`model:` line of `workers/<driver>/agents/<kind>.md`. For a copilot-agent subagent,
+`model:` line of `workers/<driver>/agents/<kind>.md`. For a copilot-cli subagent,
 `haring-model` reinstalls the generated copy with that model in place of `auto`. The
-copilot-agent source files say `model: auto`, and `agents-config install` leaves that
+copilot-cli source files say `model: auto`, and `agents-config install` leaves that
 line out of the copy when no models-file line sets it, so the subagent takes your model;
 Copilot turns an agent-file `auto` into a named model, which an auto-only plan refuses.
 A named model line is kept, for a plan that allows it. The OpenCode driver runs every kind
-on `opencode-go/deepseek-v4.1-flash`; the command-line copilot driver runs every kind on
-`auto`. The Claude driver runs check, errand and implement on `claude-sonnet-5-5`, and qa
-on `claude-opus-5-5`. The choice of model is the client's. `haring-meta` prints each
+on `opencode-go/deepseek-v4.1-flash`. The Claude driver runs check, errand and implement on
+`claude-sonnet-5-5`, and qa on `claude-opus-5-5`. The choice of model is the client's. `haring-meta` prints each
 kind's driver and model, so you have them before you ask. A model for one run, or for the
 rest of the session, is not a settings change: pass it at launch, with the Agent tool's
 `model` parameter when the kind's driver is `claude` and `--model` on `haring-worker`
@@ -417,7 +416,7 @@ true as well: a continued worker read 180 fresh input tokens where a new one rea
 
 The kind can change. A worker that checked can be continued as one that implements, and it
 keeps what it found, including the parts it did not think to report. Do that when the work
-follows directly from what it just looked at. A copilot-agent subagent cannot be continued
+follows directly from what it just looked at. A copilot-cli subagent cannot be continued
 after it ends (`resumable: false`); the next task is a new subagent whose prompt carries
 what the old one found. While it is still running, `write_agent` is the continuation.
 
@@ -451,7 +450,7 @@ Pick the kind first. It sets the tools and the shape of the report.
 - **implement** — do the work, on a branch.
 - **qa** — break what the diff changed, after the manager is satisfied; report only
   what is wrong. Only when the client asks for it, and it runs on the qa kind's driver,
-  `copilot-agent` by default, started as a Copilot subagent with `agent_type: "haring-qa"`
+  `copilot-cli` by default, started as a Copilot subagent with `agent_type: "haring-qa"`
   — see "Run the QA".
 
 ### Pick the kind by whether the question needs a shell
@@ -567,9 +566,9 @@ instead of starting one.
 
 Read the qa kind's driver and model with `haring-model`, or with `haring-meta`, when
 the client asks, never earlier. A QA pass goes to the driver `haring-model` prints for
-qa: `copilot-agent` by default.
+qa: `copilot-cli` by default.
 
-- **`copilot-agent`** — the same route as "Run a Copilot subagent", with
+- **`copilot-cli`** — the same route as "Run a Copilot subagent", with
   `agent_type: "haring-qa"`: start the `--once` poll, start the background `task`, find
   the run, `haring-wait` it, and read `haring-report`. Do not pass a model: the qa model
   `haring-model` prints is installed in `haring-qa`; `task` itself takes no model.
@@ -582,12 +581,12 @@ qa: `copilot-agent` by default.
   final message is the report, as JSON. Run it in the background and carry on. The pulse
   records the subagent as a run too, so `haring-wait` and the same commands follow its
   run folder.
-- **`opencode` and `copilot`** — start it with `haring-worker qa <workdir> <prompt-file>`,
-  and follow it like any other run.
+- **`opencode`** — start it with `haring-worker qa <workdir> <prompt-file>`, and follow
+  it like any other run.
 
 A model the client names for the pass ("QA it with sonnet") is passed at launch, not
 saved: the Agent tool's `model` parameter for `claude`, `--model` on `haring-worker` for
-`opencode` and `copilot`. A request for the session holds for every launch in it.
+`opencode`. A request for the session holds for every launch in it.
 
 Findings come back through you. Each is checked at the place it names, and the agreed
 ones become worker task or tasks, whose fixes you verify were carried out faithfully.
@@ -607,7 +606,7 @@ no reason is known, say that too.
 2. Start the worker with the `task` tool: `agent_type: "haring-<kind>"`,
    `mode: "background"`, and the prompt is the task alone. The agent file already carries
    every rule and the report schema. Do not pass a model: the kind's model, which
-   `haring-model` prints, is installed in the agent. The copilot-agent source files say
+   `haring-model` prints, is installed in the agent. The copilot-cli source files say
    `model: auto`; a models-file line replaces it in the copy, and with no line the
    installer leaves it out so the subagent takes your model. Copilot turns an agent-file
    `auto` into a named model, which an auto-only plan refuses. A named model line is
@@ -652,8 +651,8 @@ the manager starts it with the Agent tool.
 
 ## Starting and watching a worker
 
-The command-line workers, `copilot` and `opencode`, run through `haring-worker`. The
-default `copilot-agent` subagent is started with `task` in "Run a Copilot subagent".
+The command-line `opencode` worker runs through `haring-worker`. The default
+`copilot-cli` subagent is started with `task` in "Run a Copilot subagent".
 
 ```
 haring-worker <kind> <workdir> <prompt-file> [--effort L]
@@ -867,7 +866,7 @@ one process cannot reach it. `haring-kill` signals the worker's whole process gr
 what it stopped, and writes a `stopped` file into the run folder. A stopped run and a
 crashed one leave the same empty report, so that file is the only thing that says the stop
 was yours: `haring-wait` reads it and reports a stop on purpose instead of a worker that
-vanished. For a copilot-agent, `haring-kill` exits 1 naming the agent id: no Copilot tool
+vanished. For a copilot-cli, `haring-kill` exits 1 naming the agent id: no Copilot tool
 stops a running subagent, so let it finish.
 
 **Saying something to a worker that is running is `haring-say <run-folder> "<message>"`.**
@@ -876,19 +875,16 @@ into `say.jsonl` in the run folder and answered before the run ends; a worker mi
 takes it when that turn ends, not in the middle of one. It exits 0 once the message is
 handed over, or queued for a worker that will take it, 1 when the run has already finished
 and there is no worker left to say it to, and 2 when called wrongly. A worker cannot call
-it, the same as `haring-kill`. A copilot-agent subagent takes a message only through
+it, the same as `haring-kill`. A copilot-cli subagent takes a message only through
 `write_agent` while it runs; `haring-say` and `haring-kill` exit 1 for it, naming the
-agent id. The command-line copilot worker cannot take a message either: `haring-say`
-exits 1 because Copilot `-p` sessions cannot take one; stop it with `haring-kill` and
-correct it with `haring-worker continue`.
+agent id.
 
 Naming the kind on a continue is how you set the tools for that continuation. It does not
 have to be the kind the run started as. A worker that checked can be continued as one that
 implements, and it keeps everything it learned while looking. A continued run gets its own
 run folder. OpenCode forks the session, so the run it came from stays whole and can be
 continued again. A start program that cannot fork resumes the same session, and the two
-runs share that transcript. A continued command-line Copilot run resumes the same
-session, because Copilot has no fork in `-p` mode. A copilot-agent subagent is not
+runs share that transcript. A copilot-cli subagent is not
 continued: it cannot be resumed after it ends, so a correction after its report is a new
 subagent with the context in its prompt. While it runs, `write_agent` is the
 continuation.
@@ -901,10 +897,8 @@ change a file by ignoring its rules. `errand` gets the same three without the sh
 `qa` worker gets what `check` gets, since a QA that could write could fix what it should
 only report. Every kind is denied `question`, `subagent`, `skill`, `webfetch` and
 `websearch`. On Copilot the limits are the `tools:` list of the worker's agent file —
-`workers/copilot-agent/agents/<kind>.md` for the default subagent, or
-`workers/copilot/agents/<kind>.md` for the command-line worker — which Copilot enforces:
-`errand` gets `read` and `search`; `check` and `qa` add `shell`; `implement` adds `shell`
-and `edit`. What every
+`workers/copilot-cli/agents/<kind>.md` — which Copilot enforces: `errand` gets `read` and
+`search`; `check` and `qa` add `shell`; `implement` adds `shell` and `edit`. What every
 kind is held to besides is the client's private paths outside the project — `~/.claude/`,
 `~/.copilot/`, `~/.ssh/`, `~/.aws/`, `~/.config/gcloud/`, `~/.zsh_history`,
 `~/.bash_history`: on OpenCode the read and edit tools are refused them by the global
@@ -934,7 +928,7 @@ The first time haring writes a run into a repository it adds `.haring/` to that 
 A haring-worker run leaves `prompt.md`, `report.json`, `stats.txt`, `stderr.txt`, `meta`,
 `events.jsonl` with the run's events, the worker's own stream as they happen, and for every
 kind but `errand` a `PROGRESS.md` the worker appends to as it goes. An adopted
-`copilot-agent` or `claude` subagent leaves `prompt.md`, `meta`, `events.jsonl`,
+`copilot-cli` or `claude` subagent leaves `prompt.md`, `meta`, `events.jsonl`,
 `report.json` and `stats.txt`, and keeps no `PROGRESS.md`. A run whose worker asked you a question also
 leaves `ask.jsonl`, one line per question with the moment it was asked. A run whose manager
 said something to its worker also leaves `said.jsonl`, one line per message with the moment
@@ -962,7 +956,7 @@ the decision was only ever about the minutes from then on.
 `haring-say` puts a correction in front of an OpenCode worker that is on the right task
 by the wrong route, and costs one message. `haring-kill` is for an OpenCode worker on the
 wrong task, where no message can put it back and every further minute goes on work you
-will throw away. For a copilot-agent subagent, `write_agent` with the agent id and the
+will throw away. For a copilot-cli subagent, `write_agent` with the agent id and the
 message is the correction. No Copilot tool stops a running subagent: `haring-kill` and
 `haring-say` exit 1 for it, naming the agent id, so let a subagent on the wrong task
 finish and correct it with a new subagent.
@@ -994,7 +988,7 @@ the whole conversation; you know exactly which item is wrong and exactly what pr
 fix, and the worker holds neither. Left to work it out, the worker re-runs the whole
 verification, undoes and remakes the commit, and re-reads the source to rebuild its
 report. Measured on one correction: nine of fifteen tool calls after the correction
-arrived, where the fix itself was six. For a copilot-agent, this correction is a new
+arrived, where the fix itself was six. For a copilot-cli, this correction is a new
 subagent with that one item and its proof in the prompt, because the ended subagent
 cannot be resumed.
 
@@ -1005,9 +999,9 @@ is written entry by entry as it happens. `haring-wait` reads the same stream. A 
 writes no event while it waits on the API or while a command runs, so a worker waiting
 on the API and a worker inside a long command look the same: nothing new.
 
-- The same tool call again and again — stuck in a loop. For an OpenCode or command-line
-  worker, stop it with `haring-kill`, restate the task in a fresh run, and say what it
-  looped on. For a copilot-agent, no tool stops it; let it finish and start a new
+- The same tool call again and again — stuck in a loop. For an OpenCode worker, stop it
+  with `haring-kill`, restate the task in a fresh run, and say what it
+  looped on. For a copilot-cli, no tool stops it; let it finish and start a new
   subagent, saying what it looped on.
 - Reads of files unrelated to the task — lost. The task was under-specified or too wide.
 - Many completed calls, steady progress — genuinely a big task. Let it finish, split it

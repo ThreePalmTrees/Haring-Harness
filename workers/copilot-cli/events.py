@@ -8,17 +8,121 @@ counting and the report checks — and asks the run's worker module three questi
 session(), entries() and summary(). A run with no pid in its meta asks a fourth, alive(),
 which this module answers from the manager's log and its own age.
 """
-import importlib.util, json, os, time
+import json, os, time
+from datetime import datetime, timezone
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-BASE_PATH = os.path.join(HERE, "..", "copilot", "events.py")
+# Copilot's tool names, under the labels every reader and the manager's skill already
+# use. haring-report's evidence list counts Read, Glob, Grep and Bash by these labels,
+# so a worker's shell call has to arrive as Bash to count as evidence at all.
+TOOL_LABELS = {
+    "view": "Read", "read": "Read",
+    "rg": "Grep", "grep": "Grep",
+    "glob": "Glob",
+    "bash": "Bash",
+    "edit": "Edit", "str_replace": "Edit", "str_replace_editor": "Edit",
+    "multi_edit": "Edit",
+    "create": "Write", "write": "Write",
+    "apply_patch": "Patch",
+}
 
-try:
-    _spec = importlib.util.spec_from_file_location("haring_copilot_events", BASE_PATH)
-    copilot = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(copilot)
-except (AttributeError, FileNotFoundError, ImportError) as exc:
-    raise ImportError(f"copilot-agent needs the command-line worker's events.py at {BASE_PATH}: {exc}")
+# haring.usage carries the run's reasoning-token total once, and the core keeps part ids
+# for the whole run, so this fixed id is what makes the count arrive once.
+USAGE_PART = "haring.usage:reasoning"
+
+
+def moment(value):
+    """An event's ISO timestamp as a datetime in UTC, or None when it is not a moment."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return datetime.fromtimestamp(value / 1000, timezone.utc)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def iso(value):
+    """An event's timestamp in the ISO 8601 UTC form ending in Z, or None."""
+    parsed = moment(value)
+    if parsed is None:
+        return None
+    return parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def epoch_ms(value):
+    """An event's timestamp in epoch milliseconds, or None."""
+    parsed = moment(value)
+    if parsed is None:
+        return None
+    return round(parsed.timestamp() * 1000)
+
+
+def usage_tokens(data):
+    """The run's token counts summed over every model in a haring.usage object."""
+    tokens = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+    metrics = data.get("modelMetrics") if isinstance(data, dict) else None
+    if not isinstance(metrics, dict):
+        return tokens
+    for model in metrics.values():
+        usage = model.get("usage") if isinstance(model, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        tokens["input"] += usage.get("inputTokens") or 0
+        tokens["output"] += usage.get("outputTokens") or 0
+        tokens["reasoning"] += usage.get("reasoningTokens") or 0
+        tokens["cache_read"] += usage.get("cacheReadTokens") or 0
+        tokens["cache_write"] += usage.get("cacheWriteTokens") or 0
+    return tokens
+
+
+def event_entries(event, seen):
+    """The lines Copilot CLI writes for tool calls, speech, thinking and usage."""
+    if event.get("ephemeral") and event.get("type") != "assistant.reasoning":
+        return []
+    kind = event.get("type")
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    ts = iso(event.get("timestamp"))
+
+    if kind == "tool.execution_start":
+        key = data.get("toolCallId") or event.get("id")
+        if not key or key in seen:
+            return []
+        seen.add(key)
+        tool = data.get("toolName") or "?"
+        args = data.get("arguments")
+        return [{"kind": "tool", "name": TOOL_LABELS.get(tool, tool),
+                 "args": args if isinstance(args, dict) else {}, "ts": ts}]
+
+    if kind == "assistant.message":
+        key = data.get("messageId") or event.get("id")
+        text = data.get("content")
+        if not key or key in seen or not isinstance(text, str) or not text:
+            return []
+        seen.add(key)
+        return [{"kind": "says", "text": text, "ts": ts}]
+
+    if kind == "assistant.reasoning":
+        # This is the exception to the ephemeral guard above: a non-empty reasoning block
+        # is text even though Copilot marks it ephemeral.
+        key = data.get("reasoningId") or event.get("id")
+        text = data.get("content")
+        if not key or key in seen or not isinstance(text, str) or not text:
+            return []
+        seen.add(key)
+        return [{"kind": "thinking", "text": text, "ts": ts}]
+
+    if kind == "haring.usage":
+        if USAGE_PART in seen:
+            return []
+        seen.add(USAGE_PART)
+        return [{"kind": "thinking_tokens", "count": usage_tokens(data)["reasoning"]}]
+
+    return []
+
 
 # A Copilot session that dies mid-subagent writes no subagent.completed or
 # subagent.failed. The manager's log is appended as the subagent works, and fifteen
@@ -34,12 +138,11 @@ def session(event):
 def entries(event, seen):
     """What one line adds, as the core's entry dicts.
 
-    Tool calls, speech and thinking come from the command-line worker's module so both
-    Copilot workers label the same stream the same way. A usage record adds the
-    reasoning tokens it counted; the core keeps part ids for the whole run and that
-    record's own id is what keeps each count to one.
+    Tool calls, speech and thinking are labelled the way every reader expects. A usage
+    record adds the reasoning tokens it counted; the core keeps part ids for the whole
+    run and that record's own id is what keeps each count to one.
     """
-    out = copilot.entries(event, seen)
+    out = event_entries(event, seen)
     if event.get("type") != "session.usage_record":
         return out
     key = event.get("id")
@@ -68,7 +171,7 @@ def summary(events):
     for event in events:
         if not isinstance(event, dict):
             continue
-        ms = copilot.epoch_ms(event.get("timestamp"))
+        ms = epoch_ms(event.get("timestamp"))
         if ms is not None:
             first = ms if first is None else min(first, ms)
             last = ms if last is None else max(last, ms)

@@ -136,9 +136,8 @@ frontmatter keys for name, description, tools and model. Put one file per kind a
 Each kind's limits must be enforced by the harness, not by the prompt: `check` and `qa`
 are read only, and `errand` has no shell. Subagent agent files and command-line worker
 agent files usually live in the same agent folder of the harness, so give them different
-names: for example `haring-<kind>` for the subagents and `haring-cli-<kind>` for the
-command-line worker. Fallback: no custom agents means no subagent
-route; use command-line workers.
+names: keep `haring-<kind>` for the subagents and use another prefix for the command-line
+worker. Fallback: no custom agents means no subagent route; use command-line workers.
 
 **g. Files outside the project.** Test with a real subagent whether it can read haring's
 own files, `$ROOT/kinds/rules.md` and the kind's rules and schema, without a permission

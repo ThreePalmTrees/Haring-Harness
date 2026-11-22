@@ -21,8 +21,8 @@ example for one the manager starts.
 
 A worker folder lives at `workers/<name>/` under the haring root. A fresh run settles
 its kind's driver from `<project>/.haring/drivers`, then `<haring-root>/drivers`, then
-the default: `copilot-agent` for every kind.
-A continued run uses the `worker=` line in the run it continues, or `copilot-agent` when
+the default: `copilot-cli` for every kind.
+A continued run uses the `worker=` line in the run it continues, or `copilot-cli` when
 that line is absent. Section 6 gives the full rule.
 
 The core uses these files.
@@ -366,12 +366,12 @@ The watchdog ignores both output and exit code.
 ### A worker the manager starts
 
 Some harnesses run inside the manager's own session. The manager starts the work with
-the harness's tool, and haring only reads the transcript. `workers/copilot-agent/` and
+the harness's tool, and haring only reads the transcript. `workers/copilot-cli/` and
 `workers/claude/` are the examples.
 
 Such a worker leaves out `start`, `steer` and `stop`. `haring-worker` refuses to launch
 it: when the settled driver has no `start` program it exits 2, names the missing path,
-and creates no run folder. A Copilot CLI manager starts a `copilot-agent` with the `task`
+and creates no run folder. A Copilot CLI manager starts a `copilot-cli` with the `task`
 tool and steers it with `write_agent`; no Copilot tool stops a running subagent, so
 `haring-kill` and `haring-say` exit 1 for one and name the agent id. A Claude Code manager
 starts a `claude` subagent with its own Agent tool, steers it with SendMessage and stops
@@ -415,10 +415,10 @@ beside the Claude Code adoption. It reads the manager's log at
 `$HARING_COPILOT_STATE/<session>/events.jsonl`, where `HARING_COPILOT_STATE` defaults to
 `$COPILOT_HOME/session-state` or `~/.copilot/session-state`. Each `subagent.started` with
 a `user.message` becomes `<project>/.haring/runs/<stamp>-<kind>-<agent id>/`, with
-`worker=copilot-agent` and the started event's time. Its `events.jsonl` is a real file
+`worker=copilot-cli` and the started event's time. Its `events.jsonl` is a real file
 holding only that agent's lines, appended in log order as the log grows; it is never a
 copy of the whole session log. An ended Copilot run is finished with `report.json` and
-`stats.txt` and no copy step. Its liveness comes from `workers/copilot-agent/events.py`
+`stats.txt` and no copy step. Its liveness comes from `workers/copilot-cli/events.py`
 `alive()`, which reads the same log for that agent's `subagent.completed` or
 `subagent.failed` line and reads a log not written for fifteen minutes as ended.
 
@@ -507,7 +507,7 @@ A fresh run settles its kind's driver from two files. It reads the last line for
 kind in `<project>/.haring/drivers`, then in `<haring-root>/drivers`; the project file
 wins when it names the kind. A drivers file holds one `<kind> <driver>` per line; blank
 lines and lines whose first word starts with # are ignored, and the last line for a kind
-wins. When neither file names the kind, the default is `copilot-agent` for every kind.
+wins. When neither file names the kind, the default is `copilot-cli` for every kind.
 
 The settled name must be a folder under `workers/`. When it is not, `haring-worker`
 stops before it creates the run folder. It exits 2, prints where the name came from,
@@ -518,18 +518,18 @@ same way.
 before it launches anything.
 
 A continued run uses the worker recorded in the run it continues. If that `meta` has
-no `worker=` line, it uses `copilot-agent`. The new run records the same name in its own
+no `worker=` line, it uses `copilot-cli`. The new run records the same name in its own
 `meta`. A missing worker folder is refused the same way, with the run's `meta` named as
 the source.
 
 Every command that reads the event stream finds the driver from the run's `meta`. It
-reads the `worker=` line, or uses `copilot-agent` when the line is absent. It then loads
+reads the `worker=` line, or uses `copilot-cli` when the line is absent. It then loads
 `workers/<name>/events.py`. The commands that need a program call it in
 `workers/<name>/`.
 
 `haring-model` and `haring-meta` answer before a run exists. They settle each kind's
 driver the same way a fresh run does: `<project>/.haring/drivers`, then
-`<haring-root>/drivers`, then `copilot-agent` for every kind. Each kind's model is its
+`<haring-root>/drivers`, then `copilot-cli` for every kind. Each kind's model is its
 line in `<haring-root>/models`, else the `model:` line of
 `workers/<driver>/agents/<kind>.md`. `haring-meta` prints one line, `Drivers and
 models: ...`, with every kind's driver and model.
@@ -549,7 +549,7 @@ through unchecked, and a continue keeps the model recorded in the run it continu
 `haring-model` with no argument prints each kind's driver, its model and where the model
 came from. `haring-model --worker <name> --kind <kind> --model <model>` writes that
 worker's model for that kind into `<haring-root>/models`, and `--clear` in place of
-`--model` removes it; for a copilot-agent subagent the generated copy is reinstalled with
+`--model` removes it; for a copilot-cli subagent the generated copy is reinstalled with
 that model in place of `auto`, and for the Claude driver the agent is reinstalled as a
 generated copy carrying the model. When the kind settles to a different driver, the write
 also prints a note naming it.
