@@ -549,12 +549,12 @@ line in `<haring-root>/models`, else the `model:` line of that worker's `agents/
 `haring-model` with no argument prints the settled worker and, for check, errand and
 implement, the model and where it came from, then the QA worker and its model. A model
 from `<haring-root>/models` names that file; otherwise the agent file is named.
-`haring-model <kind> <model>` writes the kind's model into `<haring-root>/models` for the
-worker the kind settles to, and `<kind> --clear` removes it; for a copilot-agent subagent
-the generated copy is reinstalled with that model in place of `auto`. `haring-model --qa`
-prints the QA worker, where it came from, and its `qa` model; given a name, it writes
-that name into `<haring-root>/qa-worker`, or `<project>/.haring/qa-worker` with
-`--project`.
+`haring-model --worker <name> --kind <kind> --model <model>` writes that worker's model
+for that kind into `<haring-root>/models`, and `--clear` in place of `--model` removes
+it; for a copilot-agent subagent the generated copy is reinstalled with that model in
+place of `auto`. `haring-model --qa` prints the QA worker, where it came from, and its
+`qa` model; given a name, it writes that name into `<haring-root>/qa-worker`, or
+`<project>/.haring/qa-worker` with `--project`.
 
 `install.sh` walks every folder under `workers/` that has an `agents-config`. For each
 one it runs `agents-config install` and marks the install as failed if that program

@@ -32,21 +32,22 @@ worker and the OpenCode worker stay as other choices, started with `haring-worke
 manager can start them, so a Copilot manager does not use them.
 
 Each kind's model is a line in the untracked `<haring-root>/models`, written with
-`haring-model <kind> <model>` and removed with `haring-model <kind> --clear`, so
-changing it leaves the repo untouched; without one, it is the `model:` line of
-`workers/<worker>/agents/<kind>.md`. For a copilot-agent subagent, `haring-model`
-reinstalls the generated copy with that model in place of `auto`. The copilot-agent
-source files say `model: auto`, and `agents-config install` leaves that line out of the
-copy when no models-file line sets it, so the subagent takes your model; Copilot turns an
-agent-file `auto` into a named model, which an auto-only plan refuses. A named model line
-is kept, for a plan that allows it. The OpenCode worker runs every kind on
-`opencode-go/deepseek-v4.1-flash`; the command-line copilot worker runs every kind on
-`auto`. The choice of model is the client's. `haring-meta` prints the models the settled
-worker and the QA worker run on, so you have them before you ask. You never choose a model
-on your own: `--model` on `haring-worker` is a one-run override, only for when the client
-asks for a different model on that run; do not pass a model when you start a subagent with
-`task`. `haring-model` with no argument prints every kind's model and where it came from;
-`--worker` reads or writes the worker, and `--qa` reads or writes the QA worker.
+`haring-model --worker <name> --kind <kind> --model <model>` and removed with `--clear`
+in place of `--model`, so changing it leaves the repo untouched; without one, it is
+the `model:` line of `workers/<worker>/agents/<kind>.md`. For a copilot-agent subagent,
+`haring-model` reinstalls the generated copy with that model in place of `auto`. The
+copilot-agent source files say `model: auto`, and `agents-config install` leaves that
+line out of the copy when no models-file line sets it, so the subagent takes your model;
+Copilot turns an agent-file `auto` into a named model, which an auto-only plan refuses.
+A named model line is kept, for a plan that allows it. The OpenCode worker runs every
+kind on `opencode-go/deepseek-v4.1-flash`; the command-line copilot worker runs every
+kind on `auto`. The choice of model is the client's. `haring-meta` prints the models the
+settled worker and the QA worker run on, so you have them before you ask. You never
+choose a model on your own: `--model` on `haring-worker` is a one-run override, only for
+when the client asks for a different model on that run; do not pass a model when you
+start a subagent with `task`. `haring-model` with no argument prints every kind's model
+and where it came from; `--worker` reads or writes the worker, and `--qa` reads or
+writes the QA worker.
 
 ## How a job runs
 
@@ -565,11 +566,11 @@ installed in `haring-qa`. If the QA worker is `opencode`, pass the task to
 worker is a Claude Code subagent that only a Claude Code manager can start.
 
 A model the client names in the request ("QA it with sonnet") beats the setting for
-that one pass. For a subagent, note what `haring-model --qa` prints, run
-`haring-model qa <model>` before the pass, and afterwards put back the model it printed,
-or run `haring-model qa --clear` if it came from the agent file; `task` itself takes no
-model. For a command-line
-worker, pass it with `--model`.
+that one pass. For a subagent, note the model `haring-model --qa` prints, run
+`haring-model --worker <QA worker> --kind qa --model <model>` before the pass, and
+afterwards put that model back, or run
+`haring-model --worker <QA worker> --kind qa --clear` if it came from the agent file;
+`task` itself takes no model. For a command-line worker, pass it with `--model`.
 
 Findings come back through you. Each is checked at the place it names, and the agreed
 ones become worker task or tasks, whose fixes you verify were carried out faithfully.
@@ -685,11 +686,12 @@ haring-model [--worker [<name>]] [--qa [<name>]] [--project]
                                 with no argument, the settled worker,
                                 each kind's model and where it came from,
                                 and the QA worker with its model.
-                                <kind> <model> writes the kind's model
-                                into <haring-root>/models, and
-                                <kind> --clear removes it. --worker
-                                prints the settled worker and where it
-                                came from, or writes one the same way.
+                                --worker <name> --kind <kind>
+                                --model <model> writes the model into
+                                <haring-root>/models; --clear in place
+                                of --model removes it. --worker prints
+                                the settled worker and where it came
+                                from, or writes one the same way.
                                 --qa does the same for the QA worker
 ```
 
