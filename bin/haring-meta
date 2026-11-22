@@ -6,13 +6,12 @@
 project-dir defaults to the current directory, resolved to its git top level the
 same way haring-worker resolves a workdir. The block hands a worker what it would
 otherwise spend turns finding out: the project's own name, the date and time with
-timezone, the operating system, whether the project is in git, each kind's model for
-the settled worker and the QA worker with its model, and a listing of the files and
-directories under the limits the block itself names — four levels deep, fifty entries
-per directory, names cut at fifty characters. Two kinds of directory
-are named and never walked, each with the reason beside its name: anything
-`git check-ignore` calls ignored, and anything on a fixed list of dependency and
-tooling directories. Nothing else is special-cased.
+timezone, the operating system, whether the project is in git, each kind's driver and
+model, and a listing of the files and directories under the limits the block itself
+names — four levels deep, fifty entries per directory, names cut at fifty characters.
+Two kinds of directory are named and never walked, each with the reason beside its
+name: anything `git check-ignore` calls ignored, and anything on a fixed list of
+dependency and tooling directories. Nothing else is special-cased.
 
 Between the listing and the closing line the block carries a <facts> section
 holding `<project>/.haring/FACTS.md` verbatim — no cap, no cut, no reflow. A file
@@ -48,9 +47,6 @@ STANDARD = {
 MAXD = 4       # how deep the listing goes
 PERDIR = 50    # how many entries of one directory are listed
 NAMEMAX = 50   # a longer file or directory name is cut, with the count of what was cut
-
-# The last fallback for a fresh run's worker.
-WORKER_DEFAULT = "opencode"
 
 
 def die(message, code):
@@ -105,27 +101,35 @@ def ignored(root, path, git):
     return r.returncode == 0
 
 
-def settle(root, haring, filename, default):
-    # A worker choice settles from the project's own file, then haring's, then the
-    # default. A file that is missing, empty, or holds only whitespace names nothing
-    # and is passed over. The source is the file that named the worker, or None when
-    # the default did.
-    for path in (os.path.join(root, ".haring", filename), os.path.join(haring, filename)):
+# The kinds in the order the drivers and models line names them.
+KINDS = ("check", "errand", "implement", "qa")
+
+
+def default_driver(kind):
+    return "claude" if kind == "qa" else "opencode"
+
+
+def settle_driver(root, haring, kind):
+    # A kind's driver settles from the project's drivers file, then haring's, then the
+    # kind's default. Within a file the last line for the kind wins; blank lines and
+    # lines whose first word starts with # are ignored. The source is the file that
+    # named the driver, or None when the default did.
+    for path in (os.path.join(root, ".haring", "drivers"),
+                 os.path.join(haring, "drivers")):
+        driver = None
         try:
             with open(path) as f:
-                candidate = "".join(f.read().split())
+                for line in f:
+                    fields = line.split()
+                    if not fields or fields[0].startswith("#"):
+                        continue
+                    if len(fields) >= 2 and fields[0] == kind:
+                        driver = fields[1]
         except OSError:
             continue
-        if candidate:
-            return candidate, path
-    return default, None
-
-
-# The kinds the settled worker runs, in the order the model line names them. Each one
-# has an agent file under workers/<worker>/agents/. The qa kind has a worker of its
-# own, settled from qa-worker, so it is named separately.
-KINDS = ("check", "errand", "implement")
-QA_WORKER_DEFAULT = "claude"
+        if driver:
+            return driver, path
+    return default_driver(kind), None
 
 
 def models_model(haring, worker, kind):
@@ -230,16 +234,13 @@ def build(root):
     L.append(f"Operating system: {os_name()}")
     L.append(f"Git-tracked: {'Yes' if git else 'No'}")
     haring = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    worker, _ = settle(root, haring, "worker", WORKER_DEFAULT)
-    models = []
+    entries = []
     for kind in KINDS:
-        model, path = agent_model(haring, worker, kind)
-        models.append(f"{kind} {model}" if model else f"{kind} none ({path})")
-    L.append(f"Worker models ({worker}): " + ", ".join(models))
-    qa_worker, qa_source = settle(root, haring, "qa-worker", QA_WORKER_DEFAULT)
-    qa_model, qa_path = agent_model(haring, qa_worker, "qa")
-    L.append(f"QA worker ({qa_worker}, {qa_source or 'default'}): "
-             + (f"qa {qa_model}" if qa_model else f"qa none ({qa_path})"))
+        driver, _ = settle_driver(root, haring, kind)
+        model, path = agent_model(haring, driver, kind)
+        entries.append(f"{kind} {driver} {model}" if model
+                       else f"{kind} {driver} none ({path})")
+    L.append("Drivers and models: " + ", ".join(entries))
     L.append("")
     L.append(f"Files and directories, {MAXD} levels deep, {PERDIR} entries per directory,\nnames cut at {NAMEMAX} characters. Anything")
     L.append("not listed says why beside its name. Open what you need yourself, or send a worker.")

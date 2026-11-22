@@ -1,8 +1,7 @@
 .haring/
 .DS_Store
 contrails
-/worker
-/qa-worker
+/drivers
 /models
 /installed-links
 __pycache__/

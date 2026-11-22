@@ -1,0 +1,186 @@
+#!/bin/sh
+# haring-worker-driver — the driver each kind runs on.
+#
+#   haring-worker-driver
+#   haring-worker-driver --driver <driver>
+#   haring-worker-driver --kind <kind> --driver <driver>
+#
+# With no argument, prints each kind and its driver, with the file the driver came
+# from, or default.
+#
+# --driver writes the driver for all four kinds, and --kind writes it for one. With
+# --project the write goes to <project>/.haring/drivers, else to <haring-root>/drivers.
+# A drivers file holds one <kind> <driver> per line; blank lines and lines whose first
+# word starts with # are ignored, and the last line for a kind wins. A write replaces
+# that kind's line and keeps every other line.
+#
+# A driver settles from <project>/.haring/drivers, then <haring-root>/drivers, then the
+# default: qa is claude, every other kind is opencode.
+#
+# A driver is a folder under workers/. A name with no folder is refused, so a typo
+# never becomes the driver.
+#
+# project is the git top level of the current directory, resolved the same way
+# bin/haring-worker resolves a workdir.
+#
+# Exits 2 when called wrongly: an unknown option or kind, --kind without --driver, a
+# bare word, --project with nothing to write, or a driver with no worker folder. Exits
+# 1 when haring's own directory could not be found, or a driver could not be written.
+set -e
+
+KINDS="check errand implement qa"
+
+usage() {
+  echo "usage: haring-worker-driver [--kind <kind>] --driver <driver> [--project]" >&2
+  echo "       haring-worker-driver" >&2
+  exit 2
+}
+
+# Resolve our own real location, following symlinks, so this keeps working when
+# it is linked onto PATH by install.sh — the same resolution bin/haring-worker uses.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *)  self=$(dirname -- "$self")/$link ;;
+  esac
+done
+HARING=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd) || { echo "haring-worker-driver: could not find haring's own directory" >&2; exit 1; }
+
+# The project is the git top level of the current directory, resolved the same way
+# bin/haring-worker resolves a workdir.
+project=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# The default driver for a kind.
+default_driver() {  # default_driver <kind>
+  case "$1" in
+    qa) echo claude ;;
+    *)  echo opencode ;;
+  esac
+}
+
+# A kind's driver is the last line for it in the project's drivers file, else the last
+# line for it in haring's, else the kind's default. A missing file is passed over.
+driver_of() {  # driver_of <kind>
+  driver=""
+  driver_source=""
+  for drivers_file in "$project/.haring/drivers" "$HARING/drivers"; do
+    [ -f "$drivers_file" ] || continue
+    while read -r drivers_kind drivers_name drivers_rest || [ -n "$drivers_kind" ]; do
+      case "$drivers_kind" in
+        ''|'#'*) continue ;;
+      esac
+      [ "$drivers_kind" = "$1" ] || continue
+      [ -n "$drivers_name" ] || continue
+      driver=$drivers_name
+      driver_source=$drivers_file
+    done < "$drivers_file"
+    if [ -n "$driver" ]; then
+      return 0
+    fi
+  done
+  driver=$(default_driver "$1")
+  driver_source=""
+}
+
+# A driver with no worker folder is refused, so a typo never becomes the driver.
+require_driver() {  # require_driver <name>
+  if [ ! -d "$HARING/workers/$1" ]; then
+    driver_names=""
+    for driver_dir in "$HARING"/workers/*/; do
+      [ -d "$driver_dir" ] || continue
+      name=${driver_dir%/}
+      driver_names="$driver_names ${name##*/}"
+    done
+    echo "haring-worker-driver: unknown worker: $1" >&2
+    echo "  the worker folders are:${driver_names}" >&2
+    exit 2
+  fi
+}
+
+# Write one kind's driver into a drivers file, replacing its line and keeping the rest.
+write_driver() {  # write_driver <file> <kind> <driver>
+  drivers_tmp="$1.tmp.$$"
+  if [ -f "$1" ]; then
+    awk -v kind="$2" '
+      {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        if (line == "" || line ~ /^#/) { print; next }
+        split(line, field, /[[:space:]]+/)
+        if (field[1] == kind) next
+        print
+      }' "$1" > "$drivers_tmp"
+  else
+    : > "$drivers_tmp"
+  fi
+  printf '%s %s\n' "$2" "$3" >> "$drivers_tmp" || {
+    rm -f "$drivers_tmp"; echo "haring-worker-driver: could not write $1" >&2; exit 1; }
+  mv "$drivers_tmp" "$1" || {
+    rm -f "$drivers_tmp"; echo "haring-worker-driver: could not write $1" >&2; exit 1; }
+  echo "$2: $3 -> $1"
+}
+
+project_flag=""
+kind_flag=""
+driver_flag=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project) project_flag=1; shift ;;
+    --kind) case "${2-}" in
+              ''|-*) echo "haring-worker-driver: --kind needs a kind" >&2; usage ;;
+              *) kind_flag=$2; shift 2 ;;
+            esac ;;
+    --driver) case "${2-}" in
+                ''|-*) echo "haring-worker-driver: --driver needs a driver" >&2; usage ;;
+                *) driver_flag=$2; shift 2 ;;
+              esac ;;
+    -*) echo "haring-worker-driver: unknown option: $1" >&2; usage ;;
+    *) echo "haring-worker-driver: takes no bare word: $1" >&2; usage ;;
+  esac
+done
+
+if [ -n "$kind_flag" ] && [ -z "$driver_flag" ]; then
+  echo "haring-worker-driver: --kind needs --driver" >&2
+  usage
+fi
+
+if [ -z "$driver_flag" ]; then
+  [ -z "$project_flag" ] || { echo "haring-worker-driver: --project needs --driver" >&2; usage; }
+  for kind in $KINDS; do
+    driver_of "$kind"
+    if [ -n "$driver_source" ]; then
+      echo "$kind: $driver ($driver_source)"
+    else
+      echo "$kind: $driver (default)"
+    fi
+  done
+  exit 0
+fi
+
+if [ -n "$kind_flag" ]; then
+  case "$kind_flag" in
+    check|errand|implement|qa) ;;
+    *) echo "haring-worker-driver: unknown kind: $kind_flag" >&2
+       echo "  the kinds are: check errand implement qa" >&2
+       usage ;;
+  esac
+fi
+
+require_driver "$driver_flag"
+
+if [ -n "$project_flag" ]; then
+  mkdir -p "$project/.haring" || { echo "haring-worker-driver: could not create $project/.haring" >&2; exit 1; }
+  drivers_file="$project/.haring/drivers"
+else
+  drivers_file="$HARING/drivers"
+fi
+
+if [ -n "$kind_flag" ]; then
+  write_driver "$drivers_file" "$kind_flag" "$driver_flag"
+else
+  for kind in $KINDS; do
+    write_driver "$drivers_file" "$kind" "$driver_flag"
+  done
+fi
